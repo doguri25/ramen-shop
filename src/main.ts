@@ -1,0 +1,27 @@
+import './ui/ui.css';
+import { App } from './app';
+
+const boot = document.getElementById('boot')!;
+const sub = boot.querySelector('.boot-sub') as HTMLElement;
+const app = new App();
+(window as any).__app = app;
+
+function fail(msg: string) {
+  sub.innerHTML = msg;
+  sub.style.color = '#C0392B';
+}
+
+(async () => {
+  const test = document.createElement('canvas').getContext('webgl2');
+  if (!test) { fail('이 기기에서는 3D 화면을 그릴 수 없어요.<br>크롬 브라우저로 열어 주세요.'); return; }
+  try {
+    await app.boot((s) => { sub.textContent = s; });
+  } catch (e) {
+    console.error(e);
+    fail('가게 문을 여는 중에 문제가 생겼어요. 새로고침해 주세요.');
+    return;
+  }
+  boot.classList.add('hide');
+  setTimeout(() => boot.remove(), 700);
+  app.start();
+})();

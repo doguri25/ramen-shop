@@ -1,0 +1,70 @@
+# main 에 올리면 3D 모델을 챙기고, 게임을 빌드해서 GitHub Pages 로 내보내요.
+name: 빌드하고 Pages에 올리기
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # public/models 에 없는 CC0 모델만 3dassets.dev 에서 내려받아요
+      - name: 3D 모델 챙기기
+        run: |
+          set -e
+          cd public/models
+          fetch() {
+            if [ -s "$2" ]; then echo "있음: $2"; return; fi
+            curl -fsSL --retry 3 -o "$2.tmp" "https://cdn.3dassets.dev/assets/$1/v1/model.glb" || { echo "실패: $2"; rm -f "$2.tmp"; return; }
+            if [ "$(head -c 4 "$2.tmp")" = "glTF" ]; then mv "$2.tmp" "$2"; echo "받음: $2"; else echo "glb 아님: $2"; rm -f "$2.tmp"; fi
+          }
+          fetch 36453 paper-lantern-round.glb
+          fetch 37758 wall-clock.glb
+          fetch 36434 crockery-rack.glb
+          fetch 36426 counter-stool.glb
+          fetch 36436 chopstick-caddy.glb
+          fetch 36418 potted-plant.glb
+          fetch 38062 onggi-jar-small.glb
+          ls -la
+
+      # 새로 받은 모델이 있으면 저장소에도 넣어 둬요 (다음부터는 다시 받지 않아요)
+      - name: 받은 모델 저장소에 넣기
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add public/models/*.glb 2>/dev/null || true
+          if git diff --cached --quiet; then echo "새 모델 없음"; else git commit -m "CC0 3D 모델 추가 (3dassets.dev)" && git push; fi
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
