@@ -9,7 +9,9 @@ import type { Customer, Owner, Picks, RamenRecord, Step } from './data/types';
 import { customerForRound, makeOrder } from './game/schedule';
 import { hasHeart, score } from './game/scoring';
 import { faceAtlas, paperCanvas, tex } from './paint/textures';
-import { QualityProbe, TIERS, WatercolorRenderer, type Tier, shared } from './render/watercolor';
+import { LIGHT_W, QualityProbe, TIERS, WatercolorRenderer, type Tier, shared } from './render/watercolor';
+import { bakeLighting } from './render/bake';
+import * as THREE from 'three';
 import { setFaceTexture } from './scene/chibi';
 import { Stage } from './scene/stage';
 import { PHYS } from './scene/physics';
@@ -75,7 +77,18 @@ export class App {
     window.addEventListener('pointerdown', () => unlockAudio(), { capture: true });
     this.last = performance.now();
     requestAnimationFrame(this.loop);
-    this.stage.shop.loadModels().catch((e) => console.warn('[models]', e));
+    // 소품 모델이 다 오면, 가게에 광선을 쏴서 조명을 구워요 (그동안에도 게임은 그대로 해요)
+    this.stage.shop.loadModels().catch((e) => console.warn('[models]', e)).finally(() => { setTimeout(() => this.bakeLights(), 300); });
+  }
+
+  bakeInfo: { verts: number; ms: number; cached: boolean; key: string } | null = null;
+  private async bakeLights() {
+    try {
+      const shop = this.stage.shop;
+      const lamps = shop.lamps.map((b) => b.getWorldPosition(new THREE.Vector3()).add(new THREE.Vector3(0, -0.1, 0)));
+      this.bakeInfo = await bakeLighting(shop.root, { version: 'rt4', light: LIGHT_W, lamps, quality: this.probe.tier });
+      console.info('[bake]', this.bakeInfo);
+    } catch (e) { console.warn('[bake]', e); }
   }
 
   private onResize() {

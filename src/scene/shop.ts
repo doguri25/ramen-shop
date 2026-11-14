@@ -20,12 +20,13 @@ export function makeShop() {
   const fallback: Record<string, THREE.Object3D[]> = { lamp: [], stool: [], sticks: [], plant: [], shelfLow: [], clock: [] };
 
   // 바닥과 벽
-  mesh(new THREE.PlaneGeometry(7, 7), wc('#FFFFFF', { map: floorT, rim: 0 }), [0, 0, 0], 1, [-PI / 2, 0, 0], root);
-  mesh(new THREE.PlaneGeometry(6, 3.2), wc('#FFFFFF', { map: wallT, rim: 0, flat: 0.3 }), [0, 1.6, -1.75], 1, [0, 0, 0], root);
-  for (const sd of [-1, 1]) mesh(new THREE.PlaneGeometry(4.5, 3.2), wc('#F1DFC6', { map: wallT, rim: 0, flat: 0.3 }), [sd * 2.6, 1.6, 0.4], 1, [0, -sd * PI / 2, 0], root);
-  mesh(new THREE.PlaneGeometry(6, 5), M('#EADBC4', { rim: 0, flat: 0.5 }), [0, 3.1, 0.2], 1, [PI / 2, 0, 0], root);
+  // 방 껍데기(바닥·벽·천장)는 광선추적에서 주 조명을 가리지 않게 표시해 둬요
+  mesh(new THREE.PlaneGeometry(7, 7), wc('#FFFFFF', { map: floorT, rim: 0 }), [0, 0, 0], 1, [-PI / 2, 0, 0], root).userData.shell = true;
+  mesh(new THREE.PlaneGeometry(6, 3.2), wc('#FFFFFF', { map: wallT, rim: 0, flat: 0.3 }), [0, 1.6, -1.75], 1, [0, 0, 0], root).userData.shell = true;
+  for (const sd of [-1, 1]) mesh(new THREE.PlaneGeometry(4.5, 3.2), wc('#F1DFC6', { map: wallT, rim: 0, flat: 0.3 }), [sd * 2.6, 1.6, 0.4], 1, [0, -sd * PI / 2, 0], root).userData.shell = true;
+  Object.assign(mesh(new THREE.PlaneGeometry(6, 5), M('#EADBC4', { rim: 0, flat: 0.5 }), [0, 3.1, 0.2], 1, [PI / 2, 0, 0], root).userData, { shell: true, noRecv: true }); // 천장은 안 보여서 굽지 않아요
   // 천장 나무 보
-  for (const z of [-1.2, -0.2, 0.8]) mesh(boxG(6, 0.12, 0.14), M('#9A6232'), [0, 3.04, z], 1, [0, 0, 0], root);
+  for (const z of [-1.2, -0.2, 0.8]) Object.assign(mesh(boxG(6, 0.12, 0.14), M('#9A6232'), [0, 3.04, z], 1, [0, 0, 0], root).userData, { shell: true, noRecv: true });
   // 아래 나무 벽널
   const wain = wc('#FFFFFF', { map: woodDark, rim: 0.2 });
   mesh(boxG(6, 0.9, 0.05), wain, [0, 0.45, -1.72], 1, [0, 0, 0], root);
@@ -72,6 +73,7 @@ export function makeShop() {
   for (const [x, y, w, h] of [[doorX - 0.5, 1.12, 0.08, 2.24], [doorX + 0.5, 1.12, 0.08, 2.24], [doorX, 2.27, 1.08, 0.08]] as const) mesh(boxG(w, h, 0.1), M('#9A6232'), [x, y, -1.7], 1, [0, 0, 0], root);
   const hinge = group(root, [doorX - 0.455, 0, -1.7]);
   const leaf = group(hinge, [0.455, 0, 0]);
+  leaf.userData.noBake = true; // 여닫는 문
   mesh(boxG(0.91, 2.18, 0.05), M('#B5793F', { noise: 1.5 }), [0, 1.09, 0], 1, [0, 0, 0], leaf);
   mesh(boxG(0.72, 0.85, 0.06), M('#DDEFFA', { flat: 0.6, rim: 0, spec: 0.3 }), [0, 1.55, 0.01], 1, [0, 0, 0], leaf);
   for (const x of [-0.12, 0.12]) mesh(boxG(0.03, 0.85, 0.07), M('#9A6232'), [x, 1.55, 0.01], 1, [0, 0, 0], leaf);
@@ -140,6 +142,7 @@ export function makeShop() {
   for (let i = 0; i < 4; i++) mesh(boxG(0.3, 0.015, 0.02), M('#2F3740'), [0, 0.04, 0], 1, [0, i * PI / 4, 0], stove);
   for (const x of [-0.22, 0.22]) mesh(cylG(0.025, 0.025, 0.03, 12), M('#E07A5F'), [x, 0.0, 0.24], 1, [PI / 2, 0, 0], stove);
   const flames = group(stove, [0, 0.04, 0]);
+  flames.userData.noBake = true;
   for (let i = 0; i < 12; i++) {
     const a = (i / 12) * PI * 2;
     const f = mesh(coneG(0.018, 0.055, 6), M('#6FB3E0', { alpha: 0.85, rim: 0, flat: 0.8 }), [Math.cos(a) * 0.11, 0.028, Math.sin(a) * 0.11], 1, [0, 0, 0], flames);
@@ -183,6 +186,7 @@ export function makeShop() {
   // 벽시계 (진짜 시각)
   const clockPos = new THREE.Vector3(0.95, 2.32, -1.709);
   const fbClock = group(root, [clockPos.x, clockPos.y, -1.73]);
+  fbClock.userData.noBake = true;
   mesh(cylG(0.19, 0.19, 0.05, 32), M('#9A6232'), [0, 0, 0], 1, [PI / 2, 0, 0], fbClock);
   mesh(cylG(0.16, 0.16, 0.052, 32), M('#FFF8EC', { flat: 0.4 }), [0, 0, 0.002], 1, [PI / 2, 0, 0], fbClock);
   for (let i = 0; i < 12; i++) { const a = (i / 12) * PI * 2; mesh(boxG(0.012, i % 3 ? 0.02 : 0.035, 0.005), M('#5A3A28'), [Math.sin(a) * 0.13, Math.cos(a) * 0.13, 0.03], 1, [0, 0, -a], fbClock); }
@@ -256,6 +260,7 @@ export function makeShop() {
         hide('clock');
         const o = m.scene;
         o.position.copy(clockPos);
+        o.userData.noBake = true; // 유리 덮개가 시계 얼굴을 가린 것으로 계산돼서 굽지 않아요
         root.add(o);
         const hr = o.getObjectByName('clock-hand-hour'), mn = o.getObjectByName('clock-hand-minute');
         if (hr && mn) clockHands = { hour: hr, min: mn, baseH: hr.rotation.z, baseM: mn.rotation.z };

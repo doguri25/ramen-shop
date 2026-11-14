@@ -10,7 +10,8 @@
   },
   "dependencies": {
     "idb-keyval": "6.3.0",
-    "three": "0.187.0"
+    "three": "0.187.0",
+    "three-mesh-bvh": "0.9.18"
   },
   "devDependencies": {
     "@types/three": "0.187.0",

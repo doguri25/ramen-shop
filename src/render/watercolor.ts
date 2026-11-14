@@ -5,8 +5,9 @@ export const shared = {
   uLightV: { value: new THREE.Vector3(0.4, 0.8, 0.5) },
   uTime: { value: 0 },
   uPaper: { value: null as THREE.Texture | null },
+  uBake: { value: 0 }, // 구운 광선추적 조명이 얼마나 들어갔는지 (0 → 1 로 스며들어요)
 };
-const LIGHT_W = new THREE.Vector3(0.4, 0.8, 0.5).normalize();
+export const LIGHT_W = new THREE.Vector3(0.4, 0.8, 0.5).normalize();
 
 const NOISE = /* glsl */ `
 float hash3(vec3 p){ p = fract(p*0.3183099+vec3(0.1,0.2,0.3)); p *= 17.0; return fract(p.x*p.y*p.z*(p.x+p.y+p.z)); }
@@ -18,8 +19,15 @@ float noise3(vec3 x){ vec3 i=floor(x); vec3 f=fract(x); f=f*f*(3.0-2.0*f);
 const VERT = /* glsl */ `
 varying vec3 vN; varying vec3 vV; varying vec3 vW; varying vec2 vUv;
 uniform float uWave; uniform float uTime;
+#ifdef BAKE
+attribute vec4 bake;
+varying vec4 vBake;
+#endif
 void main(){
   vUv = uv;
+#ifdef BAKE
+  vBake = bake;
+#endif
   vec4 lp = vec4(position, 1.0);
   vec3 ln = normal;
   if (uWave > 0.0) {
@@ -43,6 +51,10 @@ const FRAG = /* glsl */ `
 uniform vec3 uColor; uniform sampler2D uMap; uniform float uUseMap; uniform vec3 uLightV; uniform sampler2D uPaper;
 uniform float uRim; uniform float uAlpha; uniform float uGlow; uniform vec3 uGlowColor; uniform float uFlat; uniform float uNoiseScale; uniform float uSpec;
 varying vec3 vN; varying vec3 vV; varying vec3 vW; varying vec2 vUv;
+#ifdef BAKE
+uniform float uBake;
+varying vec4 vBake;
+#endif
 ${NOISE}
 void main(){
   vec3 n = normalize(vN); if (!gl_FrontFacing) n = -n;
@@ -53,6 +65,10 @@ void main(){
   float nz = noise3(q * 5.0) * 0.6 + noise3(q * 15.0) * 0.4;
   w += (nz - 0.5) * 0.22;
   w = mix(w, 0.8, uFlat);
+#ifdef BAKE
+  // 광선으로 구한 주 조명 그림자: 가려진 곳은 밝은 띠까지 못 올라가요
+  w = mix(w, min(w, 0.46), (1.0 - vBake.a) * uBake * (1.0 - uFlat));
+#endif
   float t1 = smoothstep(0.36, 0.46, w);
   float t2 = smoothstep(0.68, 0.80, w);
   vec4 tx = uUseMap > 0.5 ? texture2D(uMap, vUv) : vec4(1.0);
@@ -62,6 +78,10 @@ void main(){
   vec3 lit = min(base * 1.05 + vec3(0.025, 0.02, 0.0), vec3(1.0));
   vec3 col = mix(shade, mid, t1);
   col = mix(col, lit, t2);
+#ifdef BAKE
+  // 구석 어둠 + 주변에서 튄 빛의 색 + 등불의 따뜻한 빛
+  col *= mix(vec3(1.0), vBake.rgb, uBake);
+#endif
   float paper = texture2D(uPaper, gl_FragCoord.xy / 420.0).r;
   col *= 1.0 - (1.0 - paper) * (1.3 - w) * 0.6;
   float fres = 1.0 - max(dot(n, v), 0.0);
@@ -98,6 +118,7 @@ export function wc(color: string | THREE.Color, o: WCOpts = {}) {
       uSpec: { value: o.spec ?? 0 },
       uWave: { value: o.wave ?? 0 },
       uTime: shared.uTime,
+      uBake: shared.uBake,
     },
     side: o.side ?? THREE.FrontSide,
     transparent: o.transparent ?? (o.alpha !== undefined && o.alpha < 1),

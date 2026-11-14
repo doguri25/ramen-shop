@@ -82,6 +82,8 @@ export class Stage {
     this.paws.body.visible = false;
     this.shop.pot.add(this.potFood);
     this.potFood.position.y = 0.12;
+    // 냄비는 들려 나가기도 하고 속이 계속 바뀌어서 조명을 굽지 않아요 (내어 주는 냄비와 같은 모습)
+    this.shop.pot.userData.noBake = true;
     this.potSteam = makeSteam(wispTex(), 9);
     this.potSteam.group.position.set(0, 0.16, 0);
     this.shop.pot.add(this.potSteam.group);
