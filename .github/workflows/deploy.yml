@@ -36,7 +36,6 @@ jobs:
           fetch 36434 crockery-rack.glb
           fetch 36426 counter-stool.glb
           fetch 36436 chopstick-caddy.glb
-          fetch 36418 potted-plant.glb
           fetch 38062 onggi-jar-small.glb
           ls -la
 

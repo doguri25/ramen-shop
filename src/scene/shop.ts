@@ -236,10 +236,17 @@ export function makeShop() {
       tasks.push(loadModel('lantern').then((m) => {
         if (!m) return;
         hide('lamp');
+        // 종이 부분은 안에서 불이 켜진 것처럼 따뜻하게 빛나요
+        m.scene.traverse((c) => {
+          const mm = c as THREE.Mesh;
+          if (!mm.isMesh || !/cream/.test(mm.name)) return;
+          const u = (mm.material as THREE.ShaderMaterial).uniforms;
+          u.uColor.value.set('#FFF1D6'); u.uGlow.value = 0.65; u.uGlowColor.value.set('#FFC877');
+        });
         lampPivots.forEach((pv) => {
           const o = m.scene.clone(true);
-          fitTo(o, { h: 0.62 });
-          o.position.set(0, -0.57, 0);
+          fitTo(o, { h: 0.5 });
+          o.position.set(0, -0.5, 0);
           pv.children[0].add(o);
           const lg = makeGlow('#FFC877', 1.3, 0.5); lg.position.set(0, -0.26, 0); pv.children[0].add(lg);
         });
@@ -277,16 +284,15 @@ export function makeShop() {
         o.add(makeShadow(0.5, 0.3, 0.45));
         root.add(o);
       }));
-      tasks.push(loadModel('plant').then((m) => {
-        if (!m) return;
-        hide('plant');
-        const o = m.scene; fitTo(o, { h: 0.42 });
-        o.position.set(-1.32, 1.035, -0.18);
-        root.add(o);
-        const sh = makeShadow(0.36, 0.36, 0.45); sh.position.set(-1.32, 1.036, -0.18); root.add(sh);
-      }));
       tasks.push(loadModel('onggi').then((m) => {
         if (!m) return;
+        // 옹기는 짙은 갈색에 윤이 나게
+        m.scene.traverse((c) => {
+          const mm = c as THREE.Mesh;
+          if (!mm.isMesh) return;
+          const u = (mm.material as THREE.ShaderMaterial).uniforms;
+          u.uColor.value.set('#7A4E33'); u.uSpec.value = 0.45;
+        });
         for (const [x, z, h] of [[-1.12, 0.86, 0.18], [1.12, 0.88, 0.16], [1.0, 0.6, 0.12]] as const) {
           const o = m.scene.clone(true); fitTo(o, { h });
           o.position.set(x, 0.89, z); o.rotation.y = x;

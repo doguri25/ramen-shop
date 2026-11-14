@@ -10,7 +10,6 @@ export const CC0 = {
   crockery: { id: 36434, file: 'crockery-rack.glb' },
   stool: { id: 36426, file: 'counter-stool.glb' },
   caddy: { id: 36436, file: 'chopstick-caddy.glb' },
-  plant: { id: 36418, file: 'potted-plant.glb' },
   onggi: { id: 38062, file: 'onggi-jar-small.glb' },
   easel: { id: 36457, file: 'menu-board-easel.glb' },
 } as const;
