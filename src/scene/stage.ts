@@ -78,6 +78,8 @@ export class Stage {
     this.scene.add(this.cam);
     this.cam.add(this.paws.group);
     this.paws.group.visible = false;
+    this.scene.add(this.paws.body);
+    this.paws.body.visible = false;
     this.shop.pot.add(this.potFood);
     this.potFood.position.y = 0.12;
     this.potSteam = makeSteam(wispTex(), 9);
@@ -1265,6 +1267,7 @@ export class Stage {
     animateRamen(this.potFood, this.t);
     for (const b of this.bowls) animateRamen(b, this.t);
     if (this.shop.flames.visible) this.shop.flames.children.forEach((f) => { if (f.userData.phase !== undefined) f.scale.y = 0.8 + Math.sin(this.t * 20 + f.userData.phase) * 0.25; });
+    this.paws.sync(this.cam, dt);
     if (this.paws.group.visible) {
       for (const [p, k] of [[this.paws.L, 0], [this.paws.R, 1.3]] as const) {
         if (p.target.distanceTo(p.rest) < 0.012) p.target.y = p.rest.y + Math.sin(this.t * 1.6 + k) * 0.006;
