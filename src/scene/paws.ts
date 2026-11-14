@@ -12,6 +12,7 @@ export class Paw {
   cur: THREE.Vector3;
   target: THREE.Vector3;
   hold = new THREE.Group(); // 물건을 쥐는 자리
+  maxLen = 0.5; // 소매가 늘어날 수 있는 길이 (멀리 뻗을 때는 길게)
   constructor(parent: THREE.Object3D, public side: number, public anchor: THREE.Vector3, public rest: THREE.Vector3) {
     this.cur = rest.clone();
     this.target = rest.clone();
@@ -29,7 +30,7 @@ export class Paw {
     this.cur.lerp(this.target, 1 - Math.exp(-dt * speed));
     this.paw.position.copy(this.cur);
     const dir = this.anchor.clone().sub(this.cur);
-    const len = Math.min(0.5, dir.length());
+    const len = Math.min(this.maxLen, dir.length());
     dir.normalize();
     this.sleeve.position.copy(this.cur).addScaledVector(dir, len * 0.5 + 0.04);
     this.sleeve.quaternion.setFromUnitVectors(UP, dir);

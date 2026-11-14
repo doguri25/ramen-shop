@@ -37,6 +37,7 @@ button { font-family: var(--head); border: 0; cursor: pointer; color: inherit; b
 .btn:active { transform: translateY(4px); box-shadow: 0 2px 0 #8F3E09; }
 .btn.ghost { background: #fff; color: var(--accent); box-shadow: 0 5px 0 var(--line), var(--shadow-s); }
 .btn.ghost:active { box-shadow: 0 1px 0 var(--line); }
+.btn.ghost.warn { color: #C0392B; box-shadow: 0 5px 0 #F2C4BC, var(--shadow-s); }
 .btn.soft { background: var(--accent-soft); color: var(--accent); box-shadow: 0 5px 0 #EFC6A4; }
 .btn.small { min-height: 44px; font-size: 18px; padding: 0 18px; }
 .btn.big { min-height: 68px; font-size: 26px; padding: 0 36px; }

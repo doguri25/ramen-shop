@@ -8,10 +8,11 @@ import { heartCanvas, sparkleCanvas, steamCanvas, tex, woodCanvas } from '../pai
 import { wc, type WatercolorRenderer } from '../render/watercolor';
 import { addRipple, Bubbles } from './broth';
 import { Chibi, LEG, type Act, type Mood } from './chibi';
-import { animateRamen, buildRamen, itemModel, makeBowl, makeCookChopsticks, makeLadle, noodleBlock, POT_R, RAINBOW } from './food';
+import { animateRamen, buildRamen, itemModel, makeBowl, makeCookChopsticks, makeLadle, makePot, makePotGripper, makeSpoon, makeTrivet, noodleBlock, POT_R, RAINBOW } from './food';
 import { makeShadow, wispTex } from './fx';
-import { disposeTree, M } from './geo';
+import { disposeTree, M, Mu } from './geo';
 import { makeOwnerPaws, type Paw } from './paws';
+import { bowlProfile, Drop, GRAV, Liquid, NoodleBundle, potProfile, Stream, type Container, type NoodleLook, type Profile } from './physics';
 import { makeProp } from './props';
 import { makeShop, makeSteam } from './shop';
 
@@ -30,92 +31,7 @@ const VIEWS: Record<View, { pos: [number, number, number]; look: [number, number
 const MOOD_ACT: Partial<Record<Mood, Act>> = { sad: 'sad', worried: 'worry', angry: 'fist' };
 
 interface Particle { s: THREE.Sprite; v: THREE.Vector3; life: number; max: number; grow: number; g: number }
-interface BowlInfo { group: THREE.Group; food: THREE.Group; surfaceY: number; innerR: number; steam: ReturnType<typeof makeSteam> }
-
-// 젓가락에 매달린 면발
-class Strands {
-  group = new THREE.Group();
-  private meshes: THREE.Mesh[] = [];
-  private mat: THREE.Material;
-  private jit: THREE.Vector3[] = [];
-  constructor(color: string, private n = 5, private r = 0.0055) {
-    this.mat = M(color, { rim: 0.6, spec: 0.45 });
-    for (let i = 0; i < n; i++) this.jit.push(V((Math.random() - 0.5) * 0.05, 0, (Math.random() - 0.5) * 0.05));
-  }
-  set(base: THREE.Vector3, tip: THREE.Vector3, sag: number, lift = 0) {
-    this.clearGeo();
-    for (let i = 0; i < this.n; i++) {
-      const a = base.clone().add(this.jit[i]).lerp(tip, lift);
-      const b = tip.clone().add(V(this.jit[i].x * 0.08, 0, this.jit[i].z * 0.08));
-      const m1 = a.clone().lerp(b, 0.33).add(V(this.jit[i].x * 0.3, -sag * 0.8, this.jit[i].z * 0.3));
-      const m2 = a.clone().lerp(b, 0.66).add(V(this.jit[i].x * 0.2, -sag * 0.5, 0));
-      const g = new THREE.TubeGeometry(new THREE.CatmullRomCurve3([a, m1, m2, b]), 14, this.r, 5);
-      const mm = new THREE.Mesh(g, this.mat);
-      this.group.add(mm);
-      this.meshes.push(mm);
-    }
-  }
-  private clearGeo() { for (const m of this.meshes) { this.group.remove(m); m.geometry.dispose(); } this.meshes = []; }
-  dispose() { this.clearGeo(); this.group.removeFromParent(); }
-}
-
-// 긴 젓가락에 걸쳐 양쪽으로 축 늘어진 면발 (사장님이 냄비에서 그릇으로 옮길 때)
-// 끝은 처음엔 냄비 국물에 붙어 있다가(attach=1) 들어 올리면 떨어져 늘어지고(attach=0),
-// 그릇에 내려놓으면 국물 면에 닿아 옆으로 퍼져요.
-class HangingNoodles {
-  group = new THREE.Group();
-  private meshes: THREE.Mesh[] = [];
-  private mats: THREE.Material[];
-  private seeds: { dx: number; dz: number; la: number; lb: number; sa: THREE.Vector3; sb: THREE.Vector3; ph: number; c: number }[] = [];
-  constructor(colors: string[], private n = 8, private r = 0.0055, private wig = 0.006) {
-    this.mats = colors.map((c) => M(c, { rim: 0.6, spec: 0.45 }));
-    for (let i = 0; i < n; i++) {
-      const rs = () => { const a = Math.random() * PI * 2, d = 0.02 + Math.random() * 0.05; return V(Math.cos(a) * d, 0, Math.sin(a) * d); };
-      this.seeds.push({ dx: (Math.random() - 0.5) * 0.03, dz: (Math.random() - 0.5) * 0.014, la: 0.1 + Math.random() * 0.08, lb: 0.07 + Math.random() * 0.08, sa: rs(), sb: rs(), ph: Math.random() * 6.28, c: i % colors.length });
-    }
-  }
-  // tip: 젓가락 끝, attach: 바닥에 붙은 정도, ground: 바닥(국물 면) 가운데, sway: 움직임 반대로 쏠리는 정도
-  set(tip: THREE.Vector3, attach: number, ground: THREE.Vector3, sway = V(), alpha = 1) {
-    this.clear();
-    const gy = ground.y + 0.003;
-    this.seeds.forEach((s, i) => {
-      const top = tip.clone().add(V(s.dx, 0.006, s.dz));
-      const end = (len: number, side: number, onGround: THREE.Vector3) => {
-        const hang = top.clone().add(V(side * 0.012 + sway.x * len, -len, side * 0.006 + sway.z * len));
-        const e = hang.lerp(ground.clone().add(onGround), attach);
-        // 바닥 아래로는 내려가지 않고 옆으로 퍼져요
-        if (e.y < gy) {
-          const out = V(e.x - top.x, 0, e.z - top.z);
-          if (out.lengthSq() < 1e-6) out.set(side, 0, 0.3);
-          out.normalize().multiplyScalar((gy - e.y) * 0.9);
-          e.add(out); e.y = gy;
-        }
-        return e;
-      };
-      const ea = end(s.la, -1, s.sa), eb = end(s.lb, 1, s.sb);
-      const pts: THREE.Vector3[] = [];
-      const seg = (a: THREE.Vector3, b: THREE.Vector3, from: number, to: number) => {
-        for (let k = from; k <= to; k++) {
-          const t = k / 4;
-          const p = a.clone().lerp(b, t);
-          const w = Math.sin(t * PI) * this.wig;
-          p.x += Math.sin(s.ph + t * 9 + i) * w; p.z += Math.cos(s.ph + t * 7) * w;
-          pts.push(p);
-        }
-      };
-      seg(ea, top, 0, 3);
-      pts.push(top.clone().add(V(0, 0.004, 0)));
-      seg(top, eb, 1, 4);
-      const g = new THREE.TubeGeometry(new THREE.CatmullRomCurve3(pts), 36, this.r, 5);
-      const m = new THREE.Mesh(g, this.mats[s.c]);
-      this.group.add(m);
-      this.meshes.push(m);
-    });
-    this.mats.forEach((m) => { const u = (m as THREE.ShaderMaterial).uniforms; if (u?.uAlpha) { u.uAlpha.value = alpha; (m as THREE.ShaderMaterial).transparent = alpha < 1; } });
-  }
-  private clear() { for (const m of this.meshes) { this.group.remove(m); m.geometry.dispose(); } this.meshes = []; }
-  dispose() { this.clear(); this.group.removeFromParent(); }
-}
+interface BowlInfo { group: THREE.Group; food: THREE.Group; surfaceY: number; innerR: number; steam: ReturnType<typeof makeSteam>; kind: 'bowl' | 'pot'; liquid: Liquid | null; box: Container; grips: [THREE.Vector3, THREE.Vector3]; shared: boolean }
 
 export class Stage {
   scene = new THREE.Scene();
@@ -140,6 +56,14 @@ export class Stage {
   private picks: Picks | null = null;
   private served: Picks | null = null;
   private bubbles: Bubbles | null = null;
+  // 물리: 국물 면, 젓가락에 걸린 면, 떨어지는 건더기, 매 순간 돌릴 일
+  private liquids: Liquid[] = [];
+  private bundles: NoodleBundle[] = [];
+  private drops: Drop[] = [];
+  private jobs: ((dt: number) => boolean)[] = [];
+  private extras: THREE.Object3D[] = [];
+  private potLiquid: Liquid | null = null;
+  private potBox: Container | null = null;
   view: View = 'guest';
   phase = '';
   pawsOn = false;
@@ -214,6 +138,12 @@ export class Stage {
     p.target.copy(this.paws.group.worldToLocal(w.clone()));
   }
   private camPoint(x: number, y: number, z: number) { this.cam.updateMatrixWorld(); return this.cam.localToWorld(V(x, y, z)); }
+  private run(job: (dt: number) => boolean) { this.jobs.push(job); }
+  // 조건이 맞을 때까지 기다려요 (최대 max 초)
+  private until(cond: () => boolean, max = 3) {
+    return new Promise<void>((res) => { let t = 0; this.run((dt) => { t += dt; if (cond() || t > max) { res(); return false; } return true; }); });
+  }
+  private inScene(o: THREE.Object3D) { while (o.parent) o = o.parent; return o === this.scene; }
 
   // ── 손님 ─────────────────────────────
   private addGuest(s: ChibiSpec) {
@@ -337,7 +267,10 @@ export class Stage {
   }
   clearBowls() {
     for (const b of this.bowls) { this.scene.remove(b); disposeTree(b); }
-    this.bowls = []; this.bowlInfo = []; this.bowlSteam = [];
+    for (const e of this.extras) { this.scene.remove(e); disposeTree(e); }
+    for (const b of this.bundles) b.dispose();
+    this.bowls = []; this.bowlInfo = []; this.bowlSteam = []; this.extras = []; this.bundles = []; this.drops = [];
+    this.shop.pot.visible = true;
   }
 
   talk(i: number, on: boolean) {
@@ -364,6 +297,8 @@ export class Stage {
   resetPot() {
     disposeTree(this.potFood);
     this.potFood.clear();
+    this.potLiquid = null;
+    this.potBox = null;
     this.picks = null;
     this.bubbles = null;
     this.potSteam.set(0);
@@ -379,8 +314,11 @@ export class Stage {
   private rebuildPot(p: Picks, popId?: string) {
     disposeTree(this.potFood);
     this.potFood.clear();
-    const food = buildRamen(p, POT_R * 0.93, 11);
+    const food = buildRamen(p, POT_R * 0.93, 11, this.TOP);
     this.potFood.add(food);
+    const prof = potProfile(POT_R, POT_R * 0.93);
+    this.potLiquid = this.addLiquid(food, prof);
+    this.potBox = this.box(food, prof, this.potLiquid, food.getObjectByName('noodles'), 0.14 * 0.92 * POT_R * 0.93);
     this.picks = JSON.parse(JSON.stringify(p));
     const hot = !!p.broth;
     this.potSteam.set(hot ? 1 : 0);
@@ -407,16 +345,27 @@ export class Stage {
   async toss(ing: Ingredient, picks: Picks) {
     const kind = ing.look.model;
     const model = kind === 'noodle' ? noodleBlock(ing) : itemModel(ing);
-    model.scale.setScalar(0.75);
+    const type = kind === 'broth' ? 'pour' : ['sesame', 'pepper', 'salt', 'gimflake', 'giggle', 'oil', 'stargim', 'butter', 'cheese'].includes(kind) ? 'shake' : kind === 'packet' ? 'packet' : 'drop';
+    // 건더기는 냄비 속에서와 같은 크기의 작은 접시에 담아 와요 (떨어뜨려도 크기가 그대로)
+    const isTop = type === 'drop' && kind !== 'noodle';
+    model.scale.setScalar(isTop ? (this.TOP * 1.55) / 1.4 : 0.75);
     this.scene.add(model);
     const R = this.paws.R;
     const potW = this.shop.pot.getWorldPosition(V());
     const potTop = potW.clone().add(V(0, 0.27, 0));
     const start = this.camPoint(0.3, -0.3, -0.62);
-    const grip = V(0.05, 0.1, 0.05);
+    const grip = isTop ? V(0.035, 0.015, 0.03) : V(0.05, 0.1, 0.05);
     const follow = () => this.pawAt(R, model.position.clone().add(grip));
-    const type = kind === 'broth' ? 'pour' : ['sesame', 'pepper', 'salt', 'gimflake', 'giggle', 'oil', 'stargim', 'butter', 'cheese'].includes(kind) ? 'shake' : kind === 'packet' ? 'packet' : 'drop';
-    const hover = potTop.clone().add(V(type === 'pour' ? -0.13 : type === 'drop' ? 0.02 : 0.03, type === 'drop' ? -0.02 : 0.02, 0.02));
+    const hover = potTop.clone().add(V(type === 'drop' ? 0.02 : 0.03, type === 'drop' ? -0.02 : 0.02, 0.02));
+    if (type === 'pour') {
+      // 다 기울였을 때 주둥이가 냄비 한가운데 위에 오도록 주전자 자리를 계산해요
+      model.rotation.set(0, 0, 1.7);
+      model.position.set(0, 0, 0);
+      model.updateMatrixWorld();
+      const lipOff = model.localToWorld(V(-0.125, 0.165, 0));
+      model.rotation.set(0, 0, 0);
+      hover.copy(potW).add(V(-0.02, 0.27, 0.02)).sub(lipOff);
+    }
     model.position.copy(start);
     sfx.whoosh();
     await tween(0.55, (k) => {
@@ -427,19 +376,35 @@ export class Stage {
     }, { ease: ease.outCubic });
 
     if (type === 'pour') {
+      // 주전자 주둥이에서 국물이 포물선으로 쏟아지고, 냄비 국물이 차오르는 만큼 높아져요
       sfx.pour();
-      const stream = new THREE.Mesh(new THREE.CylinderGeometry(0.01, 0.018, 0.28, 8), M(ing.look.color, { alpha: 0.85, rim: 0, spec: 0.6 }));
-      stream.visible = false;
-      this.scene.add(stream);
-      await tween(0.35, (k) => { model.rotation.z = k * 1.7; follow(); });
-      stream.visible = true;
-      stream.position.copy(potW).add(V(-0.035, 0.27, 0.02));
       this.rebuildPot(picks);
-      const disc = this.potFood.getObjectByName('broth');
-      if (disc) { disc.position.y = -0.1; tween(1.0, (k) => { disc.position.y = lerp(-0.1, 0, k); }); }
-      for (let i = 0; i < 4; i++) { this.ripple(-0.2 + Math.random() * 0.1, Math.random() * 0.1, 0.8); await wait(0.24); }
-      stream.removeFromParent(); stream.geometry.dispose();
-      await tween(0.3, (k) => { model.rotation.z = 1.7 * (1 - k); follow(); });
+      const PL = this.potLiquid, box = this.potBox;
+      const floor = box ? box.prof.floorAt(0) : -0.1;
+      if (PL) PL.level = floor - 0.003;
+      const stream = new Stream(ing.look.color, 0.0085);
+      this.scene.add(stream.group);
+      const spout = V(-0.125, 0.165, 0);
+      let tilt = 0, on = true, rip = 0;
+      this.run((dt) => {
+        model.updateMatrixWorld();
+        const lip = model.localToWorld(spout.clone());
+        const flow = THREE.MathUtils.clamp((tilt - 0.95) / 0.6, 0, 1);
+        const vel = V(-1, 0, 0).transformDirection(model.matrixWorld).multiplyScalar(0.35 + 0.25 * flow);
+        rip += dt;
+        stream.update(dt, on ? lip : null, vel, flow, () => (box ? box.obj.localToWorld(V(0, Math.max(box.level(), floor), 0)).y : potW.y + 0.02), (p) => {
+          if (PL) PL.level = Math.min(0, Math.max(PL.level, floor + 0.003) + 0.0016);
+          if (rip > 0.1 && box && PL) { rip = 0; this.splash({ food: box.obj, liquid: PL, box }, p, 0.6, '#FFFFFF'); }
+        });
+        return on || !stream.empty;
+      });
+      await tween(0.55, (k) => { tilt = k * 1.7; model.rotation.z = tilt; follow(); });
+      await this.until(() => !PL || PL.level >= -0.002, 1.8);
+      on = false;
+      if (PL) PL.level = 0;
+      await tween(0.3, (k) => { tilt = 1.7 * (1 - k); model.rotation.z = tilt; follow(); });
+      await this.until(() => stream.empty, 0.6);
+      stream.dispose();
     } else if (type === 'shake') {
       sfx.sprinkle();
       await tween(0.3, (k) => { model.rotation.z = k * 1.2; follow(); });
@@ -463,11 +428,36 @@ export class Stage {
       this.ripple(0, 0, 0.7);
       sfx.plop();
     } else {
-      // 손을 놓으면 퐁당
+      if (isTop) {
+        // 접시를 기울이면 건더기가 미끄러져 떨어지고, 국물 위에서 둥둥 흔들리다 자리를 잡아요
+        this.rebuildPot(picks);
+        const dst = this.potFood.getObjectByName(ing.id);
+        const top = model.children[1];
+        if (dst && top) {
+          dst.visible = false;
+          const dp = dst.getWorldPosition(V()), dq = dst.getWorldQuaternion(new THREE.Quaternion());
+          const to = dp.clone().sub(model.position).setY(0).normalize();
+          await tween(0.22, (k) => { model.rotation.z = -k * 0.5 * Math.sign(to.x || 1); model.rotation.x = k * 0.5 * to.z; follow(); });
+          this.scene.attach(top);
+          const box = this.potBox, PL = this.potLiquid;
+          const drop = new Drop(top, dp, dq, (p, sp) => { sfx.plop(); if (box && PL) this.splash({ food: box.obj, liquid: PL, box }, p, sp, '#FFFFFF'); }, to.multiplyScalar(0.25).add(V(0, 0.05, 0)));
+          this.drops.push(drop);
+          const hv = model.position.clone(), away = this.camPoint(0.3, -0.3, -0.62);
+          await tween(0.3, (k) => { model.position.lerpVectors(hv, away, k); follow(); });
+          this.pawAt(R, null);
+          this.scene.remove(model); disposeTree(model);
+          await this.until(() => drop.done, 1.4);
+          top.removeFromParent(); disposeTree(top);
+          dst.visible = true;
+          return;
+        }
+      }
+      // 손을 놓으면 중력으로 떨어져 퐁당 (h = ½gt² 그대로의 시간)
       const land = potW.clone().add(V(0.02, 0.13, 0.02));
       const from = model.position.clone();
       this.pawAt(R, null);
-      await tween(0.36, (k) => { model.position.lerpVectors(from, land, k); model.rotation.x = k * 1.6; model.rotation.z = k * 0.8; }, { ease: ease.inQuad });
+      const fall = Math.sqrt((2 * Math.max(0.02, from.y - land.y)) / GRAV);
+      await tween(fall, (k) => { model.position.lerpVectors(from, land, k); model.rotation.x = k * 1.6; model.rotation.z = k * 0.8; }, { ease: ease.inQuad });
       sfx.plop();
       this.burst(land.clone().add(V(0, 0.04, 0)), '#FFFFFF', 9, 0.6);
       if (kind === 'noodle') {
@@ -498,10 +488,39 @@ export class Stage {
   removeFromPot(picks: Picks) { sfx.back(); if (!picks.broth && !picks.soup && !picks.noodle && !picks.toppings.length && !picks.finish.length) this.resetPot(); else this.rebuildPot(picks); }
   restorePot(picks: Picks) { if (picks.broth || picks.noodle || picks.soup || picks.toppings.length || picks.finish.length) this.rebuildPot(picks); else this.resetPot(); }
 
-  // ── 그릇 ─────────────────────────────
+  // ── 그릇·냄비 ─────────────────────────────
+  // 건더기 크기 기준: 냄비 속 달걀과 그릇 속 달걀이 같은 크기예요
+  private readonly TOP = 0.17 * 0.86 * 0.97;
+
+  // 면이 닿는 바닥(국물 면 + 소복한 면 더미)과 벽을 알려 주는 그릇 정보
+  private box(food: THREE.Object3D, prof: Profile, liq: Liquid | null, nest: THREE.Object3D | null | undefined, dome: number): Container {
+    const total = nest ? nest.children.length : 0;
+    return {
+      obj: food, prof,
+      level: () => (liq && liq.mesh.visible ? liq.level : prof.floorAt(0)),
+      mound: () => {
+        if (!nest || !nest.visible || !total) return 0;
+        const vis = nest.children.filter((c) => c.visible && !c.userData.loose).length;
+        return dome * nest.scale.y * Math.min(1, vis / total);
+      },
+    };
+  }
+  private addLiquid(food: THREE.Object3D, prof: Profile) {
+    const disc = food.getObjectByName('broth') as THREE.Mesh | undefined;
+    if (!disc) return null;
+    const L = new Liquid(disc, prof);
+    this.liquids.push(L);
+    return L;
+  }
+  private liquidColor(L: Liquid | null) {
+    const u = L ? (L.mesh.material as THREE.ShaderMaterial).uniforms?.uColor : null;
+    return u ? '#' + (u.value as THREE.Color).getHexString() : '#E9B66A';
+  }
+
   private makeBowlFull(picks: Picks): BowlInfo {
     const { group, surfaceY, innerR } = makeBowl(0.17);
-    const food = buildRamen(picks, innerR * 0.97, 11);
+    const fr = innerR * 0.97;
+    const food = buildRamen(picks, fr, 11, this.TOP);
     food.position.y = surfaceY;
     group.add(food);
     const steam = makeSteam(wispTex(), 6);
@@ -512,14 +531,169 @@ export class Stage {
     sh.position.y = 0.002;
     group.add(sh);
     group.userData.food = food;
-    return { group, food, surfaceY, innerR, steam };
+    const prof = bowlProfile(0.17, fr);
+    const liquid = this.addLiquid(food, prof);
+    const box = this.box(food, prof, liquid, food.getObjectByName('noodles'), 0.14 * 0.92 * fr);
+    return { group, food, surfaceY, innerR, steam, kind: 'bowl', liquid, box, grips: [V(-0.165, 0.075, 0), V(0.165, 0.075, 0)], shared: false };
   }
 
-  // 국자로 국물을, 젓가락으로 면과 건더기를 옮겨 담아요
+  private makePotFull(picks: Picks): BowlInfo {
+    const group = new THREE.Group();
+    group.add(makePot());
+    const fr = POT_R * 0.93;
+    const food = buildRamen(picks, fr, 11, this.TOP);
+    food.position.y = 0.12;
+    group.add(food);
+    const steam = makeSteam(wispTex(), 8);
+    steam.group.position.y = 0.17;
+    steam.set(1);
+    group.add(steam.group);
+    const sh = makeShadow(0.62, 0.62, 0.5);
+    sh.position.y = 0.002;
+    group.add(sh);
+    group.userData.food = food;
+    const prof = potProfile(POT_R, fr);
+    const liquid = this.addLiquid(food, prof);
+    const box = this.box(food, prof, liquid, food.getObjectByName('noodles'), 0.14 * 0.92 * fr);
+    return { group, food, surfaceY: 0.12, innerR: fr, steam, kind: 'pot', liquid, box, grips: [V(-(POT_R + 0.062), 0.14, 0), V(POT_R + 0.062, 0.14, 0)], shared: false };
+  }
+
+  // 면 종류마다 굵기·꼬불거림·뻣뻣함이 달라요
+  private noodleLook(picks: Picks | null, small = false): NoodleLook {
+    const ing = picks?.noodle ? ING.get(picks.noodle)! : null;
+    const style = ing?.look.style ?? 'curly';
+    const colors = style === 'rainbow' ? RAINBOW : [ing?.look.color ?? '#F0D088'];
+    const radius = (style === 'thick' || style === 'chewy' ? 0.0062 : style === 'thin' ? 0.0034 : 0.0046) * (small ? 0.9 : 1);
+    const wig = style === 'curly' || style === 'rainbow' ? 0.0055 : style === 'long' ? 0.0008 : 0.0025;
+    const len = (style === 'long' ? 0.42 : 0.32) * (small ? 0.72 : 1);
+    const bend = style === 'thick' || style === 'chewy' ? 0.3 : 0.12;
+    return { colors, radius, wig, len, bend };
+  }
+
+  // 국물에 무언가 떨어졌을 때: 물결, 튀는 물방울, 살짝 출렁
+  private splash(B: { food: THREE.Object3D; liquid: Liquid | null; box: Container }, p: THREE.Vector3, speed: number, color: string) {
+    const L = B.liquid;
+    if (!L || !L.mesh.visible) return;
+    const lp = B.food.worldToLocal(p.clone());
+    addRipple(L.mesh.material as THREE.ShaderMaterial, lp.x / B.box.prof.refR, -lp.z / B.box.prof.refR, Math.min(1.4, 0.4 + speed));
+    L.kick(lp.x * speed * 0.6, lp.z * speed * 0.6);
+    const n = Math.min(7, Math.round(speed * 6));
+    for (let i = 0; i < n; i++) {
+      const a = Math.random() * PI * 2, s = 0.15 + Math.random() * 0.35 * speed;
+      this.spawn(this.texSteam, p.clone().add(V(0, 0.005, 0)), V(Math.cos(a) * s * 0.5, s * 1.4, Math.sin(a) * s * 0.5), 0.35, 0.01 + Math.random() * 0.008, -GRAV, color);
+    }
+  }
+  // 면 끝에서 떨어지는 국물 방울
+  private drip(p: THREE.Vector3, color: string) { this.spawn(this.texSteam, p.clone(), V(0, -0.05, 0), 0.45, 0.009, -GRAV, color); }
+
+  // 손님 수만큼, 그릇째 또는 냄비째 랜덤으로 내어 줘요
+  serveMode: 'bowl' | 'pot' | null = null; // 시험할 때만 정해 둬요
+  servedIn: 'bowl' | 'pot' = 'bowl';
   async serve(picks: Picks) {
-    const n = Math.max(1, this.guests.length);
     this.served = JSON.parse(JSON.stringify(picks));
     this.clearBowls();
+    const mode = this.serveMode ?? (Math.random() < 0.5 ? 'pot' : 'bowl');
+    this.servedIn = mode;
+    if (mode === 'pot') await this.servePot(picks);
+    else await this.serveBowls(picks);
+  }
+
+  // ── 냄비째: 불을 끄고, 손잡이를 잡아 받침 위로 ─────────────
+  private async servePot(picks: Picks) {
+    const n = Math.max(1, this.guests.length);
+    this.phase = 'potlift';
+    // 불을 끄면 끓던 거품이 금세 잦아들어요
+    this.shop.flames.visible = false;
+    stopBubble();
+    const bm = this.brothMat(), bub = this.bubbles;
+    tween(0.8, (k) => { if (bub) bub.on = 1 - k; if (bm) bm.uniforms.uHot.value = 1 - k; }, { ease: ease.outCubic });
+    await this.setView('serve', 0.7);
+    // 받침은 손님 앞 카운터에 미리 놓아요
+    const seatX = n > 1 ? 0 : this.shop.seat(0, 1).x;
+    const spot = V(seatX, 1.035, -0.22);
+    const trivet = makeTrivet(0.2);
+    trivet.position.copy(spot);
+    this.scene.add(trivet);
+    this.extras.push(trivet);
+    // 가게 냄비 자리에 똑같은 '내는 냄비'를 두고, 그 냄비를 들어요
+    const P = this.makePotFull(picks);
+    P.shared = n > 1;
+    const potW = this.shop.pot.getWorldPosition(V());
+    P.group.position.copy(potW);
+    this.scene.add(P.group);
+    this.shop.pot.visible = false;
+    this.bowls.push(P.group); this.bowlInfo.push(P); this.bowlSteam.push(P.steam);
+    this.showPaws(true);
+    const L = this.paws.L, R = this.paws.R;
+    L.maxLen = R.maxLen = 1.8;
+    // 뜨거운 냄비는 냄비집게 두 개로 앞쪽 테두리를 물어서 들어요
+    const clampPose = (sd: number) => {
+      const th = sd * 0.9, out = V(Math.sin(th), 0, Math.cos(th));
+      const z = V(0, Math.cos(0.75), 0).addScaledVector(out, Math.sin(0.75)).normalize();
+      const y = out.clone().addScaledVector(z, -out.dot(z)).normalize();
+      const x = y.clone().cross(z);
+      const m = new THREE.Matrix4().makeBasis(x, y, z).setPosition(out.multiplyScalar(POT_R).add(V(0, 0.148, 0)));
+      const pos = V(), q = new THREE.Quaternion(), sc = V();
+      m.decompose(pos, q, sc);
+      return { pos, q };
+    };
+    const tongs = [-1, 1].map((sd) => {
+      const t = makePotGripper();
+      t.scale.setScalar(1.3);
+      (t.userData.setOpen as (v: number) => void)(1);
+      this.scene.add(t);
+      this.extras.push(t);
+      const pose = clampPose(sd);
+      return { t, sd, pose, paw: sd < 0 ? L : R };
+    });
+    const hold = () => tongs.forEach(({ t, paw }) => { t.updateMatrixWorld(); this.pawAt(paw, t.localToWorld((t.userData.grip as THREE.Vector3).clone())); });
+    // 화면 아래에서 집게를 들고 와 테두리에 대고, 꽉 물어요
+    P.group.updateMatrixWorld();
+    const pq = P.group.getWorldQuaternion(new THREE.Quaternion());
+    const starts = tongs.map(({ sd }) => this.camPoint(sd * 0.35, -0.45, -0.5));
+    await tween(0.55, (k) => {
+      tongs.forEach(({ t, pose }, i) => {
+        const end = P.group.localToWorld(pose.pos.clone());
+        t.position.lerpVectors(starts[i], end.clone().add(V(0, 0.06 * (1 - k), 0)), k);
+        t.quaternion.copy(pq).multiply(pose.q);
+      });
+      hold();
+    });
+    sfx.tap();
+    await tween(0.15, (k) => tongs.forEach(({ t }) => (t.userData.setOpen as (v: number) => void)(1 - k)), { ease: ease.linear });
+    tongs.forEach(({ t }) => P.group.attach(t));
+    // 들어 올리기 (무거우니 천천히 힘을 줘요)
+    const from = P.group.position.clone(), up = from.clone().add(V(0, 0.11, 0));
+    await tween(0.5, (k) => { P.group.position.lerpVectors(from, up, k); hold(); });
+    this.phase = 'deliver';
+    sfx.whoosh();
+    const cam = this.setView('guest', 1.7);
+    const end = spot.clone().add(V(0, 0.022, 0));
+    const mid = V((up.x + end.x) / 2, Math.max(up.y, end.y) + 0.13, (up.z + end.z) / 2);
+    await tween(1.7, (k) => {
+      const e = ease.inOutCubic(k), a = (1 - e) * (1 - e), b = 2 * (1 - e) * e, c = e * e;
+      P.group.position.set(a * up.x + b * mid.x + c * end.x, a * up.y + b * mid.y + c * end.y, a * up.z + b * mid.z + c * end.z);
+      hold();
+    }, { ease: ease.linear });
+    sfx.soft();
+    P.liquid?.kick(0, 0.25);
+    await cam;
+    // 집게를 벌려 놓고 거둬 가요
+    sfx.tap();
+    await tween(0.15, (k) => tongs.forEach(({ t }) => (t.userData.setOpen as (v: number) => void)(k)), { ease: ease.linear });
+    tongs.forEach(({ t }) => this.scene.attach(t));
+    const t0 = tongs.map(({ t }) => t.position.clone());
+    const away = tongs.map(({ sd }) => this.camPoint(sd * 0.4, -0.55, -0.45));
+    await tween(0.45, (k) => { tongs.forEach(({ t }, i) => { t.position.lerpVectors(t0[i], away[i], k); t.position.y += Math.sin(k * PI) * 0.06; }); hold(); });
+    tongs.forEach(({ t }) => { t.visible = false; });
+    this.showPaws(false);
+    setTimeout(() => { L.maxLen = R.maxLen = 0.5; }, 700);
+    this.resetPot();
+  }
+
+  // ── 그릇째: 국자로 국물, 젓가락으로 면과 건더기 ─────────────
+  private async serveBowls(picks: Picks) {
+    const n = Math.max(1, this.guests.length);
     await this.setView('serve', 0.7);
     this.showPaws(true);
     const B = this.makeBowlFull(picks);
@@ -529,179 +703,18 @@ export class Stage {
     this.scene.add(B.group);
     this.bowls.push(B.group); this.bowlInfo.push(B); this.bowlSteam.push(B.steam);
     const bf = B.food;
-    const bBroth = bf.getObjectByName('broth');
     const hideKids = bf.children.filter((c) => c.name !== 'broth');
     hideKids.forEach((c) => { c.visible = false; });
-    if (bBroth) { bBroth.position.y = -0.06; bBroth.scale.setScalar(0.7); }
+    if (B.liquid) B.liquid.level = B.box.prof.floorAt(0) - 0.003; // 빈 그릇
     B.steam.set(0);
     sfx.pop();
     await tween(0.35, (k) => B.group.scale.setScalar(Math.max(0.01, k)), { ease: ease.outBack });
 
-    const potW = this.shop.pot.getWorldPosition(V());
     const R = this.paws.R;
     const bowlTop = () => B.group.localToWorld(V(0, B.surfaceY, 0));
-    const pBroth = this.potFood.getObjectByName('broth');
-
-    // 국자 두 번
-    if (pBroth) {
-      const ladle = makeLadle();
-      const liquid = ladle.getObjectByName('liquid') as THREE.Mesh;
-      liquid.material = M(picks.broth ? ING.get(picks.broth)!.look.color : '#F2D27C', { rim: 0, flat: 0.3 });
-      this.scene.add(ladle);
-      const grip = V(0, 0.16, -0.3);
-      // 손잡이가 늘 화면 오른쪽 아래(사장님 손 쪽)를 향하게 돌려요. 기울이기는 손잡이 기준으로
-      ladle.rotation.order = 'YXZ';
-      const follow = () => {
-        const base = this.camPoint(0.3, -0.4, -0.28);
-        const dx = base.x - ladle.position.x, dz = base.z - ladle.position.z;
-        ladle.rotation.y = Math.atan2(-dx, -dz);
-        ladle.updateMatrixWorld();
-        this.pawAt(R, ladle.localToWorld(grip.clone()));
-      };
-      const start = this.camPoint(0.25, -0.25, -0.6);
-      ladle.position.copy(start);
-      this.phase = 'ladle';
-      for (let s = 0; s < 2; s++) {
-        const above = potW.clone().add(V(0.02, 0.24, 0.02));
-        const dip = potW.clone().add(V(0.04 - s * 0.06, 0.1, 0.02));
-        const p0 = ladle.position.clone();
-        await tween(0.4, (k) => { ladle.position.lerpVectors(p0, above, k); follow(); });
-        await tween(0.3, (k) => { ladle.position.lerpVectors(above, dip, k); follow(); }, { ease: ease.inQuad });
-        sfx.plop(); this.ripple(0.15, 0.1, 1);
-        liquid.visible = true;
-        pBroth.position.y -= 0.022;
-        await tween(0.3, (k) => { ladle.position.lerpVectors(dip, above, k); follow(); });
-        const over = bowlTop().add(V(0.09, 0.2, 0.02));
-        await tween(0.5, (k) => { ladle.position.lerpVectors(above, over, k); ladle.position.y += Math.sin(k * PI) * 0.06; follow(); });
-        sfx.pour();
-        await tween(0.35, (k) => { ladle.rotation.x = k * 1.15; follow(); });
-        liquid.visible = false;
-        if (bBroth) { const y0 = bBroth.position.y, s0 = bBroth.scale.x; const last = s === 1; tween(0.5, (k) => { bBroth.position.y = lerp(y0, last ? 0 : -0.028, k); bBroth.scale.setScalar(lerp(s0, last ? 1 : 0.88, k)); }); }
-        this.burst(bowlTop().add(V(0, 0.03, 0)), '#FFFFFF', 5, 0.3);
-        await tween(0.3, (k) => { ladle.rotation.x = 1.15 * (1 - k); follow(); });
-      }
-      const p0 = ladle.position.clone();
-      await tween(0.3, (k) => { ladle.position.lerpVectors(p0, start, k); follow(); });
-      ladle.removeFromParent(); disposeTree(ladle);
-    }
+    await this.ladleBroth(B, R, bowlTop);
     B.steam.set(1);
-
-    // 젓가락으로 면과 건더기
-    const chop = makeCookChopsticks();
-    this.scene.add(chop);
-    const tipLocal = V(0, 0, 0.42);
-    const tipW = () => chop.localToWorld(tipLocal.clone());
-    // 젓가락은 화면 오른쪽 아래(사장님 손 쪽)에서 집을 곳을 향해 뻗어요. 손은 젓가락 위쪽 1/3을 쥐어요
-    const putTip = (w: THREE.Vector3) => {
-      const base = this.camPoint(0.3, -0.4, -0.28);
-      const dir = w.clone().sub(base).normalize();
-      chop.position.copy(w).addScaledVector(dir, -0.42);
-      chop.lookAt(w);
-      chop.updateMatrixWorld();
-      this.pawAt(R, chop.localToWorld(V(0, 0.012, 0.13)));
-    };
-    putTip(this.camPoint(0.2, -0.25, -0.6));
-    const moveTip = async (to: THREE.Vector3, dur: number, arc = 0, carry?: THREE.Object3D, carryOff = V()) => {
-      chop.updateMatrixWorld();
-      const from = tipW();
-      await tween(dur, (k) => {
-        const p = from.clone().lerp(to, k); p.y += Math.sin(k * PI) * arc;
-        putTip(p);
-        if (carry) carry.position.copy(p).add(carryOff);
-      });
-    };
-    const nest = this.potFood.getObjectByName('noodles');
-    const bNest = bf.getObjectByName('noodles');
-    this.phase = 'noodle';
-    if (nest && bNest) {
-      // 면은 덩어리째가 아니라 젓가락으로 두 번 나눠 집어 옮겨요
-      const ing = picks.noodle ? ING.get(picks.noodle)! : null;
-      const style = ing?.look.style ?? 'curly';
-      const colors = style === 'rainbow' ? RAINBOW : [ing?.look.color ?? '#F0D088'];
-      const thick = style === 'thick' || style === 'chewy' ? 0.0075 : style === 'thin' ? 0.004 : 0.0055;
-      const wig = style === 'curly' || style === 'rainbow' ? 0.012 : style === 'long' ? 0.002 : 0.005;
-      const potStrands = [...nest.children], bowlStrands = [...bNest.children];
-      bowlStrands.forEach((c) => { c.visible = false; });
-      bNest.visible = true;
-      const nestC = nest.getWorldPosition(V());
-      const trips = 2;
-      for (let t = 0; t < trips; t++) {
-        const spot = nestC.clone().add(V(t ? -0.035 : 0.03, 0.012, t ? 0.02 : -0.015));
-        await moveTip(spot.clone().add(V(0, 0.12, 0)), 0.28);
-        await moveTip(spot.clone().add(V(0, -0.012, 0)), 0.18);
-        const hn = new HangingNoodles(colors, 11, thick, wig);
-        this.scene.add(hn.group);
-        // 들어 올리기: 처음엔 국물에 붙어 늘어나다가, 떨어지면서 출렁
-        const up = spot.clone().add(V(0, 0.26, 0));
-        let released = false;
-        await tween(0.6, (k) => {
-          const tip = spot.clone().lerp(up, ease.outCubic(k));
-          putTip(tip);
-          const att = k < 0.55 ? 1 : 1 - ease.outCubic((k - 0.55) / 0.45);
-          const bounce = k > 0.55 ? Math.sin((k - 0.55) * 26) * 0.25 * (1 - k) : 0;
-          hn.set(tip, att, spot, V(0, 0, bounce));
-          if (!released && k > 0.6) {
-            released = true;
-            sfx.plop(); this.ripple(0.05, 0.05, 0.8);
-            // 냄비 속 면이 그만큼 줄어요
-            const take = potStrands.splice(0, Math.ceil(potStrands.length / (trips - t)));
-            take.forEach((c) => { c.visible = false; });
-            if (!potStrands.length) nest.visible = false;
-            else { const s0 = nest.scale.clone(); tween(0.3, (q) => nest.scale.set(s0.x * (1 - 0.15 * q), s0.y * (1 - 0.35 * q), s0.z * (1 - 0.15 * q))); }
-          }
-        }, { ease: ease.linear });
-        // 그릇 위로 옮기기: 움직이는 반대쪽으로 살짝 쏠려요
-        const from = up.clone(), over = bowlTop().add(V(0.01, 0.2, 0));
-        const dir = over.clone().sub(from).setY(0).normalize();
-        await tween(0.55, (k) => {
-          const e = ease.inOutCubic(k);
-          const tip = from.clone().lerp(over, e); tip.y += Math.sin(k * PI) * 0.04;
-          putTip(tip);
-          const v = Math.sin(k * PI) * 0.35 - (k > 0.85 ? Math.sin((k - 0.85) * 40) * 0.1 : 0);
-          hn.set(tip, 0, bowlTop(), dir.clone().multiplyScalar(-v));
-        }, { ease: ease.linear });
-        // 그릇에 내려놓기: 면 끝이 국물에 닿아 퍼지고, 그릇 속 면이 늘어나요
-        const down = bowlTop().add(V(0.01, 0.025, 0));
-        let placed = false;
-        await tween(0.5, (k) => {
-          const tip = over.clone().lerp(down, ease.inOutCubic(Math.min(1, k * 1.3)));
-          putTip(tip);
-          hn.set(tip, 0, bowlTop(), V(), k > 0.75 ? 1 - (k - 0.75) / 0.25 : 1);
-          if (!placed && k > 0.62) {
-            placed = true;
-            sfx.plop();
-            const show = bowlStrands.splice(0, Math.ceil(bowlStrands.length / (trips - t)));
-            show.forEach((c) => { c.visible = true; c.scale.set(1, 0.4, 1); tween(0.35, (q) => c.scale.set(1, 0.4 + 0.6 * q, 1), { ease: ease.outBack }); });
-          }
-        }, { ease: ease.linear });
-        hn.dispose();
-        await moveTip(down.clone().add(V(0, 0.1, 0)), 0.2);
-      }
-      bowlStrands.forEach((c) => { c.visible = true; });
-      nest.visible = false;
-    } else if (bNest) bNest.visible = true;
-
-    this.phase = 'topping';
-    for (const id of picks.toppings) {
-      const src = this.potFood.getObjectByName(id);
-      const dst = bf.getObjectByName(id);
-      if (!src || !dst) { if (dst) dst.visible = true; continue; }
-      const sp = src.getWorldPosition(V());
-      await moveTip(sp.clone().add(V(0, 0.02, 0)), 0.3, 0.08);
-      this.scene.attach(src);
-      dst.visible = true;
-      const dp = dst.getWorldPosition(V());
-      dst.visible = false;
-      await moveTip(dp.clone().add(V(0, 0.03, 0)), 0.45, 0.12, src, V(0, -0.02, 0));
-      src.removeFromParent(); disposeTree(src);
-      dst.visible = true; dst.scale.setScalar(0.7);
-      tween(0.3, (k) => dst.scale.setScalar(0.7 + 0.3 * k), { ease: ease.outBack });
-      sfx.pop();
-    }
-    const away = this.camPoint(0.3, -0.35, -0.6);
-    await moveTip(away, 0.3);
-    chop.removeFromParent(); disposeTree(chop);
-    this.pawAt(R, null);
+    await this.chopTransfer(picks, B, R, bowlTop);
     for (const f of picks.finish) {
       const dst = bf.getObjectByName(f.id);
       if (!dst) continue;
@@ -716,126 +729,360 @@ export class Stage {
     this.potSteam.set(0.25);
     this.showPaws(false);
 
-    // 두 손님이면 한 그릇 더
+    // 두 손님이면 한 그릇 더 (왼쪽 손님 몫)
     if (n > 1) {
       const B2 = this.makeBowlFull(picks);
       B2.group.position.copy(bowlHome).add(V(-0.38, 0, 0.04));
       B2.group.scale.setScalar(0.01);
       this.scene.add(B2.group);
-      this.bowls.push(B2.group); this.bowlInfo.push(B2); this.bowlSteam.push(B2.steam);
+      this.bowls.unshift(B2.group); this.bowlInfo.unshift(B2); this.bowlSteam.push(B2.steam);
       sfx.pop();
       await tween(0.35, (k) => B2.group.scale.setScalar(Math.max(0.01, k)), { ease: ease.outBack });
     }
+    await this.deliverBowls(n);
+  }
 
-    // 손님 앞으로 내어 주기
+  // 국자: 떠서 → 그릇 위에서 기울이면 넘치는 만큼 흘러 나와 포물선으로 떨어져요
+  private async ladleBroth(B: BowlInfo, R: Paw, bowlTop: () => THREE.Vector3) {
+    const PL = this.potLiquid, box = this.potBox;
+    if (!PL || !box || !PL.mesh.visible) return;
+    this.phase = 'ladle';
+    const color = this.liquidColor(PL);
+    const potW = this.shop.pot.getWorldPosition(V());
+    const ladle = makeLadle();
+    const liquid = ladle.getObjectByName('liquid') as THREE.Mesh;
+    liquid.material = Mu(color, { rim: 0, flat: 0.3, spec: 0.5 });
+    this.scene.add(ladle);
+    this.scene.attach(liquid);
+    ladle.rotation.order = 'YXZ';
+    const grip = V(0, 0.16, -0.3), Rc = 0.055;
+    let tilt = 0, vol = 0, pouring = true, fillTo = B.box.prof.floorAt(0), lastRip = 0;
+    const follow = () => {
+      const base = this.camPoint(0.3, -0.4, -0.28);
+      ladle.rotation.y = Math.atan2(-(base.x - ladle.position.x), -(base.z - ladle.position.z));
+      ladle.rotation.x = tilt;
+      ladle.updateMatrixWorld();
+      this.pawAt(R, ladle.localToWorld(grip.clone()));
+    };
+    const stream = new Stream(color, 0.0062);
+    this.scene.add(stream.group);
+    const BL = B.liquid, prof = B.box.prof;
+    const bowlY = () => B.food.localToWorld(V(0, BL && BL.mesh.visible ? BL.level : prof.floorAt(0), 0)).y;
+    // 매 순간: 국자 속 국물은 수평, 가장 낮은 테두리보다 높아진 만큼 흘러 넘쳐요 (Q ∝ h^1.5)
+    this.run((dt) => {
+      ladle.updateMatrixWorld();
+      const C = ladle.getWorldPosition(V());
+      const d = THREE.MathUtils.lerp(Rc, 0.012, vol);
+      const surfY = C.y - d;
+      let lip: THREE.Vector3 | null = null, flow = 0;
+      const vel = V();
+      if (vol > 0.004) {
+        let low = V(0, 1e3, 0);
+        for (let i = 0; i < 20; i++) { const a = (i / 20) * PI * 2; const w = ladle.localToWorld(V(Math.cos(a) * Rc, 0, Math.sin(a) * Rc)); if (w.y < low.y) low = w; }
+        const ex = surfY - low.y;
+        if (ex > 0) {
+          flow = Math.min(1, 140 * Math.pow(ex, 1.5));
+          vol = Math.max(0, vol - flow * dt * 1.5);
+          lip = low;
+          vel.copy(low).sub(C).setY(0).normalize().multiplyScalar(Math.sqrt(2 * GRAV * ex) + 0.12).add(V(0, -0.05, 0));
+        }
+      }
+      liquid.visible = vol > 0.01;
+      if (liquid.visible) {
+        liquid.position.set(C.x, surfY, C.z);
+        liquid.rotation.set(-PI / 2, 0, 0);
+        liquid.scale.setScalar((Math.sqrt(Math.max(0, Rc * Rc - d * d)) / 0.05) * 0.95);
+      }
+      lastRip += dt;
+      stream.update(dt, lip, vel, flow, () => bowlY(), (p) => {
+        if (BL) BL.level = Math.min(fillTo, Math.max(BL.level, prof.floorAt(0) + 0.003) + 0.0009);
+        if (lastRip > 0.12) { lastRip = 0; this.splash(B, p, 0.5, '#FFFFFF'); }
+      });
+      return pouring || !stream.empty;
+    });
+    ladle.position.copy(this.camPoint(0.25, -0.25, -0.6));
+    follow();
+    const empty = prof.floorAt(0);
+    for (let s = 0; s < 2; s++) {
+      const above = potW.clone().add(V(0.02, 0.24, 0.02));
+      const dip = potW.clone().add(V(0.04 - s * 0.06, 0.1, 0.02));
+      const p0 = ladle.position.clone();
+      await tween(0.4, (k) => { ladle.position.lerpVectors(p0, above, k); follow(); });
+      await tween(0.3, (k) => { ladle.position.lerpVectors(above, dip, k); follow(); }, { ease: ease.inQuad });
+      // 잠기면 국물이 국자에 차오르고, 냄비 국물은 그만큼 줄어요
+      sfx.plop();
+      this.splash({ food: box.obj, liquid: PL, box }, dip.clone().add(V(0, 0.03, 0)), 0.6, '#FFFFFF');
+      PL.level -= 0.011;
+      await tween(0.25, (k) => { vol = k; follow(); }, { ease: ease.linear });
+      await tween(0.35, (k) => { ladle.position.lerpVectors(dip, above, k); follow(); });
+      const over = bowlTop().add(V(0.07, 0.15, 0.04));
+      await tween(0.55, (k) => { ladle.position.lerpVectors(above, over, k); ladle.position.y += Math.sin(k * PI) * 0.05; follow(); });
+      fillTo = lerp(empty, 0, s === 0 ? 0.5 : 1);
+      sfx.pour();
+      await tween(0.7, (k) => { tilt = 1.3 * k; follow(); }, { ease: ease.outQuad });
+      await this.until(() => vol < 0.02, 1.6);
+      if (BL) BL.level = Math.max(BL.level, fillTo - 0.004);
+      await tween(0.3, (k) => { tilt = 1.3 * (1 - k); follow(); });
+    }
+    pouring = false;
+    const p0 = ladle.position.clone();
+    await tween(0.3, (k) => { ladle.position.lerpVectors(p0, this.camPoint(0.25, -0.25, -0.6), k); follow(); });
+    await this.until(() => stream.empty, 0.6);
+    stream.dispose();
+    liquid.removeFromParent(); (liquid.material as THREE.Material).dispose();
+    ladle.removeFromParent(); disposeTree(ladle);
+  }
+
+  // 긴 젓가락: 면은 두 번 나눠 집고(면발 물리), 건더기는 하나씩 놓아 떨어뜨려요
+  private async chopTransfer(picks: Picks, B: BowlInfo, R: Paw, bowlTop: () => THREE.Vector3) {
+    const bf = B.food;
+    const chop = makeCookChopsticks();
+    this.scene.add(chop);
+    const tipLocal = V(0, 0, 0.42);
+    const tipW = () => chop.localToWorld(tipLocal.clone());
+    // 젓가락은 화면 오른쪽 아래(사장님 손 쪽)에서 집을 곳을 향해 뻗어요. 손은 젓가락 위쪽 1/3을 쥐어요
+    const putTip = (w: THREE.Vector3) => {
+      const base = this.camPoint(0.3, -0.4, -0.28);
+      const dir = w.clone().sub(base).normalize();
+      chop.position.copy(w).addScaledVector(dir, -0.42);
+      chop.lookAt(w);
+      chop.updateMatrixWorld();
+      this.pawAt(R, chop.localToWorld(V(0, 0.012, 0.13)));
+    };
+    putTip(this.camPoint(0.2, -0.25, -0.6));
+    const moveTip = async (to: THREE.Vector3, dur: number, arc = 0, carry?: THREE.Object3D, carryOff = V(), each?: () => void) => {
+      chop.updateMatrixWorld();
+      const from = tipW();
+      await tween(dur, (k) => {
+        const p = from.clone().lerp(to, k); p.y += Math.sin(k * PI) * arc;
+        putTip(p);
+        if (carry) carry.position.copy(p).add(carryOff);
+        each?.();
+      });
+    };
+    const color = this.liquidColor(this.potLiquid);
+    const nest = this.potFood.getObjectByName('noodles');
+    const bNest = bf.getObjectByName('noodles');
+    this.phase = 'noodle';
+    if (nest && bNest && this.potBox) {
+      const look = this.noodleLook(picks);
+      const potStrands = [...nest.children], bowlStrands = [...bNest.children];
+      bowlStrands.forEach((c) => { c.visible = false; });
+      bNest.visible = true;
+      const nestC = nest.getWorldPosition(V());
+      const potBox = this.potBox;
+      for (let t = 0; t < 2; t++) {
+        const spot = nestC.clone().add(V(t ? -0.035 : 0.03, 0, t ? 0.02 : -0.015));
+        spot.y = potBox.obj.localToWorld(V(0, Math.max(potBox.level(), potBox.mound() * 0.85), 0)).y;
+        await moveTip(spot.clone().add(V(0, 0.12, 0)), 0.28);
+        await moveTip(spot.clone().add(V(0, -0.008, 0)), 0.18);
+        const bundle = new NoodleBundle(look, [potBox, B.box]);
+        this.scene.add(bundle.group);
+        this.bundles.push(bundle);
+        bundle.lay(spot, 7, potBox, tipW());
+        // 집은 만큼 냄비 속 면 더미가 줄어요
+        potStrands.splice(0, Math.ceil(potStrands.length / (2 - t))).forEach((c) => { c.visible = false; });
+        if (!potStrands.length) nest.visible = false;
+        // 들어 올리면 끝이 국물에서 끌려 올라오다 떨어져 출렁여요 (국물 방울도 떨어져요)
+        const up = spot.clone().add(V(0, 0.3, 0));
+        let dt0 = 0;
+        await tween(0.85, (k) => {
+          putTip(spot.clone().lerp(up, ease.inOutCubic(k)));
+          bundle.hold(tipW());
+          if (k > 0.4 && (dt0 += 1) % 5 === 0) { const e = bundle.ends(); this.drip(e[(Math.random() * e.length) | 0], color); }
+        }, { ease: ease.linear });
+        await wait(0.2);
+        // 그릇 위로 (움직이면 면이 관성으로 뒤로 쏠렸다 흔들려요)
+        const over = bowlTop().add(V(0, 0.27, 0));
+        await tween(0.75, (k) => {
+          const p = up.clone().lerp(over, ease.inOutCubic(k)); p.y += Math.sin(k * PI) * 0.04;
+          putTip(p); bundle.hold(tipW());
+        }, { ease: ease.linear });
+        await wait(0.15);
+        const down = bowlTop().add(V(0, 0.04, 0));
+        await tween(0.5, (k) => { putTip(over.clone().lerp(down, ease.inOutCubic(k))); bundle.hold(tipW()); }, { ease: ease.linear });
+        // 젓가락을 벌리면 면이 그릇에 내려앉아 자리를 잡아요
+        bundle.release();
+        sfx.plop();
+        this.splash(B, down.clone().add(V(0, -0.03, 0)), 0.5, '#FFFFFF');
+        bowlStrands.splice(0, Math.ceil(bowlStrands.length / (2 - t))).forEach((c) => {
+          c.visible = true; c.scale.set(1, 0.4, 1);
+          tween(0.4, (q) => c.scale.set(1, 0.4 + 0.6 * q, 1), { ease: ease.outCubic });
+        });
+        await moveTip(down.clone().add(V(0.02, 0.1, 0.02)), 0.25);
+        await wait(0.45);
+        // 다 내려앉은 면은 그릇 속 면으로 남겨 두어요 (그릇과 함께 움직여요)
+        bundle.frozen = true;
+        for (const tb of bundle.tubes) { tb.mesh.userData.loose = true; bNest.attach(tb.mesh); }
+        this.bundles.splice(this.bundles.indexOf(bundle), 1);
+      }
+      nest.visible = false;
+      bowlStrands.forEach((c) => { c.visible = true; });
+    } else if (bNest) bNest.visible = true;
+
+    this.phase = 'topping';
+    for (const id of picks.toppings) {
+      const src = this.potFood.getObjectByName(id);
+      const dst = bf.getObjectByName(id);
+      if (!src || !dst) { if (dst) dst.visible = true; continue; }
+      const sp = src.getWorldPosition(V());
+      await moveTip(sp.clone().add(V(0, 0.02, 0)), 0.3, 0.08);
+      this.scene.attach(src);
+      dst.visible = true;
+      const dp = dst.getWorldPosition(V()), dq = dst.getWorldQuaternion(new THREE.Quaternion());
+      dst.visible = false;
+      const off = src.position.clone().sub(tipW());
+      await moveTip(dp.clone().add(V(0, 0.08, 0)), 0.5, 0.1, src, off);
+      // 젓가락을 놓으면 중력으로 떨어져 퐁당, 국물 위에서 둥둥 흔들리다 멈춰요
+      const drop = new Drop(src, dp, dq, (p, s) => { sfx.plop(); this.splash(B, p, s, '#FFFFFF'); }, V(0, -0.05, 0));
+      this.drops.push(drop);
+      await moveTip(tipW().add(V(0.03, 0.05, 0.03)), 0.2);
+      await this.until(() => drop.done, 1.4);
+      src.removeFromParent(); disposeTree(src);
+      dst.visible = true;
+    }
+    const away = this.camPoint(0.3, -0.35, -0.6);
+    await moveTip(away, 0.3);
+    chop.removeFromParent(); disposeTree(chop);
+    this.pawAt(R, null);
+  }
+
+  // 앞발로 그릇을 들어 손님 앞 카운터에 내려놓아요 (국물이 출렁)
+  private async deliverBowls(n: number) {
     this.phase = 'deliver';
-    await wait(0.2);
-    sfx.whoosh();
-    const cam = this.setView('guest', 1.3);
-    await Promise.all(this.bowls.map((b, i) => {
+    this.showPaws(true);
+    const L = this.paws.L, R = this.paws.R;
+    L.maxLen = R.maxLen = 1.8;
+    const one = this.bowlInfo.length === 1;
+    const plans = this.bowlInfo.map((B, i) => {
       const seat = this.shop.seat(i, n);
-      const from = b.position.clone();
-      const mid = V(seat.x, 1.035, 0.2);
-      const end = V(seat.x, 1.035, -0.24);
-      return tween(1.3, (k) => {
-        if (k < 0.5) { const q = k / 0.5; b.position.lerpVectors(from, mid, q); b.position.y += Math.sin(q * PI) * 0.12; }
-        else b.position.lerpVectors(mid, end, (k - 0.5) / 0.5);
-      }, { ease: ease.inOutCubic, delay: i * 0.15 });
-    }));
+      return { B, from: B.group.position.clone(), end: V(seat.x, 1.035, -0.24), paw: one ? null : i === 0 ? L : R };
+    });
+    const grip = () => plans.forEach((pl) => {
+      pl.B.group.updateMatrixWorld();
+      if (!pl.paw) { this.pawAt(L, pl.B.group.localToWorld(pl.B.grips[0].clone())); this.pawAt(R, pl.B.group.localToWorld(pl.B.grips[1].clone())); }
+      else this.pawAt(pl.paw, pl.B.group.localToWorld(V(0, 0.075, 0.16)));
+    });
+    await tween(0.35, () => grip(), { ease: ease.linear });
+    sfx.whoosh();
+    const cam = this.setView('guest', 1.6);
+    await tween(1.6, (k) => {
+      for (const pl of plans) {
+        const e = ease.inOutCubic(k), a = (1 - e) * (1 - e), b = 2 * (1 - e) * e, c = e * e;
+        const mid = V((pl.from.x + pl.end.x) / 2, Math.max(pl.from.y, pl.end.y) + 0.12, (pl.from.z + pl.end.z) / 2);
+        pl.B.group.position.set(a * pl.from.x + b * mid.x + c * pl.end.x, a * pl.from.y + b * mid.y + c * pl.end.y, a * pl.from.z + b * mid.z + c * pl.end.z);
+      }
+      grip();
+    }, { ease: ease.linear });
+    sfx.soft();
     await cam;
+    await wait(0.15);
+    this.showPaws(false);
+    setTimeout(() => { L.maxLen = R.maxLen = 0.5; }, 700);
   }
 
   // ── 젓가락으로 먹기 ─────────────────────────────
   async eat(onSlurp?: () => void) {
     this.phase = 'eat';
     await this.setView(this.guests.length > 1 ? 'eat2' : 'eat', 0.8);
-    await Promise.all(this.guests.map((g, i) => this.eatOne(g, this.bowlInfo[i] ?? this.bowlInfo[0], i * 0.5, onSlurp)));
+    await Promise.all(this.guests.map((g, i) => this.eatOne(g, this.bowlInfo[i] ?? this.bowlInfo[0], i, i * 0.5, onSlurp)));
     await this.setView('guest', 0.8);
     this.phase = 'done';
   }
 
-  private async eatOne(ch: Chibi, B: BowlInfo | undefined, delay: number, onSlurp?: () => void) {
+  private async eatOne(ch: Chibi, B: BowlInfo | undefined, gi: number, delay: number, onSlurp?: () => void) {
     if (!B) return;
     await wait(delay);
     const bowl = B.group, food = B.food;
     const sc = ch.root.scale.x;
-    const surf = () => bowl.localToWorld(V(0, B.surfaceY + 0.01, 0));
+    const side = B.shared ? (gi === 0 ? -1 : 1) : 0;
+    const surf = () => food.localToWorld(V(side * 0.07, Math.max(B.box.level(), B.box.mound() * 0.6) + 0.004, 0));
     const noodles = food.getObjectByName('noodles');
-    const broth = food.getObjectByName('broth');
     const p = this.served;
-    const ncol = p?.noodle ? ING.get(p.noodle)!.look.color : '#F0D088';
+    const color = this.liquidColor(B.liquid);
     ch.manual = true;
     ch.talking = false;
     ch.look = surf();
     ch.showChop(true);
     ch.chop.scale.setScalar(0.01);
     tween(0.3, (k) => ch.chop.scale.setScalar(Math.max(0.01, k)), { ease: ease.outBack });
-    const bowlW = bowl.getWorldPosition(V());
-    // 왼손은 그릇 옆을 살짝 잡아요
-    const lh = bowlW.clone().add(V(-0.16, 0.08, -0.02));
-    ch.setHand(0, ch.toLocal(lh), ch.toLocal(lh.clone().add(V(1, 0.1, 0))).sub(ch.toLocal(lh)));
-    const placeTip = (tip: THREE.Vector3, aimW: THREE.Vector3) => {
+    // 왼손은 그릇 옆을 살짝 잡아요. 뜨거운 냄비는 만지지 않고 카운터에 얹어 둬요
+    if (B.kind === 'pot') ch.setHand(0, V(-0.32, 0.5, 0.46), V(0.4, 0, 1));
+    else {
+      const lh = bowl.localToWorld(B.grips[0].clone().add(V(0, 0.01, 0)));
+      ch.setHand(0, ch.toLocal(lh), ch.toLocal(lh.clone().add(V(1, 0.1, 0))).sub(ch.toLocal(lh)));
+    }
+    const placeTip = (tip: THREE.Vector3, aimW: THREE.Vector3, reach = 0.23) => {
       const a = aimW.clone().normalize();
-      const hand = tip.clone().addScaledVector(a, -0.23 * sc);
+      const hand = tip.clone().addScaledVector(a, -reach * sc);
       const hl = ch.toLocal(hand);
       ch.setHand(1, hl, ch.toLocal(hand.clone().add(a)).sub(hl));
     };
-    const bites = noodles ? 3 : 1;
+    const DOWN = V(-0.12, -1, 0.25).normalize(), MOUTH = V(-0.15, 0.62, -0.77).normalize();
+    const bites = noodles ? (B.shared ? 2 : 3) : 1;
     for (let b = 0; b < bites; b++) {
       ch.lean = 0.16;
       ch.headExtra.x = -0.05;
       ch.look = surf();
-      const dipTip = surf().add(V((Math.random() - 0.5) * 0.06, -0.005, (Math.random() - 0.5) * 0.04));
-      placeTip(dipTip, V(-0.12, -1, 0.25));
+      const dipTip = surf().add(V((Math.random() - 0.5) * 0.05, -0.006, (Math.random() - 0.5) * 0.04));
+      placeTip(dipTip, DOWN);
       await wait(0.5);
       if (!noodles) break;
-      const strands = new Strands(ncol, 6, 0.008 * sc + 0.002);
-      this.scene.add(strands.group);
-      const base = surf();
+      // 면 몇 가닥을 젓가락에 걸어요 (면발 물리)
+      const bundle = new NoodleBundle(this.noodleLook(p, true), [B.box]);
+      this.scene.add(bundle.group);
+      this.bundles.push(bundle);
+      bundle.lay(dipTip, 4, B.box, ch.chopTipWorld());
+      noodles.scale.multiplyScalar(0.86);
+      const loose = noodles.children.filter((c) => c.userData.loose && c.visible);
+      loose.slice(0, Math.ceil(loose.length / (bites - b))).forEach((c) => { c.visible = false; });
       this.phase = 'lift';
       ch.look = null;
-      // 입 앞까지 들어 올려요
-      await tween(0.65, (k) => {
+      // 입 앞까지 들어 올려요: 면 끝이 국물에서 끌려 나와 대롱대롱
+      let tick = 0;
+      await tween(0.8, (k) => {
+        const e = ease.inOutCubic(k);
         const mouth = ch.mouthWorld();
-        const tipW = dipTip.clone().lerp(mouth.clone().add(V(0.02, -0.03, 0.07)), ease.inOutCubic(k));
-        const aim = V(-0.12, -1, 0.25).normalize().lerp(V(-0.15, 0.62, -0.77).normalize(), ease.inOutCubic(k));
-        placeTip(tipW, aim.lengthSq() > 0.01 ? aim : V(0, 1, 0));
+        placeTip(dipTip.clone().lerp(mouth.clone().add(V(0.02, -0.03, 0.07)), e), DOWN.clone().lerp(MOUTH, e));
         ch.headExtra.x = -0.05 - 0.08 * k;
         ch.lean = 0.16 - 0.14 * k;
-        strands.set(base, ch.chopTipWorld(), 0.06 * (1 - k * 0.5), 0);
+        bundle.hold(ch.chopTipWorld());
+        if (k > 0.5 && ++tick % 6 === 0) { const en = bundle.ends(); this.drip(en[(Math.random() * en.length) | 0], color); }
       }, { ease: ease.linear });
-      ch.look = null;
       this.phase = 'slurp';
-      // 후루룩
+      // 후루룩: 입이 빨아들이는 힘에 면이 짧아지며 딸려 올라와요
       sfx.slurp();
       onSlurp?.();
       ch.setMood('surprised');
-      await tween(0.7, (k) => { strands.set(base, ch.chopTipWorld(), 0.04 * (1 - k), ease.inQuad(k)); }, { ease: ease.linear });
-      strands.dispose();
+      await tween(0.75, (k) => {
+        const m = ch.mouthWorld();
+        bundle.hold(ch.chopTipWorld().lerp(m, Math.min(1, k * 2.5)));
+        bundle.setReel(Math.max(0.03, 1 - 0.97 * ease.inQuad(k)));
+      }, { ease: ease.linear });
+      bundle.dispose();
+      this.bundles.splice(this.bundles.indexOf(bundle), 1);
       ch.setMood('eat');
       ch.chewing = true;
-      noodles.scale.multiplyScalar(0.82);
-      noodles.position.y -= 0.004;
       await wait(0.55);
       ch.chewing = false;
     }
-    // 건더기 하나 집어 먹기
+    // 건더기 하나 집어 먹기 (같이 먹는 냄비면 각자 다른 건더기)
     this.phase = 'topbite';
-    const topId = p?.toppings[0];
+    const topId = p?.toppings[B.shared ? gi : 0];
     const top = topId ? food.getObjectByName(topId) : null;
-    if (top) {
+    if (top && top.visible) {
       ch.lean = 0.14; ch.look = surf(); ch.headExtra.x = -0.05;
       const tp = top.getWorldPosition(V()).add(V(0, 0.02, 0));
-      placeTip(tp, V(-0.12, -1, 0.25));
+      placeTip(tp, DOWN);
       await wait(0.5);
       this.scene.attach(top);
-      top.scale.multiplyScalar(0.7);
       ch.look = null;
+      this.splash(B, tp.clone().add(V(0, -0.02, 0)), 0.25, '#FFFFFF');
       await tween(0.6, (k) => {
+        const e = ease.inOutCubic(k);
         const mouth = ch.mouthWorld();
-        const tipW = tp.clone().lerp(mouth.clone().add(V(0.02, -0.02, 0.06)), ease.inOutCubic(k));
-        placeTip(tipW, V(-0.12, -1, 0.25).normalize().lerp(V(-0.15, 0.62, -0.77).normalize(), ease.inOutCubic(k)));
-        top.position.copy(ch.chopTipWorld()).add(V(0, -0.015, 0));
+        placeTip(tp.clone().lerp(mouth.clone().add(V(0.02, -0.02, 0.06)), e), DOWN.clone().lerp(MOUTH, e));
+        top.position.copy(ch.chopTipWorld()).add(V(0, -0.012, 0));
         ch.lean = 0.14 - 0.12 * k;
         ch.headExtra.x = -0.05 - 0.08 * k;
       }, { ease: ease.linear });
@@ -846,35 +1093,11 @@ export class Stage {
       await wait(0.6);
       ch.chewing = false;
     }
-    // 그릇을 들고 국물 마시기
+    // 국물 마시기
     this.phase = 'drink';
     ch.showChop(false);
-    const home = bowl.position.clone();
-    const hands = () => {
-      bowl.updateMatrixWorld();
-      const l = bowl.localToWorld(V(-0.17, 0.06, 0)), r = bowl.localToWorld(V(0.17, 0.06, 0));
-      const ll = ch.toLocal(l), rl = ch.toLocal(r);
-      ch.setHand(0, ll, ch.toLocal(r).sub(ll)); ch.setHand(1, rl, ch.toLocal(l).sub(rl));
-    };
-    hands();
-    ch.lean = 0.12;
-    await wait(0.35);
-    const mouth0 = ch.mouthWorld();
-    const lift = mouth0.clone().add(V(0, -0.15, 0.16));
-    await tween(0.55, (k) => { bowl.position.lerpVectors(home, lift, k); bowl.rotation.x = -0.15 * k; hands(); ch.lean = 0.12 - 0.2 * k; }, { ease: ease.inOutCubic });
-    sfx.slurp();
-    onSlurp?.();
-    ch.chewing = true;
-    await tween(1.0, (k) => {
-      bowl.rotation.x = -0.15 - 0.5 * Math.sin(k * PI * 0.5);
-      ch.headExtra.x = -0.3 * Math.sin(k * PI * 0.5);
-      hands();
-      if (broth) { broth.position.y = -0.02 - 0.03 * k; broth.scale.setScalar(1 - 0.3 * k); }
-      if (noodles && k > 0.5) noodles.visible = false;
-    }, { ease: ease.linear });
-    ch.chewing = false;
-    await tween(0.5, (k) => { bowl.position.lerpVectors(lift, home, k); bowl.rotation.x = -0.65 * (1 - k); hands(); ch.headExtra.x = -0.3 * (1 - k); }, { ease: ease.inOutCubic });
-    bowl.rotation.x = 0;
+    if (B.kind === 'pot') await this.sipWithSpoon(ch, B, side, placeTip, color, onSlurp);
+    else await this.drinkFrom(ch, B, onSlurp);
     food.children.forEach((c) => { if (c.name !== 'broth') c.visible = false; });
     B.steam.set(0.15);
     ch.manual = false;
@@ -883,6 +1106,80 @@ export class Stage {
     ch.setMood('eat');
     ch.play('full');
     await wait(0.6);
+  }
+
+  // 그릇을 두 손으로 들고 기울여 마셔요. 국물 면은 기울여도 수평이라 입 쪽 테두리로 모여요
+  private async drinkFrom(ch: Chibi, B: BowlInfo, onSlurp?: () => void) {
+    const bowl = B.group;
+    const home = bowl.position.clone();
+    const hands = () => {
+      bowl.updateMatrixWorld();
+      const l = bowl.localToWorld(B.grips[0].clone()), r = bowl.localToWorld(B.grips[1].clone());
+      const ll = ch.toLocal(l), rl = ch.toLocal(r);
+      ch.setHand(0, ll, ch.toLocal(r).sub(ll)); ch.setHand(1, rl, ch.toLocal(l).sub(rl));
+    };
+    const pot = B.kind === 'pot';
+    hands();
+    ch.lean = 0.12;
+    await wait(0.35);
+    const mouth0 = ch.mouthWorld();
+    const lift = mouth0.clone().add(pot ? V(0, -0.21, 0.27) : V(0, -0.15, 0.16));
+    await tween(pot ? 0.75 : 0.55, (k) => { bowl.position.lerpVectors(home, lift, k); bowl.rotation.x = -0.15 * k; hands(); ch.lean = 0.12 - 0.2 * k; }, { ease: ease.inOutCubic });
+    sfx.slurp();
+    onSlurp?.();
+    ch.chewing = true;
+    const L = B.liquid, L0 = L ? L.level : 0, Lend = B.box.prof.floorAt(0) + 0.006;
+    const tiltMax = pot ? 0.42 : 0.5;
+    const noodles = B.food.getObjectByName('noodles');
+    await tween(1.1, (k) => {
+      const s = Math.sin(k * PI * 0.5);
+      bowl.rotation.x = -0.15 - tiltMax * s;
+      ch.headExtra.x = -0.3 * s;
+      hands();
+      if (L) L.level = lerp(L0, Lend, k);
+      if (noodles && k > 0.5) noodles.visible = false;
+    }, { ease: ease.linear });
+    ch.chewing = false;
+    const r0 = bowl.rotation.x;
+    await tween(0.55, (k) => { bowl.position.lerpVectors(lift, home, k); bowl.rotation.x = r0 * (1 - k); hands(); ch.headExtra.x = -0.3 * (1 - k); }, { ease: ease.inOutCubic });
+    bowl.rotation.x = 0;
+    sfx.soft();
+    L?.kick(0, -0.2);
+  }
+
+  // 뜨거운 냄비는 들지 않고 숟가락으로 떠 마셔요
+  private async sipWithSpoon(ch: Chibi, B: BowlInfo, side: number, placeTip: (tip: THREE.Vector3, aim: THREE.Vector3, reach?: number) => void, color: string, onSlurp?: () => void) {
+    const spoon = makeSpoon();
+    ch.arms[1].hand.add(spoon);
+    const sl = spoon.getObjectByName('liquid') as THREE.Mesh;
+    sl.material = Mu(color, { rim: 0, flat: 0.3, spec: 0.5 });
+    spoon.scale.setScalar(0.01);
+    await tween(0.25, (k) => spoon.scale.setScalar(Math.max(0.01, k)), { ease: ease.outBack });
+    const L = B.liquid;
+    const DOWN = V(-0.1, -1, 0.3).normalize(), MOUTH = V(-0.15, 0.55, -0.8).normalize();
+    for (let i = 0; i < 2; i++) {
+      const s = B.food.localToWorld(V(side * 0.09 + (Math.random() - 0.5) * 0.03, (L ? L.level : 0) + 0.002, 0.04));
+      ch.lean = 0.16; ch.look = s; ch.headExtra.x = -0.05;
+      placeTip(s, DOWN, 0.2);
+      await wait(0.45);
+      sl.visible = true;
+      this.splash(B, s, 0.25, '#FFFFFF');
+      if (L) L.level = Math.max(B.box.prof.floorAt(0) + 0.01, L.level - 0.008);
+      ch.look = null;
+      await tween(0.6, (k) => {
+        const e = ease.inOutCubic(k);
+        placeTip(s.clone().lerp(ch.mouthWorld().add(V(0.02, -0.02, 0.06)), e), DOWN.clone().lerp(MOUTH, e), 0.2);
+        ch.lean = 0.16 - 0.14 * k; ch.headExtra.x = -0.05 - 0.1 * k;
+      }, { ease: ease.linear });
+      sfx.slurp();
+      onSlurp?.();
+      sl.visible = false;
+      ch.chewing = true;
+      await wait(0.4);
+      ch.chewing = false;
+    }
+    await tween(0.2, (k) => spoon.scale.setScalar(Math.max(0.01, 1 - k)));
+    spoon.removeFromParent(); disposeTree(spoon);
   }
 
   celebrate(stars: number, heart: boolean) {
@@ -959,6 +1256,12 @@ export class Stage {
     this.potSteam.update(dt);
     this.bowlSteam.forEach((s) => s.update(dt, 0.07, 0.32));
     this.bubbles?.update(dt);
+    // 물리 한 걸음
+    if (this.jobs.length) { const js = this.jobs; this.jobs = []; this.jobs.push(...js.filter((j) => j(dt))); }
+    for (const b of this.bundles) b.update(dt);
+    if (this.drops.length) { for (const d of this.drops) d.update(dt); this.drops = this.drops.filter((d) => !d.done); }
+    this.liquids = this.liquids.filter((L) => this.inScene(L.mesh));
+    for (const L of this.liquids) L.update(dt);
     animateRamen(this.potFood, this.t);
     for (const b of this.bowls) animateRamen(b, this.t);
     if (this.shop.flames.visible) this.shop.flames.children.forEach((f) => { if (f.userData.phase !== undefined) f.scale.y = 0.8 + Math.sin(this.t * 20 + f.userData.phase) * 0.25; });

@@ -24,4 +24,6 @@ function fail(msg: string) {
   boot.classList.add('hide');
   setTimeout(() => boot.remove(), 700);
   app.start();
+  // 오프라인에서도 열리게 저장해 둬요 (배포본에서만)
+  if (import.meta.env.PROD && 'serviceWorker' in navigator) navigator.serviceWorker.register(`./sw.js?v=${__BUILD__}`).catch(() => {});
 })();

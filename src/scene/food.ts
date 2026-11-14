@@ -211,7 +211,8 @@ export function brothColor(p: Picks) {
 }
 
 // 냄비·그릇 속 라면 한 그릇 (원점 = 국물 표면 가운데)
-export function buildRamen(p: Picks, r: number, seed = 7): THREE.Group {
+// topScale: 건더기 크기 기준 (냄비와 그릇에서 같은 달걀이 같은 크기로 보이게)
+export function buildRamen(p: Picks, r: number, seed = 7, topScale = r): THREE.Group {
   const g = new THREE.Group();
   const rnd = mulberry32(seed);
   if (p.broth || p.soup) {
@@ -232,7 +233,7 @@ export function buildRamen(p: Picks, r: number, seed = 7): THREE.Group {
   tops.forEach((it, i) => {
     const a = -PI / 2 + (i - (tops.length - 1) / 2) * 1.25 + PI;
     const d = tops.length === 1 ? 0.3 : 0.48;
-    const t = topping(it, r * 1.55, rnd);
+    const t = topping(it, topScale * 1.55, rnd);
     t.position.set(Math.cos(a) * d * r, dome * r * (1 - d * d) * 0.9 + 0.02 * r, Math.sin(a) * d * r);
     t.rotation.y = -a + PI / 2;
     t.name = it.id;
@@ -330,10 +331,20 @@ export function makePot() {
   mesh(cylG(POT_R, POT_R * 0.96, 0.16, 36, true), M(gold, { side: THREE.DoubleSide, rim: 0.8, noise: 2.5 }), [0, 0.08, 0], 1, [0, 0, 0], g);
   mesh(cylG(POT_R * 0.96, POT_R * 0.96, 0.01, 36), M(darken(gold, 0.1)), [0, 0.005, 0], 1, [0, 0, 0], g);
   mesh(torusG(POT_R, 0.008, 6, 40), M(lighten(gold, 0.2)), [0, 0.16, 0], 1, [PI / 2, 0, 0], g);
+  // 양은냄비 손잡이: 옆으로 뻗은 가로 고리, 벽에는 리벳 판 두 개로 붙어 있어요
+  const hm = M(darken(gold, 0.12), { spec: 0.5, rim: 0.7 });
+  const plate = M(darken(gold, 0.2), { spec: 0.4 });
   for (const sd of [-1, 1]) {
-    const h = mesh(torusG(0.05, 0.012, 6, 16, PI), M(darken(gold, 0.15)), [sd * (POT_R + 0.035), 0.13, 0], 1, [0, sd > 0 ? 0 : PI, -PI / 2], g);
-    h.rotation.order = 'YZX';
-    mesh(boxG(0.04, 0.02, 0.04), M(darken(gold, 0.2)), [sd * (POT_R + 0.01), 0.13, 0], 1, [0, 0, 0], g);
+    const pts = [[-0.052, 0.0], [-0.044, 0.035], [-0.022, 0.058], [0, 0.064], [0.022, 0.058], [0.044, 0.035], [0.052, 0.0]]
+      .map(([z, out]) => new THREE.Vector3(sd * (POT_R - 0.002 + out), 0.132 + out * 0.12, z));
+    const tube = new THREE.Mesh(new THREE.TubeGeometry(new THREE.CatmullRomCurve3(pts), 28, 0.0075, 8), hm);
+    tube.userData.ownGeo = true;
+    tube.name = 'handle';
+    g.add(tube);
+    for (const z of [-0.05, 0.05]) {
+      mesh(boxG(0.006, 0.024, 0.022), plate, [sd * (POT_R + 0.002), 0.132, z], 1, [0, 0, 0], g);
+      mesh(sphereG(1, 8, 6), plate, [sd * (POT_R + 0.006), 0.132, z], 0.0045, [0, 0, 0], g);
+    }
   }
   return g;
 }
@@ -350,6 +361,52 @@ export function makeBowl(r = 0.17) {
   lathe([[0, 0], [0.55, 0], [0.6, 0.06], [0.8, 0.25], [0.96, 0.55], [1.0, 0.62]], wc('#FFFFFF', { map: bowlTex, side: THREE.DoubleSide, rim: 0.6 }));
   lathe([[1.0, 0.62], [0.94, 0.62], [0.88, 0.5], [0.74, 0.25], [0.5, 0.1], [0, 0.1]], M('#FFF8EE', { side: THREE.DoubleSide, rim: 0.3 }));
   return { group: g, surfaceY: 0.5 * r, innerR: 0.86 * r };
+}
+
+// 짚으로 엮은 냄비받침
+export function makeTrivet(r = 0.2) {
+  const g = new THREE.Group();
+  for (let i = 0; i < 6; i++) {
+    const rr = r * (0.2 + i * 0.16);
+    mesh(torusG(rr, r * 0.055, 6, 32 + i * 6), M(i % 2 ? '#D8B26E' : '#C99B55', { noise: 2 }), [0, r * 0.05, 0], 1, [PI / 2, 0, 0], g);
+  }
+  mesh(cylG(r * 0.2, r * 0.2, r * 0.06, 16), M('#C99B55', { noise: 2 }), [0, r * 0.03, 0], 1, [0, 0, 0], g);
+  return g;
+}
+// 냄비집게: 원점에서 냄비 테두리를 안팎(±y)으로 물고, 손잡이는 +z 쪽으로 뻗어요
+export function makePotGripper() {
+  const g = new THREE.Group();
+  const steel = M('#C9CED6', { spec: 0.85, rim: 0.6 });
+  const rubber = M('#D2452B', { spec: 0.15, noise: 1.5 });
+  const arms: THREE.Group[] = [];
+  for (const sd of [1, -1]) {
+    const a = new THREE.Group();
+    a.position.set(0, 0, 0.035);
+    g.add(a);
+    mesh(boxG(0.032, 0.003, 0.036), steel, [0, sd * 0.0065, -0.035], 1, [0, 0, 0], a); // 물림판
+    mesh(boxG(0.011, 0.004, 0.2), steel, [0, sd * 0.011, 0.095], 1, [-sd * 0.05, 0, 0], a); // 팔
+    mesh(boxG(0.016, 0.012, 0.085), rubber, [0, sd * 0.018, 0.16], 1, [-sd * 0.05, 0, 0], a); // 고무 손잡이
+    arms.push(a);
+  }
+  mesh(cylG(0.006, 0.006, 0.026, 10), steel, [0, 0, 0.035], 1, [0, 0, PI / 2], g); // 경첩
+  g.userData.setOpen = (v: number) => { arms[0].rotation.x = v * 0.32; arms[1].rotation.x = -v * 0.32; };
+  g.userData.grip = new THREE.Vector3(0, 0, 0.17);
+  return g;
+}
+
+// 국물 떠먹는 숟가락 (손에 쥐면 +z 쪽이 앞)
+export function makeSpoon() {
+  const g = new THREE.Group();
+  const steel = M('#D4D8DE', { spec: 0.8, rim: 0.7 });
+  const cup = mesh(new THREE.SphereGeometry(0.032, 16, 8, 0, PI * 2, PI / 2, PI / 2), steel, [0, 0.012, 0.2], [1, 0.45, 1.35], [0, 0, 0], g);
+  cup.userData.ownGeo = true;
+  (cup.material as THREE.ShaderMaterial).side = THREE.DoubleSide;
+  mesh(boxG(0.012, 0.005, 0.16), steel, [0, 0.008, 0.09], 1, [0.12, 0, 0], g);
+  const liquid = mesh(new THREE.CircleGeometry(0.028, 16), M('#E9A15A', { rim: 0, flat: 0.3, spec: 0.5 }), [0, 0.006, 0.2], [1, 1.3, 1], [-PI / 2, 0, 0], g);
+  liquid.userData.ownGeo = true;
+  liquid.name = 'liquid';
+  liquid.visible = false;
+  return g;
 }
 
 export const SOUP_COLOR = (id: string) => ING.get(id)?.look.color2 ?? '#D8783F';

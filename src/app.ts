@@ -12,6 +12,7 @@ import { faceAtlas, paperCanvas, tex } from './paint/textures';
 import { QualityProbe, TIERS, WatercolorRenderer, type Tier, shared } from './render/watercolor';
 import { setFaceTexture } from './scene/chibi';
 import { Stage } from './scene/stage';
+import { PHYS } from './scene/physics';
 import { db, local, type TeacherSettings } from './storage/db';
 import { h, toast } from './ui/dom';
 import { UI } from './ui/screens';
@@ -50,8 +51,9 @@ export class App {
     setFaceTexture(tex(faceAtlas()));
     const q = this.teacher.quality ?? 'auto';
     const tier: Tier = q === 'auto' ? (Math.min(window.innerWidth, window.innerHeight) < 500 ? 'mid' : 'high') : q;
-    this.wcr.setQuality(TIERS[tier].dpr, TIERS[tier].scale, TIERS[tier].dof);
-    this.probe = new QualityProbe(tier, (t) => this.wcr.setQuality(TIERS[t].dpr, TIERS[t].scale, TIERS[t].dof), q !== 'auto');
+    const apply = (t: Tier) => { this.wcr.setQuality(TIERS[t].dpr, TIERS[t].scale, TIERS[t].dof); PHYS.iters = t === 'low' ? 6 : t === 'mid' ? 8 : 10; };
+    apply(tier);
+    this.probe = new QualityProbe(tier, apply, q !== 'auto');
     setStatus('가게를 꾸미는 중…');
     await sleep(30);
     this.stage = new Stage(this.wcr);
@@ -110,11 +112,11 @@ export class App {
       }
       let keep = true;
       while (keep) {
-        await this.round(false);
+        const saved = await this.round(false);
         const n = this.records.length;
         let first = true;
         for (;;) {
-          const choice = await UI.between({ count: n, justTen: first && n === ROUNDS });
+          const choice = await UI.between({ count: n, justTen: first && saved && n === ROUNDS, skipped: !saved });
           first = false;
           if (choice === 'lib') { await this.openLibrary(); continue; }
           if (choice === 'switch') keep = false;
@@ -187,7 +189,8 @@ export class App {
     };
   }
 
-  private async round(tutorial: boolean) {
+  // 도감에 담았으면 true
+  private async round(tutorial: boolean): Promise<boolean> {
     const o = this.owner!;
     const c: Customer = tutorial ? TUTORIAL : CUS.get(customerForRound(o.order, o.round, CUSTOMERS, hashStr(o.id)))!;
     this.inRound = true;
@@ -207,6 +210,7 @@ export class App {
     let attempt = 0;
     let picks: Picks = JSON.parse(JSON.stringify(EMPTY));
     let rec: RamenRecord | null = null;
+    let saved = false;
     for (;;) {
       this.memo(c, say);
       await this.stage.setView('pot', 0.9);
@@ -235,7 +239,13 @@ export class App {
         this.stage.clearBowls();
         continue;
       }
-      if (!tutorial) {
+      if (!tutorial && choice === 'skip') {
+        // 손님은 다음 차례로 넘어가지만, 기록과 사진은 남기지 않아요
+        o.round++;
+        await this.saveOwner();
+        toast('이번 라면은 도감에 넣지 않았어요');
+      } else if (!tutorial) {
+        saved = true;
         rec = { id: uid(), ownerId: o.id, round: o.round, customerId: c.id, picks, name, stars: r.stars, heart, photoKey: '', createdAt: Date.now() };
         rec.photoKey = rec.id;
         const photo = this.stage.photo(picks, 512);
@@ -254,6 +264,7 @@ export class App {
     await this.stage.leave();
     this.stage.resetPot();
     this.inRound = false;
+    return saved;
   }
 
   private moodFor(c: Customer) {
@@ -325,7 +336,7 @@ export class App {
       onSave: (url, q) => {
         this.teacher = { tinkerbell: url || undefined, quality: q as TeacherSettings['quality'] };
         db.saveTeacher(this.teacher);
-        if (q !== 'auto') this.wcr.setQuality(TIERS[q as Tier].dpr, TIERS[q as Tier].scale, TIERS[q as Tier].dof);
+        if (q !== 'auto') { const t = q as Tier; this.wcr.setQuality(TIERS[t].dpr, TIERS[t].scale, TIERS[t].dof); PHYS.iters = t === 'low' ? 6 : t === 'mid' ? 8 : 10; }
         toast('저장했어요');
       },
       onDelete: async (ow) => { await db.deleteOwner(ow.id); toast(`${ow.name} 사장님 기록을 지웠어요`); },

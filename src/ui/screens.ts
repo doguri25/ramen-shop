@@ -329,11 +329,17 @@ export const UI = {
   },
 
   // ── 마음 쪽지 ─────────────────────────────
-  note(c: Customer, picks: Picks, r: ScoreResult, heartOn: boolean, canRetry: boolean, tutorial: boolean): Promise<'retry' | 'save'> {
+  note(c: Customer, picks: Picks, r: ScoreResult, heartOn: boolean, canRetry: boolean, tutorial: boolean): Promise<'retry' | 'save' | 'skip'> {
     return new Promise((res) => {
       const fx = FX.get(c.needs.effect)!, fam = FAMILY.get(fx.family)!, sub = FAMILY.get(c.needs.sub)!;
       const wrap = h('div', { class: 'modal-wrap fade-in' });
-      const close = (v: 'retry' | 'save') => { sfx.pop(); wrap.remove(); res(v); };
+      const close = (v: 'retry' | 'save' | 'skip') => { sfx.pop(); wrap.remove(); res(v); };
+      // 도감에 넣지 않기는 잘못 누르지 않게 한 번 더 눌러야 해요
+      let sure = false;
+      const skip = h('button', { class: 'btn ghost', onclick: () => {
+        if (!sure) { sure = true; sfx.tap(); skip.textContent = '정말 넣지 않을래요'; skip.classList.add('warn'); return; }
+        close('skip');
+      } }, '도감에 넣지 않기');
       const box = h('div', { class: 'heartnote card pop-in' },
         h('h2', null, '💌 마음 쪽지'),
         h('div', { class: 'muted', style: 'font-size:18px' }, `${c.name}에게 꼭 필요했던 마음은…`),
@@ -350,16 +356,17 @@ export const UI = {
         tutorial ? h('div', { class: 'safety', style: 'background:#FFF6D6' }, '👴 ', TUTOR_STEP.note) : null,
         h('div', { class: 'actions' },
           canRetry ? h('button', { class: 'btn ghost', onclick: () => close('retry') }, '한 번 더 끓여 주기') : null,
+          tutorial ? null : skip,
           h('button', { class: 'btn', onclick: () => close('save') }, tutorial ? '연습 끝! 가게 열기' : '도감에 담기')));
       wrap.appendChild(box);
       mount(wrap);
     });
   },
 
-  between(o: { count: number; justTen: boolean }): Promise<'next' | 'lib' | 'switch'> {
+  between(o: { count: number; justTen: boolean; skipped?: boolean }): Promise<'next' | 'lib' | 'switch'> {
     return new Promise((res) => {
       const el = h('div', { class: 'between card slide-up' },
-        h('h3', null, o.justTen ? '🎉 열 그릇을 다 끓였어요!' : `${o.count}그릇째 라면을 끓였어요`),
+        h('h3', null, o.justTen ? '🎉 열 그릇을 다 끓였어요!' : o.skipped ? `이번 라면은 도감에 넣지 않았어요 (도감 ${o.count}그릇)` : `${o.count}그릇째 라면을 끓였어요`),
         h('p', null, o.justTen ? '도감에서 대표 라면을 골라 레시피 카드를 만들고 띵커벨에 올려 보세요. 손님은 계속 받을 수 있어요.' : o.count >= 10 ? '대표 라면 카드는 언제든 도감에서 만들 수 있어요.' : `${10 - o.count}그릇 더 끓이면 대표 라면 카드를 만들 수 있어요.`),
         h('div', { class: 'actions' },
           h('button', { class: 'btn ghost small', onclick: () => { sfx.tap(); el.remove(); res('switch'); } }, '사장님 바꾸기'),
