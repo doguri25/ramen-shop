@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { shared } from '../render/watercolor';
 
-// 국물 표면: 기름방울, 물결, 스프 가루가 퍼지는 모습, 반짝이는 윤기
+// 국물 표면: 기름방울, 물결, 스프 가루 무늬, 반짝이는 윤기. 표면은 돌지 않고 제자리에서 끓어요
 const VERT = /* glsl */ `
 varying vec2 vUv; varying vec3 vV; varying vec3 vN;
 void main(){
@@ -25,8 +25,8 @@ void main(){
   float r = length(p);
   float ang = atan(p.y, p.x);
   vec3 col = uColor * mix(1.04, 0.8, smoothstep(0.45, 1.0, r));
-  // 스프 가루가 소용돌이치며 퍼져요
-  float sw = n2(vec2(ang * 1.6 + r * 5.0 - uTime * 0.35, r * 7.0 + uTime * 0.1));
+  // 스프 가루가 퍼진 무늬 (돌지 않고 제자리에 있어요)
+  float sw = n2(vec2(ang * 1.6 + r * 5.0, r * 7.0));
   col = mix(col, uPowder, uSwirl * smoothstep(0.45, 0.85, sw) * 0.55);
   // 물결 고리
   float rip = 0.0; vec2 grad = vec2(0.0);
@@ -40,17 +40,17 @@ void main(){
       rip += w; grad += normalize(dvec + 1e-4) * w;
     }
   }
-  // 끓을 때 잔물결
-  float bub = (n2(p * 9.0 + uTime * 1.3) - 0.5) * uHot;
+  // 끓을 때 잔물결: 흐르지 않고 제자리에서 보글보글 일렁여요
+  float bub = (n2(p * 9.0) - 0.5) * sin(uTime * 5.0 + n2(p * 4.0 + 3.1) * 6.2831) * uHot;
   col *= 1.0 + rip * 0.22 + bub * 0.06;
   // 기름방울
-  vec2 q = mat2(cos(uTime * 0.04), -sin(uTime * 0.04), sin(uTime * 0.04), cos(uTime * 0.04)) * p * 4.2;
+  vec2 q = p * 4.2;
   vec2 cell = floor(q), f = fract(q);
   float md = 9.0; float sz = 1.0;
   for (int y = -1; y <= 1; y++) for (int x = -1; x <= 1; x++) {
     vec2 n = vec2(float(x), float(y));
     vec2 o = h22(cell + n);
-    vec2 c = n + 0.5 + 0.35 * sin(uTime * 0.25 + 6.2831 * o) - f;
+    vec2 c = n + 0.5 + 0.35 * sin(6.2831 * o) - f;
     float s = 0.35 + 0.65 * h2(cell + n + 7.0);
     float d = length(c) / s;
     if (d < md) { md = d; sz = s; }
