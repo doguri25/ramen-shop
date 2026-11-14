@@ -110,7 +110,7 @@ export const setColor = (m: THREE.Material, c: string) => (m as THREE.ShaderMate
 // ── 화면 전체 수채 후처리 ─────────────────────────────
 const POST_FRAG = /* glsl */ `
 uniform sampler2D tColor; uniform sampler2D tDepth; uniform sampler2D tPaper; uniform vec2 uRes; uniform float uNear; uniform float uFar; uniform float uEdge; uniform float uTime;
-uniform float uFocus; uniform float uFocusRange; uniform float uDof; uniform float uWarm;
+uniform float uFocus; uniform float uFocusRange; uniform float uDof; uniform float uWarm; uniform float uPx;
 varying vec2 vUv;
 float lum(vec3 c){ return dot(c, vec3(0.299, 0.587, 0.114)); }
 float h2(vec2 p){ return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
@@ -118,16 +118,17 @@ float n2(vec2 p){ vec2 i = floor(p), f = fract(p); f = f*f*(3.0-2.0*f);
   return mix(mix(h2(i), h2(i+vec2(1,0)), f.x), mix(h2(i+vec2(0,1)), h2(i+vec2(1,1)), f.x), f.y); }
 float lin(vec2 uv){ float z = texture2D(tDepth, uv).x * 2.0 - 1.0; return (2.0 * uNear * uFar) / (uFar + uNear - z * (uFar - uNear)); }
 void main(){
-  vec2 px = 1.0 / uRes;
+  // 붓 효과 크기는 화면 해상도와 상관없이 늘 같은 크기로 (uPx = 해상도 배율 / 1.6)
+  vec2 px = uPx / uRes;
   vec2 asp = vec2(uRes.x / uRes.y, 1.0);
-  vec2 wob = (vec2(n2(vUv * asp * 9.0), n2(vUv * asp * 9.0 + 17.3)) - 0.5) * px * 3.2;
+  vec2 wob = (vec2(n2(vUv * asp * 9.0), n2(vUv * asp * 9.0 + 17.3)) - 0.5) * px * 2.2;
   vec2 uv = vUv + wob;
   vec3 c = texture2D(tColor, uv).rgb;
-  vec3 cr = texture2D(tColor, uv + vec2(px.x * 2.5, 0.0)).rgb, cl = texture2D(tColor, uv - vec2(px.x * 2.5, 0.0)).rgb;
-  vec3 cu = texture2D(tColor, uv + vec2(0.0, px.y * 2.5)).rgb, cd = texture2D(tColor, uv - vec2(0.0, px.y * 2.5)).rgb;
+  vec3 cr = texture2D(tColor, uv + vec2(px.x * 2.0, 0.0)).rgb, cl = texture2D(tColor, uv - vec2(px.x * 2.0, 0.0)).rgb;
+  vec3 cu = texture2D(tColor, uv + vec2(0.0, px.y * 2.0)).rgb, cd = texture2D(tColor, uv - vec2(0.0, px.y * 2.0)).rgb;
   vec3 b = (cr + cl + cu + cd) * 0.25;
   float diff = length(c - b);
-  c = mix(c, b, 0.3);
+  c = mix(c, b, 0.16); // 물감 번짐은 살짝만
   c *= 1.0 - smoothstep(0.03, 0.2, diff) * 0.16;
   float d = lin(uv);
   // 초점 밖은 물감이 번진 듯 흐리게
@@ -138,10 +139,10 @@ void main(){
       for (int i = 0; i < 10; i++) {
         float a = float(i) * 2.39996 + 0.5;
         float rr = sqrt(float(i) + 0.5) / 3.2;
-        vec2 off = vec2(cos(a), sin(a)) * rr * coc * 7.0 * px;
+        vec2 off = vec2(cos(a), sin(a)) * rr * coc * 4.5 * px;
         acc += texture2D(tColor, uv + off).rgb; wsum += 1.0;
       }
-      c = mix(c, acc / wsum, min(1.0, coc * 1.4));
+      c = mix(c, acc / wsum, min(1.0, coc * 1.2));
     }
   }
   float le = length(vec2(lum(cr) - lum(cl), lum(cu) - lum(cd)));
@@ -173,8 +174,9 @@ export class WatercolorRenderer {
   quad: THREE.Mesh;
   postScene = new THREE.Scene();
   postCam = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
-  scale = 1;
-  dpr = 1.5;
+  // 화질 단계: 그림 점 개수 한도(budget)와 최대 배율. 화면보다 작게 그려 늘리지 않아요
+  budget = 2.9e6;
+  maxDpr = 2;
   private tmp = new THREE.Vector3();
   private snapRT = new Map<string, { rt: THREE.WebGLRenderTarget; out: THREE.WebGLRenderTarget }>();
 
@@ -191,7 +193,7 @@ export class WatercolorRenderer {
       uniforms: {
         tColor: { value: this.rt.texture }, tDepth: { value: this.rt.depthTexture }, tPaper: { value: paper },
         uRes: { value: new THREE.Vector2(4, 4) }, uNear: { value: 0.05 }, uFar: { value: 30 }, uEdge: { value: 1 }, uTime: { value: 0 },
-        uFocus: { value: 2.2 }, uFocusRange: { value: 1.6 }, uDof: { value: 0 }, uWarm: { value: 1 },
+        uFocus: { value: 2.2 }, uFocusRange: { value: 1.6 }, uDof: { value: 0 }, uWarm: { value: 1 }, uPx: { value: 1 },
       },
       depthTest: false, depthWrite: false,
     });
@@ -208,20 +210,26 @@ export class WatercolorRenderer {
   }
 
   dofOn = true;
-  setQuality(dpr: number, scale: number, dof = true) { this.dpr = dpr; this.scale = scale; this.dofOn = dof; this.resize(); }
+  setTier(t: { budget: number; maxDpr: number; dof: boolean }) { this.budget = t.budget; this.maxDpr = t.maxDpr; this.dofOn = t.dof; this.resize(); }
+  // 초점 흐림은 은은하게. 작은 화면(휴대폰)에서는 더 약하게
   setDof(focus: number, range: number, amount: number) {
     const u = this.post.uniforms;
-    u.uFocus.value = focus; u.uFocusRange.value = range; u.uDof.value = this.dofOn ? amount : 0;
+    const small = Math.min(window.innerWidth, window.innerHeight) < 500;
+    u.uFocus.value = focus; u.uFocusRange.value = range * 1.3; u.uDof.value = this.dofOn ? amount * (small ? 0.35 : 0.6) : 0;
   }
+  pixelRatio = 1;
 
   resize() {
     const w = window.innerWidth, h = window.innerHeight;
-    const dpr = Math.min(window.devicePixelRatio || 1, this.dpr);
+    // 기기 배율 안에서, 점 개수 한도를 넘지 않는 가장 선명한 배율 (최소 1)
+    const dpr = Math.max(1, Math.min(window.devicePixelRatio || 1, this.maxDpr, Math.sqrt(this.budget / Math.max(1, w * h))));
+    this.pixelRatio = dpr;
     this.renderer.setPixelRatio(dpr);
     this.renderer.setSize(w, h, false);
-    const rw = Math.max(2, Math.round(w * dpr * this.scale)), rh = Math.max(2, Math.round(h * dpr * this.scale));
+    const rw = Math.max(2, Math.round(w * dpr)), rh = Math.max(2, Math.round(h * dpr));
     this.rt.setSize(rw, rh);
     this.post.uniforms.uRes.value.set(rw, rh);
+    this.post.uniforms.uPx.value = dpr / 1.6;
   }
 
   render(scene: THREE.Scene, cam: THREE.PerspectiveCamera) {
@@ -252,14 +260,14 @@ export class WatercolorRenderer {
     this.renderer.clear();
     this.renderer.render(scene, cam);
     const u = this.post.uniforms;
-    const keep = { c: u.tColor.value, d: u.tDepth.value, r: u.uRes.value.clone(), n: u.uNear.value, f: u.uFar.value, dof: u.uDof.value };
-    u.tColor.value = rt.texture; u.tDepth.value = rt.depthTexture; u.uRes.value.set(w, h); u.uNear.value = cam.near; u.uFar.value = cam.far; u.uDof.value = 0;
+    const keep = { c: u.tColor.value, d: u.tDepth.value, r: u.uRes.value.clone(), n: u.uNear.value, f: u.uFar.value, dof: u.uDof.value, px: u.uPx.value };
+    u.tColor.value = rt.texture; u.tDepth.value = rt.depthTexture; u.uRes.value.set(w, h); u.uNear.value = cam.near; u.uFar.value = cam.far; u.uDof.value = 0; u.uPx.value = 1;
     this.renderer.setRenderTarget(out);
     this.renderer.render(this.postScene, this.postCam);
     const px = new Uint8Array(w * h * 4);
     this.renderer.readRenderTargetPixels(out, 0, 0, w, h, px);
     this.renderer.setRenderTarget(null);
-    u.tColor.value = keep.c; u.tDepth.value = keep.d; u.uRes.value.copy(keep.r); u.uNear.value = keep.n; u.uFar.value = keep.f; u.uDof.value = keep.dof;
+    u.tColor.value = keep.c; u.tDepth.value = keep.d; u.uRes.value.copy(keep.r); u.uNear.value = keep.n; u.uFar.value = keep.f; u.uDof.value = keep.dof; u.uPx.value = keep.px;
     this.renderer.setClearColor(prevClear, 1);
     const c = document.createElement('canvas'); c.width = w; c.height = h;
     const g = c.getContext('2d')!;
@@ -272,10 +280,12 @@ export class WatercolorRenderer {
 
 // ── 기기 성능에 맞춰 화질 고르기 ─────────────────────────
 export type Tier = 'high' | 'mid' | 'low';
-export const TIERS: Record<Tier, { dpr: number; scale: number; dof: boolean }> = {
-  high: { dpr: 1.6, scale: 1, dof: true },
-  mid: { dpr: 1.3, scale: 0.8, dof: true },
-  low: { dpr: 1, scale: 0.65, dof: false },
+// budget: 한 화면에 그리는 점 개수 한도. 태블릿(1280×800)은 높음 1.65배·보통 1.36배·낮음 1.1배,
+// 휴대폰은 화면이 작아 낮음에서도 1.5배 이상으로 또렷해요
+export const TIERS: Record<Tier, { budget: number; maxDpr: number; dof: boolean }> = {
+  high: { budget: 2.9e6, maxDpr: 2, dof: true },
+  mid: { budget: 1.9e6, maxDpr: 1.75, dof: true },
+  low: { budget: 1.25e6, maxDpr: 1.5, dof: false },
 };
 export class QualityProbe {
   private frames: number[] = [];

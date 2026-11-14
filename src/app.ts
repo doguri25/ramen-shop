@@ -50,8 +50,9 @@ export class App {
     shared.uPaper.value = paper;
     setFaceTexture(tex(faceAtlas()));
     const q = this.teacher.quality ?? 'auto';
-    const tier: Tier = q === 'auto' ? (Math.min(window.innerWidth, window.innerHeight) < 500 ? 'mid' : 'high') : q;
-    const apply = (t: Tier) => { this.wcr.setQuality(TIERS[t].dpr, TIERS[t].scale, TIERS[t].dof); PHYS.iters = t === 'low' ? 6 : t === 'mid' ? 8 : 10; };
+    // 화질은 점 개수 한도로 정해서, 작은 화면도 처음부터 '높음'으로 또렷하게 시작해요
+    const tier: Tier = q === 'auto' ? 'high' : q;
+    const apply = (t: Tier) => { this.wcr.setTier(TIERS[t]); PHYS.iters = t === 'low' ? 6 : t === 'mid' ? 8 : 10; };
     apply(tier);
     this.probe = new QualityProbe(tier, apply, q !== 'auto');
     setStatus('가게를 꾸미는 중…');
@@ -336,7 +337,7 @@ export class App {
       onSave: (url, q) => {
         this.teacher = { tinkerbell: url || undefined, quality: q as TeacherSettings['quality'] };
         db.saveTeacher(this.teacher);
-        if (q !== 'auto') { const t = q as Tier; this.wcr.setQuality(TIERS[t].dpr, TIERS[t].scale, TIERS[t].dof); PHYS.iters = t === 'low' ? 6 : t === 'mid' ? 8 : 10; }
+        if (q !== 'auto') { const t = q as Tier; this.wcr.setTier(TIERS[t]); PHYS.iters = t === 'low' ? 6 : t === 'mid' ? 8 : 10; }
         toast('저장했어요');
       },
       onDelete: async (ow) => { await db.deleteOwner(ow.id); toast(`${ow.name} 사장님 기록을 지웠어요`); },
