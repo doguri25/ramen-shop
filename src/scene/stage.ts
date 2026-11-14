@@ -8,7 +8,7 @@ import { heartCanvas, sparkleCanvas, steamCanvas, tex, woodCanvas } from '../pai
 import { wc, type WatercolorRenderer } from '../render/watercolor';
 import { addRipple, Bubbles } from './broth';
 import { Chibi, LEG, type Act, type Mood } from './chibi';
-import { animateRamen, buildRamen, itemModel, makeBowl, makeCookChopsticks, makeLadle, noodleBlock, POT_R } from './food';
+import { animateRamen, buildRamen, itemModel, makeBowl, makeCookChopsticks, makeLadle, noodleBlock, POT_R, RAINBOW } from './food';
 import { makeShadow, wispTex } from './fx';
 import { disposeTree, M } from './geo';
 import { makeOwnerPaws, type Paw } from './paws';
@@ -57,6 +57,64 @@ class Strands {
   }
   private clearGeo() { for (const m of this.meshes) { this.group.remove(m); m.geometry.dispose(); } this.meshes = []; }
   dispose() { this.clearGeo(); this.group.removeFromParent(); }
+}
+
+// 긴 젓가락에 걸쳐 양쪽으로 축 늘어진 면발 (사장님이 냄비에서 그릇으로 옮길 때)
+// 끝은 처음엔 냄비 국물에 붙어 있다가(attach=1) 들어 올리면 떨어져 늘어지고(attach=0),
+// 그릇에 내려놓으면 국물 면에 닿아 옆으로 퍼져요.
+class HangingNoodles {
+  group = new THREE.Group();
+  private meshes: THREE.Mesh[] = [];
+  private mats: THREE.Material[];
+  private seeds: { dx: number; dz: number; la: number; lb: number; sa: THREE.Vector3; sb: THREE.Vector3; ph: number; c: number }[] = [];
+  constructor(colors: string[], private n = 8, private r = 0.0055, private wig = 0.006) {
+    this.mats = colors.map((c) => M(c, { rim: 0.6, spec: 0.45 }));
+    for (let i = 0; i < n; i++) {
+      const rs = () => { const a = Math.random() * PI * 2, d = 0.02 + Math.random() * 0.05; return V(Math.cos(a) * d, 0, Math.sin(a) * d); };
+      this.seeds.push({ dx: (Math.random() - 0.5) * 0.03, dz: (Math.random() - 0.5) * 0.014, la: 0.1 + Math.random() * 0.08, lb: 0.07 + Math.random() * 0.08, sa: rs(), sb: rs(), ph: Math.random() * 6.28, c: i % colors.length });
+    }
+  }
+  // tip: 젓가락 끝, attach: 바닥에 붙은 정도, ground: 바닥(국물 면) 가운데, sway: 움직임 반대로 쏠리는 정도
+  set(tip: THREE.Vector3, attach: number, ground: THREE.Vector3, sway = V(), alpha = 1) {
+    this.clear();
+    const gy = ground.y + 0.003;
+    this.seeds.forEach((s, i) => {
+      const top = tip.clone().add(V(s.dx, 0.006, s.dz));
+      const end = (len: number, side: number, onGround: THREE.Vector3) => {
+        const hang = top.clone().add(V(side * 0.012 + sway.x * len, -len, side * 0.006 + sway.z * len));
+        const e = hang.lerp(ground.clone().add(onGround), attach);
+        // 바닥 아래로는 내려가지 않고 옆으로 퍼져요
+        if (e.y < gy) {
+          const out = V(e.x - top.x, 0, e.z - top.z);
+          if (out.lengthSq() < 1e-6) out.set(side, 0, 0.3);
+          out.normalize().multiplyScalar((gy - e.y) * 0.9);
+          e.add(out); e.y = gy;
+        }
+        return e;
+      };
+      const ea = end(s.la, -1, s.sa), eb = end(s.lb, 1, s.sb);
+      const pts: THREE.Vector3[] = [];
+      const seg = (a: THREE.Vector3, b: THREE.Vector3, from: number, to: number) => {
+        for (let k = from; k <= to; k++) {
+          const t = k / 4;
+          const p = a.clone().lerp(b, t);
+          const w = Math.sin(t * PI) * this.wig;
+          p.x += Math.sin(s.ph + t * 9 + i) * w; p.z += Math.cos(s.ph + t * 7) * w;
+          pts.push(p);
+        }
+      };
+      seg(ea, top, 0, 3);
+      pts.push(top.clone().add(V(0, 0.004, 0)));
+      seg(top, eb, 1, 4);
+      const g = new THREE.TubeGeometry(new THREE.CatmullRomCurve3(pts), 36, this.r, 5);
+      const m = new THREE.Mesh(g, this.mats[s.c]);
+      this.group.add(m);
+      this.meshes.push(m);
+    });
+    this.mats.forEach((m) => { const u = (m as THREE.ShaderMaterial).uniforms; if (u?.uAlpha) { u.uAlpha.value = alpha; (m as THREE.ShaderMaterial).transparent = alpha < 1; } });
+  }
+  private clear() { for (const m of this.meshes) { this.group.remove(m); m.geometry.dispose(); } this.meshes = []; }
+  dispose() { this.clear(); this.group.removeFromParent(); }
 }
 
 export class Stage {
@@ -555,29 +613,72 @@ export class Stage {
     const nest = this.potFood.getObjectByName('noodles');
     const bNest = bf.getObjectByName('noodles');
     this.phase = 'noodle';
-    if (nest) {
-      const nestTop = nest.getWorldPosition(V()).add(V(0, 0.03, 0));
-      await moveTip(nestTop.clone().add(V(0, 0.15, 0)), 0.35);
-      await moveTip(nestTop, 0.25);
-      this.scene.attach(nest);
-      const strands = new Strands(picks.noodle ? ING.get(picks.noodle)!.look.color : '#F0D088', 6, 0.006);
-      this.scene.add(strands.group);
-      const potSurf = potW.clone().add(V(0, 0.12, 0));
-      const lift = nestTop.clone().add(V(0, 0.26, 0));
-      const off = nest.position.clone().sub(nestTop);
-      await tween(0.45, (k) => {
-        const p = nestTop.clone().lerp(lift, k);
-        putTip(p); nest.position.copy(p).add(off);
-        nest.scale.setScalar(1 - k * 0.15);
-        strands.set(potSurf, p.clone().add(V(0, -0.04, 0)), 0.02 * k, 0);
-      });
-      await tween(0.3, (k) => { strands.set(potSurf, lift.clone().add(V(0, -0.04, 0)), 0.02, k); });
-      strands.dispose();
-      await moveTip(bowlTop().add(V(0, 0.2, 0)), 0.45, 0.04, nest, off);
-      await moveTip(bowlTop().add(V(0, 0.04, 0)), 0.25, 0, nest, off);
-      sfx.plop();
-      nest.removeFromParent(); disposeTree(nest);
-      if (bNest) { bNest.visible = true; bNest.scale.setScalar(0.6); tween(0.4, (k) => bNest.scale.setScalar(0.6 + 0.4 * k), { ease: ease.outBack }); }
+    if (nest && bNest) {
+      // 면은 덩어리째가 아니라 젓가락으로 두 번 나눠 집어 옮겨요
+      const ing = picks.noodle ? ING.get(picks.noodle)! : null;
+      const style = ing?.look.style ?? 'curly';
+      const colors = style === 'rainbow' ? RAINBOW : [ing?.look.color ?? '#F0D088'];
+      const thick = style === 'thick' || style === 'chewy' ? 0.0075 : style === 'thin' ? 0.004 : 0.0055;
+      const wig = style === 'curly' || style === 'rainbow' ? 0.012 : style === 'long' ? 0.002 : 0.005;
+      const potStrands = [...nest.children], bowlStrands = [...bNest.children];
+      bowlStrands.forEach((c) => { c.visible = false; });
+      bNest.visible = true;
+      const nestC = nest.getWorldPosition(V());
+      const trips = 2;
+      for (let t = 0; t < trips; t++) {
+        const spot = nestC.clone().add(V(t ? -0.035 : 0.03, 0.012, t ? 0.02 : -0.015));
+        await moveTip(spot.clone().add(V(0, 0.12, 0)), 0.28);
+        await moveTip(spot.clone().add(V(0, -0.012, 0)), 0.18);
+        const hn = new HangingNoodles(colors, 11, thick, wig);
+        this.scene.add(hn.group);
+        // 들어 올리기: 처음엔 국물에 붙어 늘어나다가, 떨어지면서 출렁
+        const up = spot.clone().add(V(0, 0.26, 0));
+        let released = false;
+        await tween(0.6, (k) => {
+          const tip = spot.clone().lerp(up, ease.outCubic(k));
+          putTip(tip);
+          const att = k < 0.55 ? 1 : 1 - ease.outCubic((k - 0.55) / 0.45);
+          const bounce = k > 0.55 ? Math.sin((k - 0.55) * 26) * 0.25 * (1 - k) : 0;
+          hn.set(tip, att, spot, V(0, 0, bounce));
+          if (!released && k > 0.6) {
+            released = true;
+            sfx.plop(); this.ripple(0.05, 0.05, 0.8);
+            // 냄비 속 면이 그만큼 줄어요
+            const take = potStrands.splice(0, Math.ceil(potStrands.length / (trips - t)));
+            take.forEach((c) => { c.visible = false; });
+            if (!potStrands.length) nest.visible = false;
+            else { const s0 = nest.scale.clone(); tween(0.3, (q) => nest.scale.set(s0.x * (1 - 0.15 * q), s0.y * (1 - 0.35 * q), s0.z * (1 - 0.15 * q))); }
+          }
+        }, { ease: ease.linear });
+        // 그릇 위로 옮기기: 움직이는 반대쪽으로 살짝 쏠려요
+        const from = up.clone(), over = bowlTop().add(V(0.01, 0.2, 0));
+        const dir = over.clone().sub(from).setY(0).normalize();
+        await tween(0.55, (k) => {
+          const e = ease.inOutCubic(k);
+          const tip = from.clone().lerp(over, e); tip.y += Math.sin(k * PI) * 0.04;
+          putTip(tip);
+          const v = Math.sin(k * PI) * 0.35 - (k > 0.85 ? Math.sin((k - 0.85) * 40) * 0.1 : 0);
+          hn.set(tip, 0, bowlTop(), dir.clone().multiplyScalar(-v));
+        }, { ease: ease.linear });
+        // 그릇에 내려놓기: 면 끝이 국물에 닿아 퍼지고, 그릇 속 면이 늘어나요
+        const down = bowlTop().add(V(0.01, 0.025, 0));
+        let placed = false;
+        await tween(0.5, (k) => {
+          const tip = over.clone().lerp(down, ease.inOutCubic(Math.min(1, k * 1.3)));
+          putTip(tip);
+          hn.set(tip, 0, bowlTop(), V(), k > 0.75 ? 1 - (k - 0.75) / 0.25 : 1);
+          if (!placed && k > 0.62) {
+            placed = true;
+            sfx.plop();
+            const show = bowlStrands.splice(0, Math.ceil(bowlStrands.length / (trips - t)));
+            show.forEach((c) => { c.visible = true; c.scale.set(1, 0.4, 1); tween(0.35, (q) => c.scale.set(1, 0.4 + 0.6 * q, 1), { ease: ease.outBack }); });
+          }
+        }, { ease: ease.linear });
+        hn.dispose();
+        await moveTip(down.clone().add(V(0, 0.1, 0)), 0.2);
+      }
+      bowlStrands.forEach((c) => { c.visible = true; });
+      nest.visible = false;
     } else if (bNest) bNest.visible = true;
 
     this.phase = 'topping';
