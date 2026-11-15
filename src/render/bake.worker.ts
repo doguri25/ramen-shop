@@ -64,7 +64,8 @@ self.onmessage = (e: MessageEvent<BakeJob>) => {
   const lamps: Vector3[] = [];
   for (let i = 0; i < J.lamps.length; i += 3) lamps.push(new Vector3(J.lamps[i], J.lamps[i + 1], J.lamps[i + 2]));
   const WARM = [1.0, 0.82, 0.58];
-  const sq = Math.ceil(Math.sqrt(J.aoRays));
+  // 방위각까지 고르게 덮도록 행 수를 따로 셈해요 (광선 수가 제곱수가 아니어도 빈 쪽이 없게)
+  const sq = Math.ceil(Math.sqrt(J.aoRays)), rows = Math.ceil(J.aoRays / sq);
 
   for (let v = 0; v < V; v++) {
     P.fromArray(J.verts, v * 3);
@@ -82,7 +83,7 @@ self.onmessage = (e: MessageEvent<BakeJob>) => {
     // 1) 구석 어둠 + 한 번 튄 빛 (코사인 가중 반구, 층을 나눠 고르게)
     let ar = 0, ag = 0, ab = 0;
     for (let i = 0; i < J.aoRays; i++) {
-      const u1 = ((i % sq) + r()) / sq, u2 = (Math.floor(i / sq) + r()) / sq;
+      const u1 = ((i % sq) + r()) / sq, u2 = (Math.floor(i / sq) + r()) / rows;
       const rr = Math.sqrt(Math.min(1, u1)), ph = 2 * Math.PI * Math.min(1, u2) + rot;
       const x = rr * Math.cos(ph), y = rr * Math.sin(ph), z = Math.sqrt(Math.max(0, 1 - u1));
       D.copy(TU).multiplyScalar(x).addScaledVector(TV, y).addScaledVector(N, z).normalize();

@@ -21,6 +21,14 @@ export function customerForRound(order: string[], round: number, all: Customer[]
   if (round < order.length) return order[round];
   // 36명을 다 만나면 다시 섞어서 이어 가요
   const lap = Math.floor(round / order.length);
-  const again = makeOrder(all, seed + lap * 7919, 0);
-  return again[round % order.length];
+  const lapOrder = (k: number): string[] => {
+    if (k === 0) return order;
+    const a = makeOrder(all, seed + k * 7919, 0);
+    // 바퀴가 바뀌는 자리에서 같은 손님이 연달아 오지 않게
+    const prev = lapOrder(k - 1);
+    if (a.length > 1 && a[0] === prev[prev.length - 1]) [a[0], a[1]] = [a[1], a[0]];
+    return a;
+  };
+  const again = lapOrder(lap);
+  return again[(round - lap * order.length) % again.length];
 }

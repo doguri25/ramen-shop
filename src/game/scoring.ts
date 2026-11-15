@@ -27,4 +27,8 @@ export function score(c: Customer, picks: Picks): ScoreResult {
 }
 
 // 이름에 손님 마음 낱말이 들어 있으면 하트 도장
-export const hasHeart = (c: Customer, name: string) => c.feelingWords.some((w) => name.replace(/\s/g, '').includes(w.replace(/\s/g, '')));
+// 이름 틀에 늘 들어 있는 말('…친구라면', '마음이 …')은 빼고 봐요. 그래야 누구나 하트를 받지 않아요
+export const hasHeart = (c: Customer, name: string) => {
+  const n = name.replace(/\s/g, '').replace(/친구라면/g, '').replace(/^마음이/, '');
+  return c.feelingWords.some((w) => n.includes(w.replace(/\s/g, '')));
+};

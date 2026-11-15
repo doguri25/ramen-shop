@@ -82,7 +82,8 @@ export function startBubble() {
   let alive = true;
   const loop = () => {
     if (!alive || !on) return;
-    tone(180 + Math.random() * 160, 0.09, 'sine', 0.05 + Math.random() * 0.04, 0, 1.6);
+    // 소리가 멈춰 있을 때(탭이 가려짐) 쌓아 두면 돌아올 때 한꺼번에 터져요
+    if (ctx?.state === 'running') tone(180 + Math.random() * 160, 0.09, 'sine', 0.05 + Math.random() * 0.04, 0, 1.6);
     setTimeout(loop, 90 + Math.random() * 260);
   };
   loop();

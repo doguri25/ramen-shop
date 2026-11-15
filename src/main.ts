@@ -25,5 +25,6 @@ function fail(msg: string) {
   setTimeout(() => boot.remove(), 700);
   app.start();
   // 오프라인에서도 열리게 저장해 둬요 (배포본에서만)
-  if (import.meta.env.PROD && 'serviceWorker' in navigator) navigator.serviceWorker.register(`./sw.js?v=${__BUILD__}`).catch(() => {});
+  // sw.js 는 빌드 때 파일 목록과 버전이 들어가서, 바뀌면 브라우저가 알아서 새로 받아요
+  if (import.meta.env.PROD && 'serviceWorker' in navigator) navigator.serviceWorker.register('./sw.js').catch(() => {});
 })();

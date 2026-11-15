@@ -264,7 +264,7 @@ export class Stage {
 
   clearGuests() {
     for (const g of this.guests) { this.scene.remove(g.root); disposeTree(g.root); }
-    for (const s of this.shadows) this.scene.remove(s);
+    for (const s of this.shadows) { this.scene.remove(s); ((s as THREE.Mesh).material as THREE.Material).dispose(); } // 그림자 그림은 같이 써서 재질만
     for (const p of this.props) { this.scene.remove(p); disposeTree(p); }
     this.clearBowls();
     this.guests = []; this.shadows = []; this.props = []; this.baseAct = [];
@@ -833,7 +833,7 @@ export class Stage {
     await tween(0.3, (k) => { ladle.position.lerpVectors(p0, this.camPoint(0.25, -0.25, -0.6), k); follow(); });
     await this.until(() => stream.empty, 0.6);
     stream.dispose();
-    liquid.removeFromParent(); (liquid.material as THREE.Material).dispose();
+    liquid.removeFromParent(); disposeTree(liquid);
     ladle.removeFromParent(); disposeTree(ladle);
   }
 
@@ -919,6 +919,7 @@ export class Stage {
         bundle.frozen = true;
         for (const tb of bundle.tubes) { tb.mesh.userData.loose = true; bNest.attach(tb.mesh); }
         this.bundles.splice(this.bundles.indexOf(bundle), 1);
+        bundle.group.removeFromParent(); // 가닥은 그릇으로 옮겼으니 빈 묶음은 치워요
       }
       nest.visible = false;
       bowlStrands.forEach((c) => { c.visible = true; });
@@ -1014,13 +1015,12 @@ export class Stage {
     if (B.kind === 'pot') ch.setHand(0, V(-0.32, 0.5, 0.46), V(0.4, 0, 1));
     else {
       const lh = bowl.localToWorld(B.grips[0].clone().add(V(0, 0.01, 0)));
-      ch.setHand(0, ch.toLocal(lh), ch.toLocal(lh.clone().add(V(1, 0.1, 0))).sub(ch.toLocal(lh)));
+      ch.setHandWorld(0, lh, V(1, 0.1, 0));
     }
     const placeTip = (tip: THREE.Vector3, aimW: THREE.Vector3, reach = 0.23) => {
       const a = aimW.clone().normalize();
       const hand = tip.clone().addScaledVector(a, -reach * sc);
-      const hl = ch.toLocal(hand);
-      ch.setHand(1, hl, ch.toLocal(hand.clone().add(a)).sub(hl));
+      ch.setHandWorld(1, hand, a);
     };
     const DOWN = V(-0.12, -1, 0.25).normalize(), MOUTH = V(-0.15, 0.62, -0.77).normalize();
     const bites = noodles ? (B.shared ? 2 : 3) : 1;
@@ -1119,8 +1119,7 @@ export class Stage {
     const hands = () => {
       bowl.updateMatrixWorld();
       const l = bowl.localToWorld(B.grips[0].clone()), r = bowl.localToWorld(B.grips[1].clone());
-      const ll = ch.toLocal(l), rl = ch.toLocal(r);
-      ch.setHand(0, ll, ch.toLocal(r).sub(ll)); ch.setHand(1, rl, ch.toLocal(l).sub(rl));
+      ch.setHandWorld(0, l, r.clone().sub(l)); ch.setHandWorld(1, r, l.clone().sub(r));
     };
     const pot = B.kind === 'pot';
     hands();

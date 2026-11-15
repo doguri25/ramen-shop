@@ -100,15 +100,16 @@ export function addRipple(m: THREE.ShaderMaterial, x: number, z: number, strengt
   arr[ripIdx++ % 4].set(x, z, shared.uTime.value, strength);
 }
 
-// 끓는 거품
+// 끓는 거품 (모양은 하나를 같이 써요: 냄비를 다시 만들 때마다 새로 만들면 쌓여요)
+let bubbleGeo: THREE.SphereGeometry | null = null;
 export class Bubbles {
   mesh: THREE.InstancedMesh;
   private life: { x: number; z: number; t: number; dur: number; s: number }[] = [];
   private m4 = new THREE.Matrix4();
   on = 0;
   constructor(private radius: number, mat: THREE.Material, n = 26) {
-    const g = new THREE.SphereGeometry(1, 10, 6, 0, Math.PI * 2, 0, Math.PI / 2);
-    this.mesh = new THREE.InstancedMesh(g, mat, n);
+    bubbleGeo ??= new THREE.SphereGeometry(1, 10, 6, 0, Math.PI * 2, 0, Math.PI / 2);
+    this.mesh = new THREE.InstancedMesh(bubbleGeo, mat, n);
     this.mesh.frustumCulled = false;
     for (let i = 0; i < n; i++) this.life.push(this.spawn(Math.random()));
   }

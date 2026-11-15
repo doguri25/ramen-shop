@@ -39,8 +39,14 @@ export function wordPools(picks: Picks) {
 }
 
 const normalize = (s: string) => s.toLowerCase().replace(/[\s\d~!@#$%^&*()_+\-=[\]{};:'",.<>/?\\|`·…]/g, '');
+// 고운 말인데 나쁜 말이 섞여 보이는 경우 (먼저 지우고 봐요)
+const ALLOW = ['꺼지는', '꺼지지', '꺼지면', '꺼진', '기죽', '새끼손가락', '새끼고양이', '새끼강아지', '새끼오리', '새끼곰', '새끼돼지', '새끼새'];
+// 짧아서 두 낱말 사이에 우연히 생기기 쉬운 말은 낱말마다 따로 봐요 ('친구야 동글동글' → '야동' 아님)
+const SHORT = new Set(['야동', '야사', '년아', '놈아', '시바', '씨바']);
 export function isBad(name: string) {
-  const n = normalize(name);
-  return BADWORDS.some((w) => n.includes(w));
+  let n = normalize(name);
+  for (const a of ALLOW) n = n.split(a).join('');
+  const tokens = name.split(/\s+/).map((t) => { let x = normalize(t); for (const a of ALLOW) x = x.split(a).join(''); return x; });
+  return BADWORDS.some((w) => (SHORT.has(w) ? tokens.some((t) => t.includes(w)) : n.includes(w)));
 }
 export const MAX_NAME = 20;

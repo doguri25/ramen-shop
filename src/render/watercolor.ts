@@ -247,7 +247,9 @@ export class WatercolorRenderer {
     this.pixelRatio = dpr;
     this.renderer.setPixelRatio(dpr);
     this.renderer.setSize(w, h, false);
-    const rw = Math.max(2, Math.round(w * dpr)), rh = Math.max(2, Math.round(h * dpr));
+    // 캔버스와 꼭 같은 크기 (three 는 내림을 써요. 1px 차이로 화면 전체가 반 픽셀 흐려지지 않게)
+    const db = this.renderer.getDrawingBufferSize(new THREE.Vector2());
+    const rw = Math.max(2, db.x), rh = Math.max(2, db.y);
     this.rt.setSize(rw, rh);
     this.post.uniforms.uRes.value.set(rw, rh);
     this.post.uniforms.uPx.value = dpr / 1.6;

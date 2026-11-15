@@ -9,7 +9,8 @@ export const db = {
   owners: () => safe(get<Owner[]>('owners').then((v) => v ?? []), [] as Owner[]),
   saveOwners: (o: Owner[]) => safe(set('owners', o), undefined),
   records: (ownerId: string) => safe(get<RamenRecord[]>('records:' + ownerId).then((v) => v ?? []), [] as RamenRecord[]),
-  saveRecords: (ownerId: string, r: RamenRecord[]) => safe(set('records:' + ownerId, r), undefined),
+  // 저장이 됐는지 알려 줘요 (공간이 모자라면 false)
+  saveRecords: (ownerId: string, r: RamenRecord[]) => safe(set('records:' + ownerId, r).then(() => true), false),
   photo: (key: string) => safe(get<Blob>('photo:' + key), undefined),
   savePhoto: (key: string, b: Blob) => safe(set('photo:' + key, b), undefined),
   delPhoto: (key: string) => safe(del('photo:' + key), undefined),

@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { get, set } from 'idb-keyval';
+import { delMany, get, keys as idbKeys, set } from 'idb-keyval';
 import { shared } from './watercolor';
 import type { BakeJob } from './bake.worker';
 
@@ -10,7 +10,11 @@ import type { BakeJob } from './bake.worker';
 const MAX_VERTS = 140_000;
 const V3 = () => new THREE.Vector3();
 
-interface Picked { mesh: THREE.Mesh; recv: boolean; shell: boolean }
+interface Picked { mesh: THREE.Mesh; recv: boolean; shell: boolean; glow: boolean }
+// 굽는 방법(일꾼 계산식)을 바꾸면 올려요. 저장본 지문에 들어가요
+const ALGO = 'rt5';
+// 긴 계산 사이사이 화면이 멈추지 않게 숨을 돌려요
+const idle = () => new Promise<void>((r) => setTimeout(r, 0));
 
 const isBakeMat = (m: THREE.Material) => {
   const s = m as THREE.ShaderMaterial;
@@ -115,10 +119,11 @@ function bakedVariant(m: THREE.ShaderMaterial) {
 
 // 광선 수가 적어 생기는 얼룩을 이웃 정점끼리 부드럽게 섞어 지워요.
 // 같은 자리·비슷한 방향의 정점(모서리 이음매)은 같은 값으로 맞춰요.
-function smooth(data: Float32Array, recv: Picked[]) {
+async function smooth(data: Float32Array, recv: Picked[]) {
   const out = data.slice();
   let off = 0;
   for (const p of recv) {
+    await idle();
     const g = p.mesh.geometry, pos = g.attributes.position as THREE.BufferAttribute, nor = g.attributes.normal as THREE.BufferAttribute | undefined;
     const n = pos.count;
     // 같은 자리 정점 묶기
@@ -194,7 +199,7 @@ export async function bakeLighting(root: THREE.Object3D, o: BakeOpts): Promise<{
     if (!isBakeMat(mat) || mat.transparent || (mat.uniforms.uFlat?.value ?? 0) >= 0.8) return;
     if (/hand/i.test(m.name)) return; // 돌아가는 시계 바늘
     const glowing = (mat.uniforms.uGlow?.value ?? 0) > 0.01 || (mat.uniforms.uWave?.value ?? 0) > 0;
-    picked.push({ mesh: m, recv: !glowing && !Array.isArray(m.material) && !m.userData.noRecv, shell: !!m.userData.shell });
+    picked.push({ mesh: m, recv: !glowing && !Array.isArray(m.material) && !m.userData.noRecv, shell: !!m.userData.shell, glow: glowing });
   });
   if (!picked.length) return null;
   // 모델이 도착하는 순서와 상관없이 늘 같은 순서로 (저장해 둔 값을 다시 쓰려면 꼭 필요해요)
@@ -208,6 +213,7 @@ export async function bakeLighting(root: THREE.Object3D, o: BakeOpts): Promise<{
   // 2) 큰 면은 잘게 나눠야 그림자가 맺혀요 (벽·바닥 9cm, 나머지 13cm)
   for (const p of picked) {
     if (!p.recv) continue;
+    await idle();
     const g = p.mesh.geometry;
     const s = new THREE.Vector3(); p.mesh.matrixWorld.decompose(V3(), new THREE.Quaternion(), s);
     const scale = Math.max(Math.abs(s.x), Math.abs(s.y), Math.abs(s.z));
@@ -219,27 +225,9 @@ export async function bakeLighting(root: THREE.Object3D, o: BakeOpts): Promise<{
     p.mesh.geometry = ng; // 나눠 쓰던 모양은 그대로 두고, 이 물체만 자기 모양을 가져요
   }
 
-  // 3) 가리는 삼각형(세상 좌표)과 색
-  const tris: number[] = [], alb: number[] = [], shell: number[] = [];
-  const a = V3(), b = V3(), c = V3();
-  for (const p of picked) {
-    const g = p.mesh.geometry, pos = g.attributes.position as THREE.BufferAttribute;
-    const mat = p.mesh.material as THREE.ShaderMaterial;
-    const col = (mat.uniforms.uColor.value as THREE.Color).clone().multiply(avgColor(mat.uniforms.uMap?.value ?? null));
-    const idx = g.index ? (g.index.array as ArrayLike<number>) : null;
-    const n = idx ? idx.length : pos.count;
-    for (let i = 0; i < n; i += 3) {
-      const i0 = idx ? idx[i] : i, i1 = idx ? idx[i + 1] : i + 1, i2 = idx ? idx[i + 2] : i + 2;
-      a.fromBufferAttribute(pos, i0).applyMatrix4(p.mesh.matrixWorld);
-      b.fromBufferAttribute(pos, i1).applyMatrix4(p.mesh.matrixWorld);
-      c.fromBufferAttribute(pos, i2).applyMatrix4(p.mesh.matrixWorld);
-      tris.push(a.x, a.y, a.z, b.x, b.y, b.z, c.x, c.y, c.z);
-      alb.push(col.r, col.g, col.b);
-      shell.push(p.shell ? 1 : 0);
-    }
-  }
-  // 4) 받는 정점 (세상 좌표 위치·법선)
+  // 3) 받는 정점 (세상 좌표 위치·법선)
   const recv = picked.filter((p) => p.recv);
+  const a = V3(), b = V3(), c = V3();
   const vs: number[] = [], ns: number[] = [];
   const nm = new THREE.Matrix3();
   for (const p of recv) {
@@ -252,16 +240,33 @@ export async function bakeLighting(root: THREE.Object3D, o: BakeOpts): Promise<{
     }
   }
   const nV = vs.length / 3;
+  const rays = {
+    aoRays: o.quality === 'high' ? 25 : o.quality === 'mid' ? 16 : 9,
+    sunRays: o.quality === 'high' ? 8 : o.quality === 'mid' ? 6 : 4,
+    lampRays: o.quality === 'high' ? 4 : 2,
+  };
+  const colorOf = (p: Picked) => {
+    const mat = p.mesh.material as THREE.ShaderMaterial;
+    return (mat.uniforms.uColor.value as THREE.Color).clone().multiply(avgColor(mat.uniforms.uMap?.value ?? null));
+  };
 
-  // 5) 같은 장면이면 저장해 둔 값을 써요 (흔들리는 등불 때문에 모양 기준으로 지문을 만들어요)
+  // 4) 지문: 받는 면의 자리, 가리는 물체의 자리·색, 빛 방향·등불, 광선 수, 계산식이 같을 때만 저장본을 써요.
+  //    (흔들리는 등불은 자리 대신 개수만 넣고, 등불 빛 위치는 25cm 단위로 넣어요)
   let h = 2166136261;
   const mix = (x: number) => { h ^= Math.round(x * 1000) | 0; h = Math.imul(h, 16777619); };
-  for (const p of recv) {
+  for (let i = 0; i < vs.length; i += 31) mix(vs[i]);
+  for (let i = 0; i < ns.length; i += 53) mix(ns[i]);
+  for (const p of picked) {
     const pos = p.mesh.geometry.attributes.position as THREE.BufferAttribute;
-    mix(pos.count);
-    for (let i = 0; i < pos.count; i += 37) mix(pos.getX(i) + pos.getY(i) * 3 + pos.getZ(i) * 7);
+    mix(pos.count); mix(p.shell ? 1 : 0);
+    const col = colorOf(p); mix(col.r); mix(col.g); mix(col.b);
+    if (p.glow) continue;
+    for (let i = 0; i < pos.count; i += 41) { a.fromBufferAttribute(pos, i).applyMatrix4(p.mesh.matrixWorld); mix(a.x); mix(a.y); mix(a.z); }
   }
-  mix(nV); mix(tris.length);
+  mix(o.light.x); mix(o.light.y); mix(o.light.z);
+  for (const l of o.lamps) { mix(Math.round(l.x * 4) / 4); mix(Math.round(l.y * 4) / 4); mix(Math.round(l.z * 4) / 4); }
+  mix(rays.aoRays); mix(rays.sunRays); mix(rays.lampRays); mix(nV);
+  for (const ch of ALGO) mix(ch.charCodeAt(0));
   const key = `bake:${o.version}:${o.quality}:${(h >>> 0).toString(36)}`;
   let out: Float32Array | null = null;
   let cached = false;
@@ -275,13 +280,29 @@ export async function bakeLighting(root: THREE.Object3D, o: BakeOpts): Promise<{
   } catch { /* 저장소를 못 쓰면 새로 구워요 */ }
 
   if (!out) {
+    // 가리는 삼각형(세상 좌표)과 색: 새로 구울 때만 모아요
+    const tris: number[] = [], alb: number[] = [], shell: number[] = [];
+    for (const p of picked) {
+      await idle();
+      const g = p.mesh.geometry, pos = g.attributes.position as THREE.BufferAttribute;
+      const col = colorOf(p);
+      const idx = g.index ? (g.index.array as ArrayLike<number>) : null;
+      const n = idx ? idx.length : pos.count;
+      for (let i = 0; i < n; i += 3) {
+        const i0 = idx ? idx[i] : i, i1 = idx ? idx[i + 1] : i + 1, i2 = idx ? idx[i + 2] : i + 2;
+        a.fromBufferAttribute(pos, i0).applyMatrix4(p.mesh.matrixWorld);
+        b.fromBufferAttribute(pos, i1).applyMatrix4(p.mesh.matrixWorld);
+        c.fromBufferAttribute(pos, i2).applyMatrix4(p.mesh.matrixWorld);
+        tris.push(a.x, a.y, a.z, b.x, b.y, b.z, c.x, c.y, c.z);
+        alb.push(col.r, col.g, col.b);
+        shell.push(p.shell ? 1 : 0);
+      }
+    }
     const job: BakeJob = {
       tris: new Float32Array(tris), albedo: new Float32Array(alb), shell: new Uint8Array(shell),
       verts: new Float32Array(vs), norms: new Float32Array(ns),
       light: [o.light.x, o.light.y, o.light.z], lamps: o.lamps.flatMap((l) => [l.x, l.y, l.z]),
-      aoRays: o.quality === 'high' ? 24 : o.quality === 'mid' ? 16 : 10,
-      sunRays: o.quality === 'high' ? 8 : o.quality === 'mid' ? 6 : 4,
-      lampRays: o.quality === 'high' ? 4 : 2,
+      ...rays,
       aoDist: 0.55,
     };
     const raw = await new Promise<Float32Array>((res, rej) => {
@@ -293,11 +314,14 @@ export async function bakeLighting(root: THREE.Object3D, o: BakeOpts): Promise<{
       w.onerror = (e) => { w.terminate(); rej(e); };
       w.postMessage(job, [job.tris.buffer, job.albedo.buffer, job.shell.buffer, job.verts.buffer, job.norms.buffer]);
     });
-    out = smooth(raw, recv);
+    out = await smooth(raw, recv);
     try {
       const q = new Uint8Array(out.length);
       for (let i = 0; i < out.length; i++) q[i] = Math.max(0, Math.min(255, Math.round(out[i] * (i % 4 === 3 ? 255 : 200))));
       await set(key, q);
+      // 예전 저장본(다른 지문·다른 화질)은 지워서 자리를 비워요
+      const old = (await idbKeys()).filter((k) => typeof k === 'string' && k.startsWith('bake:') && k !== key);
+      if (old.length) await delMany(old);
     } catch { /* 저장 못 해도 이번에는 그대로 써요 */ }
   }
 

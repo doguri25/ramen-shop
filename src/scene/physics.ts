@@ -437,8 +437,11 @@ export class Drop {
     this.w.set((Math.random() - 0.5) * 8, (Math.random() - 0.5) * 4, (Math.random() - 0.5) * 8);
   }
   update(dt: number) {
-    if (this.done) return;
-    const h = Math.min(dt, 0.05);
+    // 프레임이 길어도 (느린 태블릿 + 빨리 보기) 잘게 나눠서 시간만큼 다 진행해요
+    let left = Math.min(dt, 0.25);
+    while (left > 1e-6 && !this.done) { const h = Math.min(left, 1 / 60); this.step(h); left -= h; }
+  }
+  private step(h: number) {
     this.t += h;
     const o = this.obj, p = o.position;
     if (!this.landed) {

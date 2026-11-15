@@ -81,7 +81,7 @@ export function drawCard(d: CardInput): HTMLCanvasElement {
   g.font = `30px ${H}`; g.fillStyle = INK; g.textAlign = 'left'; g.textBaseline = 'alphabetic';
   g.fillText(wrap(g, d.customer.name, 280)[0], 50, 198);
   box(g, 370, 124, 320, 92, fam.soft, fam.color); label(g, '손님에게 필요한 마음', 390, 136);
-  g.font = `30px ${H}`; g.fillStyle = INK; g.fillText(fx.name, 390, 198);
+  g.font = `30px ${H}`; g.fillStyle = INK; g.textBaseline = 'alphabetic'; g.fillText(fx.name, 390, 198);
   g.font = `20px ${B}`; g.fillStyle = SUB; g.textAlign = 'right'; g.fillText(fam.name, 672, 198);
 
   // 라면 이름
@@ -132,11 +132,17 @@ export function drawCard(d: CardInput): HTMLCanvasElement {
   // 고른 까닭
   const ry = 862;
   box(g, 30, ry, 660, 132, '#FFFDF6'); label(g, '내가 고른 까닭', 50, ry + 12);
-  g.font = `20px ${B}`; g.fillStyle = INK; g.textBaseline = 'top';
+  g.fillStyle = INK; g.textBaseline = 'top';
   const why = d.reason.trim() ? `내가 이 라면을 고른 까닭은 ${d.reason.trim()} 때문이에요.` : '내가 이 라면을 고른 까닭은 ________ 때문이에요.';
-  const lines = wrap(g, why, 620).slice(0, d.who.trim() ? 2 : 3);
-  if (d.who.trim()) lines.push(...wrap(g, `${d.who.trim()}에게 이 라면을 끓여 주고 싶어요.`, 620).slice(0, 1));
-  lines.forEach((l, i) => g.fillText(l, 50, ry + 46 + i * 27));
+  const whoLine = d.who.trim() ? `${d.who.trim()}에게 이 라면을 끓여 주고 싶어요.` : '';
+  // 글이 길면 글자를 조금씩 줄여서 "때문이에요."까지 다 들어가게 해요
+  let lines: string[] = [], lh = 27;
+  for (const [fs, l] of [[20, 27], [18, 23], [16, 19]]) {
+    g.font = `${fs}px ${B}`; lh = l;
+    lines = [...wrap(g, why, 620), ...(whoLine ? wrap(g, whoLine, 620) : [])];
+    if (lines.length * l <= 80) break;
+  }
+  lines.slice(0, Math.floor(80 / lh)).forEach((l, i) => g.fillText(l, 50, ry + 46 + i * lh));
 
   // 아랫줄
   starRow(g, d.rec.stars, 40, 1012, 34);

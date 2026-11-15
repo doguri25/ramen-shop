@@ -8,6 +8,8 @@ import { boxG, coneG, cylG, group, M, mesh, sphereG, torusG, tube } from './geo'
 import { wc } from '../render/watercolor';
 import { brothMaterial } from './broth';
 
+let fishTex: THREE.Texture | null = null; // 어묵 글씨 그림은 하나를 같이 써요
+
 const PI = Math.PI;
 const AMOUNT_K: Record<Amount, number> = { '한 꼬집': 0.5, '한 숟가락': 1, '두 숟가락': 1.6, '한 국자': 2.4 };
 
@@ -67,7 +69,7 @@ function topping(ing: Ingredient, s: number, rnd: Rnd): THREE.Group {
       }
       break;
     case 'fishcake': {
-      const t = tex(labelCanvas('fishcake'));
+      const t = (fishTex ??= tex(labelCanvas('fishcake')));
       const m = new THREE.Mesh(cylG(0.13, 0.13, 0.04, 28), [M(c2), wc('#FFFFFF', { map: t }), M(c)]);
       m.scale.setScalar(s); m.position.y = 0.02 * s; m.rotation.x = -0.25;
       g.add(m);
@@ -203,6 +205,7 @@ function finishOn(g: THREE.Group, ing: Ingredient, amount: Amount, r: number, rn
     }
   }
 }
+
 
 export function brothColor(p: Picks) {
   const b = p.broth ? ING.get(p.broth)!.look.color : '#F3E3C0';

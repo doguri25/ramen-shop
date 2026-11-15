@@ -1,4 +1,5 @@
 import { ROUNDS, TEACHER_PIN, TINKERBELL_URL } from './config';
+import { eulReul } from './core/korean';
 import { hashStr, uid } from './core/rng';
 import { resumeAudio, setSound, setTts, sfx, speak, suspendAudio, ttsEnabled, unlockAudio, soundOn } from './core/sound';
 import { updateTweens, wait } from './core/tween';
@@ -36,6 +37,7 @@ export class App {
   probe!: QualityProbe;
   private last = 0;
   private running = true;
+  private raf = 0; // 그리기 예약 번호 (탭을 다시 열 때 겹치지 않게)
   private photoUrls = new Map<string, string>();
   inRound = false;
   timeScale = 1;
@@ -72,11 +74,13 @@ export class App {
     canvas.addEventListener('webglcontextrestored', () => location.reload());
     document.addEventListener('visibilitychange', () => {
       if (document.hidden) { this.running = false; suspendAudio(); window.speechSynthesis?.cancel(); }
-      else { this.running = true; this.last = performance.now(); resumeAudio(); requestAnimationFrame(this.loop); }
+      else { this.running = true; this.last = performance.now(); resumeAudio(); cancelAnimationFrame(this.raf); this.raf = requestAnimationFrame(this.loop); }
     });
     window.addEventListener('pointerdown', () => unlockAudio(), { capture: true });
     this.last = performance.now();
-    requestAnimationFrame(this.loop);
+    this.raf = requestAnimationFrame(this.loop);
+    // 저장한 도감이 저장 공간이 모자랄 때 지워지지 않게 부탁해요
+    navigator.storage?.persist?.().catch(() => {});
     // 소품 모델이 다 오면, 가게에 광선을 쏴서 조명을 구워요 (그동안에도 게임은 그대로 해요)
     this.stage.shop.loadModels().catch((e) => console.warn('[models]', e)).finally(() => { setTimeout(() => this.bakeLights(), 300); });
   }
@@ -86,7 +90,9 @@ export class App {
     try {
       const shop = this.stage.shop;
       const lamps = shop.lamps.map((b) => b.getWorldPosition(new THREE.Vector3()).add(new THREE.Vector3(0, -0.1, 0)));
-      this.bakeInfo = await bakeLighting(shop.root, { version: 'rt4', light: LIGHT_W, lamps, quality: this.probe.tier });
+      // 굽는 품질은 성능 측정과 상관없이 정해요 (선생님이 화질을 고정했으면 그 값)
+      const q = this.teacher.quality && this.teacher.quality !== 'auto' ? this.teacher.quality : 'high';
+      this.bakeInfo = await bakeLighting(shop.root, { version: 'rt5', light: LIGHT_W, lamps, quality: q });
       console.info('[bake]', this.bakeInfo);
     } catch (e) { console.warn('[bake]', e); }
   }
@@ -98,7 +104,7 @@ export class App {
 
   private loop = (t: number) => {
     if (!this.running) return;
-    const raw = Math.min(0.1, (t - this.last) / 1000);
+    const raw = Math.min(0.1, Math.max(0, (t - this.last) / 1000));
     this.last = t;
     const dt = raw * this.timeScale;
     updateTweens(dt);
@@ -108,12 +114,26 @@ export class App {
     this.wcr.setDof(d.focus, d.range, d.amount);
     this.wcr.render(this.stage.scene, this.stage.cam);
     this.probe.sample(raw);
-    requestAnimationFrame(this.loop);
+    this.raf = requestAnimationFrame(this.loop);
   };
 
   // ── 흐름 ─────────────────────────────
   async start() {
     for (;;) {
+      try { await this.session(); } catch (e) {
+        // 예상 못 한 문제가 생기면 멈추지 않고 첫 화면으로 돌아가요
+        console.error(e);
+        this.inRound = false;
+        this.timeScale = 1;
+        try { this.stage.clearGuests(); this.stage.resetPot(); } catch { /* 무시 */ }
+        toast('문제가 생겨서 첫 화면으로 돌아왔어요');
+      }
+      this.owner = null;
+    }
+  }
+
+  private async session() {
+    {
       UI.clearAll();
       this.stage.setView('wide', 0);
       await UI.title(() => this.openTeacher());
@@ -137,7 +157,6 @@ export class App {
           break;
         }
       }
-      this.owner = null;
     }
   }
 
@@ -145,7 +164,7 @@ export class App {
     const owners = await db.owners();
     const counts = await this.counts(owners);
     const r = await UI.owners(owners, counts);
-    if (r.owner) this.owner = r.owner;
+    if (r.owner) { this.owner = r.owner; this.fixOrder(this.owner); }
     else if (r.create) {
       const id = uid();
       const o: Owner = { id, number: r.create.number, name: r.create.name, round: 0, order: makeOrder(CUSTOMERS, hashStr(id) ^ Date.now()), tutorialDone: false, createdAt: Date.now() };
@@ -155,6 +174,14 @@ export class App {
     }
     this.records = await db.records(this.owner!.id);
     this.drawHud(null);
+  }
+
+  // 손님 목록이 바뀐 뒤에도 예전 학생 기록이 멈추지 않게: 없어진 손님은 빼고 새 손님은 뒤에 붙여요
+  private fixOrder(o: Owner) {
+    const known = new Set(CUSTOMERS.map((c) => c.id));
+    const kept = o.order.filter((id) => known.has(id));
+    const add = CUSTOMERS.map((c) => c.id).filter((id) => !kept.includes(id));
+    if (kept.length !== o.order.length || add.length) { o.order = [...kept, ...add]; this.saveOwner(); }
   }
 
   private async counts(owners: Owner[]) {
@@ -174,7 +201,11 @@ export class App {
     if (!this.owner) return;
     UI.hud({
       owner: this.owner, count: this.records.length, round, sound: soundOn(), tts: ttsEnabled(),
-      onLib: () => { this.openLibrary(); },
+      onLib: () => {
+        // 손님을 맞는 중에 열면 손님 반응·쪽지가 도감 위아래로 겹쳐요. 손님이 가신 뒤에 열어요
+        if (this.inRound) { toast('손님이 가신 뒤에 도감을 볼 수 있어요'); return; }
+        this.openLibrary();
+      },
       onSound: () => { this.settings.sound = !soundOn(); setSound(this.settings.sound); local.set(this.settings); this.drawHud(round); },
       onTts: () => { this.settings.tts = !ttsEnabled(); setTts(this.settings.tts); local.set(this.settings); this.drawHud(round); toast(this.settings.tts ? '손님 말을 소리 내어 읽어 줄게요' : '읽어 주기를 껐어요'); },
       onHome: () => this.goHome(),
@@ -231,6 +262,10 @@ export class App {
       this.stage.showPaws(true);
       this.stage.restorePot(picks);
       picks = await this.cook(c, picks, tutorial);
+      // 메모에서 다시 듣던 이야기가 남아 있으면 닫아요 (내어 줄 때 손님 반응과 겹치지 않게)
+      document.querySelectorAll('.dialog').forEach((d) => d.remove());
+      window.speechSynthesis?.cancel();
+      this.stage.talk(0, false);
       this.stage.showPaws(false);
       const name = await UI.naming(picks, c, tutorial);
       document.querySelector('.memo')?.remove();
@@ -266,11 +301,11 @@ export class App {
         const blob = await new Promise<Blob | null>((res) => photo.toBlob(res, 'image/webp', 0.86));
         if (blob) await db.savePhoto(rec.photoKey, blob);
         this.records.push(rec);
-        await db.saveRecords(o.id, this.records);
+        const ok = await db.saveRecords(o.id, this.records);
         o.round++;
         await this.saveOwner();
         sfx.camera();
-        toast(`📖 '${name}'을(를) 도감에 담았어요`);
+        toast(ok ? `📖 '${name}'${eulReul(name).slice(-1)} 도감에 담았어요` : '⚠️ 태블릿에 저장하지 못했어요. 선생님께 알려 주세요');
       }
       break;
     }
@@ -343,6 +378,7 @@ export class App {
 
   private async openTeacher() {
     const ok = await UI.pin(TEACHER_PIN);
+    if (ok === null) return; // 닫기
     if (!ok) { toast('암호가 맞지 않아요'); return; }
     const owners = await db.owners();
     await UI.teacher({

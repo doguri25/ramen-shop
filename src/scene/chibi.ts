@@ -486,7 +486,13 @@ export class Chibi {
   }
 
   play(a: Act) { if (this.act !== a) { this.act = a; this.actT = 0; } }
+  // 세상 좌표로 손 목표를 정해 두면 몸이 숙여지는 동안에도 매 프레임 다시 맞춰요
+  private handW: ({ p: THREE.Vector3; aim: THREE.Vector3 | null } | null)[] = [null, null];
+  setHandWorld(side: number, p: THREE.Vector3, aim: THREE.Vector3 | null = null) {
+    this.handW[side] = { p: p.clone(), aim: aim ? aim.clone() : null };
+  }
   setHand(side: number, p: THREE.Vector3, aim: THREE.Vector3 | null = null) {
+    this.handW[side] = null;
     const arm = this.arms[side];
     arm.target.copy(p);
     arm.aim = aim ? aim.clone().normalize() : null;
@@ -639,13 +645,22 @@ export class Chibi {
         this.arms[0].target.y += 0.1 + s2 * 0.08; this.arms[1].target.y += 0.1 - s2 * 0.08;
       }
     }
-    for (const arm of this.arms) this.updateArm(arm, dt);
-
-    // 몸 기울기
+    // 몸 기울기 (팔보다 먼저: 세상 좌표 손 목표를 숙인 몸 기준으로 바꿔야 해요)
     this.body.rotation.x += (this.lean - this.body.rotation.x) * Math.min(1, dt * 7);
     this.body.rotation.z = this.walking > 0 ? sw * 0.05 : 0;
     // 통통
     this.body.position.y = Math.abs(Math.sin(t * 9)) * 0.06 * this.bounce + (this.walking > 0 ? Math.abs(sw) * 0.035 : 0);
+    if (!this.manual) this.handW[0] = this.handW[1] = null;
+    else if (this.handW[0] || this.handW[1]) {
+      this.body.updateWorldMatrix(true, false);
+      this.handW.forEach((hw, i) => {
+        if (!hw) return;
+        const arm = this.arms[i];
+        arm.target.copy(this.body.worldToLocal(hw.p.clone()));
+        arm.aim = hw.aim ? this.body.worldToLocal(hw.p.clone().add(hw.aim)).sub(arm.target).normalize() : null;
+      });
+    }
+    for (const arm of this.arms) this.updateArm(arm, dt);
 
     // 고개
     let lx = 0, ly = 0;
