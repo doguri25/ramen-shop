@@ -30,11 +30,13 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           ZIP="ramen-shop-${GITHUB_REF_NAME}.zip"
-          # 릴리스를 GitHub에서 먼저 만들어 둔 경우에는 배포 파일만 새로 붙여요
+          NOTES=".github/release-notes/${GITHUB_REF_NAME}.md"
+          # GitHub 화면에서 릴리스를 먼저 만든 경우: 배포 파일을 붙이고, 설명이 비어 있으면 릴리스 노트로 채워요
           if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
             gh release upload "$GITHUB_REF_NAME" "$ZIP" --clobber
+            BODY=$(gh release view "$GITHUB_REF_NAME" --json body -q .body)
+            if [ -z "$BODY" ] && [ -f "$NOTES" ]; then gh release edit "$GITHUB_REF_NAME" --notes-file "$NOTES"; fi
           else
-            NOTES=".github/release-notes/${GITHUB_REF_NAME}.md"
             if [ -f "$NOTES" ]; then ARGS=(--notes-file "$NOTES"); else ARGS=(--generate-notes); fi
             gh release create "$GITHUB_REF_NAME" "$ZIP" --title "후루룩 친구라면 가게 ${GITHUB_REF_NAME}" "${ARGS[@]}"
           fi
