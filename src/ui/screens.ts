@@ -346,13 +346,13 @@ export const UI = {
       const wrap = h('div', { class: 'modal-wrap fade-in' });
       const close = (v: 'retry' | 'save' | 'skip') => { sfx.pop(); wrap.remove(); res(v); };
       // 도감에 넣지 않기는 잘못 누르지 않게 한 번 더 눌러야 해요
-      // (빠른 연타로 두 번 눌리지 않게 0.5초는 기다리고, 3초 지나면 처음으로 돌아가요)
+      // (빠른 연타로 두 번 눌리지 않게 0.5초는 기다리고, 5초 지나면 처음으로 돌아가요)
       let sure = 0, sureT = 0;
       const skip = h('button', { class: 'btn ghost', onclick: () => {
         const now = performance.now();
         if (!sure) {
           sure = now; sfx.tap(); skip.textContent = '정말 넣지 않을래요'; skip.classList.add('warn');
-          sureT = window.setTimeout(() => { sure = 0; skip.textContent = '도감에 넣지 않기'; skip.classList.remove('warn'); }, 3000);
+          sureT = window.setTimeout(() => { sure = 0; skip.textContent = '도감에 넣지 않기'; skip.classList.remove('warn'); }, 5000);
           return;
         }
         if (now - sure < 500) return;
