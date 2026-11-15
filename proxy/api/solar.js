@@ -153,7 +153,13 @@ async function solar(job, key) {
   return { text };
 }
 
-const tidyLine = (t, n) => t.replace(/^["'“”‘’「」『』\s]+|["'“”‘’「」『』\s]+$/g, '').replace(/\s*\n+\s*/g, ' ').slice(0, n);
+// 대사 한 줄 다듬기: 줄을 이어 붙이고, 통째로 감싼 따옴표만 벗기고, 짝이 안 맞는 따옴표는 지워요
+const tidyLine = (t, n) => {
+  let s = t.replace(/\s*\n+\s*/g, ' ').trim();
+  if (/^["“「『']/.test(s) && /["”」』']$/.test(s)) s = s.slice(1, -1).trim();
+  if ((s.match(/["“”]/g) || []).length % 2) s = s.replace(/["“”]/g, '');
+  return s.slice(0, n);
+};
 
 // ── 사용량 (서버가 잠깐 살아 있는 동안만 세는 대략값) ─────────
 const perIp = new Map();
