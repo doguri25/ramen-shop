@@ -437,3 +437,13 @@ body.cooking .prog .bar { display: none; }
 .dialog { z-index: 5; }
 .lib { z-index: 9; }
 .modal-wrap { z-index: 10; }
+/* AI 도우미 */
+.hint-row { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 8px; margin-top: 8px; }
+.hint-btn { flex: 0 0 auto; }
+.hint-bubble { flex: 1 1 200px; padding: 8px 12px; border-radius: 14px; background: #EEF6FF; color: #24527A; font-size: 16px; line-height: 1.45; }
+.hint-bubble[hidden] { display: none; }
+.ai-sum { margin-top: 10px; padding: 12px 14px; border-radius: 14px; background: #FFFDF6; border: 2px solid var(--line); }
+.ai-sum[hidden] { display: none; }
+.ai-sum .facts { font-size: 15px; line-height: 1.6; color: var(--ink-2); }
+.ai-sum .text { margin-top: 10px; font-size: 16px; line-height: 1.7; white-space: pre-wrap; user-select: text; -webkit-user-select: text; }
+.maker { z-index: 9; }

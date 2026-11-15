@@ -1,4 +1,5 @@
-import { ROUNDS, TEACHER_PIN, TINKERBELL_URL } from './config';
+import { AI_URL, ROUNDS, TEACHER_PIN, TINKERBELL_URL } from './config';
+import { ai, classStats } from './ai/solar';
 import { eulReul } from './core/korean';
 import { hashStr, uid } from './core/rng';
 import { resumeAudio, setSound, setTts, sfx, speak, suspendAudio, ttsEnabled, unlockAudio, soundOn } from './core/sound';
@@ -40,6 +41,7 @@ export class App {
   private raf = 0; // 그리기 예약 번호 (탭을 다시 열 때 겹치지 않게)
   private photoUrls = new Map<string, string>();
   inRound = false;
+  serving = false; // 내어 주고 반응·쪽지를 보는 동안
   timeScale = 1;
 
   async boot(setStatus: (s: string) => void) {
@@ -47,6 +49,7 @@ export class App {
     setStatus('종이와 물감을 준비하는 중…');
     await Promise.race([Promise.all([document.fonts.load('40px "Jua"', '친구라면'), document.fonts.load('20px "Gowun Dodum"', '친구라면')]), sleep(3000)]).catch(() => {});
     this.teacher = await db.teacher();
+    ai.configure(this.teacher.aiUrl, this.teacher.ai !== false);
     setSound(this.settings.sound);
     setTts(this.settings.tts);
     const paper = tex(paperCanvas(512), true);
@@ -124,6 +127,7 @@ export class App {
         // 예상 못 한 문제가 생기면 멈추지 않고 첫 화면으로 돌아가요
         console.error(e);
         this.inRound = false;
+        this.serving = false;
         this.timeScale = 1;
         try { this.stage.clearGuests(); this.stage.resetPot(); } catch { /* 무시 */ }
         toast('문제가 생겨서 첫 화면으로 돌아왔어요');
@@ -202,8 +206,8 @@ export class App {
     UI.hud({
       owner: this.owner, count: this.records.length, round, sound: soundOn(), tts: ttsEnabled(),
       onLib: () => {
-        // 손님을 맞는 중에 열면 손님 반응·쪽지가 도감 위아래로 겹쳐요. 손님이 가신 뒤에 열어요
-        if (this.inRound) { toast('손님이 가신 뒤에 도감을 볼 수 있어요'); return; }
+        // 라면을 내어 드리는 동안 열면 손님 반응·쪽지가 도감 위아래로 겹쳐요. 그때만 잠깐 막아요
+        if (this.serving) { toast('손님이 라면을 다 드신 뒤에 도감을 볼 수 있어요'); return; }
         this.openLibrary();
       },
       onSound: () => { this.settings.sound = !soundOn(); setSound(this.settings.sound); local.set(this.settings); this.drawHud(round); },
@@ -267,20 +271,27 @@ export class App {
       window.speechSynthesis?.cancel();
       this.stage.talk(0, false);
       this.stage.showPaws(false);
-      const name = await UI.naming(picks, c, tutorial);
+      const name = await UI.naming(picks, c, tutorial, (n) => ai.kind(n));
       document.querySelector('.memo')?.remove();
+      const r = score(c, picks);
+      const heart = hasHeart(c, name);
+      // 내어 주고 먹는 동안 AI 손님 한마디를 미리 받아 둬요 (못 받으면 원래 대사만)
+      const aiLine = tutorial ? Promise.resolve(null) : ai.react(c, picks, name, r.stars);
+      this.serving = true;
       const fast = UI.fastButton((on) => { this.timeScale = on ? 2.5 : 1; });
       await this.stage.serve(picks);
       await this.stage.eat(() => UI.yum());
       fast.remove();
       this.timeScale = 1;
-      const r = score(c, picks);
-      const heart = hasHeart(c, name);
       this.stage.celebrate(r.stars, heart);
-      await UI.reaction(c, r.stars, heart, (i, w) => say(i, w, c.reactions[r.stars]));
+      const extra = await Promise.race([aiLine, new Promise<null>((res) => setTimeout(() => res(null), 1500))]);
+      const lines = [...c.reactions[r.stars]];
+      if (extra) lines.splice(1, 0, extra);
+      await UI.reaction(c, r.stars, heart, (i, w) => say(i, w, lines), lines);
       this.stage.talk(0, false);
       const canRetry = !tutorial && attempt === 0 && r.stars === 1;
       const choice = await UI.note(c, picks, r, heart, canRetry, tutorial);
+      this.serving = false;
       if (choice === 'retry') {
         attempt++;
         this.stage.mood(this.moodFor(c));
@@ -373,7 +384,9 @@ export class App {
     const url = await this.photoUrl(pick);
     const img = new Image();
     await new Promise((res) => { img.onload = res; img.onerror = res; img.src = url; });
-    await UI.maker({ rec: pick, customer: CUS.get(pick.customerId)!, photo: img.naturalWidth ? img : null, author: this.owner.name, tinkerbell: this.teacher.tinkerbell || TINKERBELL_URL });
+    const cust = CUS.get(pick.customerId)!;
+    await UI.maker({ rec: pick, customer: cust, photo: img.naturalWidth ? img : null, author: this.owner.name, tinkerbell: this.teacher.tinkerbell || TINKERBELL_URL,
+      hint: ai.ready ? (reason) => ai.reason(cust, pick, reason) : undefined });
   }
 
   private async openTeacher() {
@@ -383,8 +396,19 @@ export class App {
     const owners = await db.owners();
     await UI.teacher({
       url: this.teacher.tinkerbell ?? '', defaultUrl: TINKERBELL_URL, quality: this.teacher.quality ?? 'auto', owners, counts: await this.counts(owners),
-      onSave: (url, q) => {
-        this.teacher = { tinkerbell: url || undefined, quality: q as TeacherSettings['quality'] };
+      ai: { on: this.teacher.ai !== false, url: this.teacher.aiUrl ?? '', defaultUrl: AI_URL },
+      onCheck: (u) => ai.check(u),
+      onSummary: async () => {
+        // 학생 이름은 빼고 숫자와 라면 이름만 모아요
+        const all: RamenRecord[] = [];
+        let done = 0;
+        for (const ow of owners) { const rs = await db.records(ow.id); all.push(...rs); if (rs.length >= ROUNDS) done++; }
+        const st = classStats(owners.length, all, done, (r) => CUS.get(r.customerId)?.needs.effect);
+        return { stats: st, text: all.length ? await ai.summary(st) : null };
+      },
+      onSave: (url, q, aiOn, aiUrl) => {
+        this.teacher = { tinkerbell: url || undefined, quality: q as TeacherSettings['quality'], ai: aiOn, aiUrl: aiUrl || undefined };
+        ai.configure(this.teacher.aiUrl, aiOn);
         db.saveTeacher(this.teacher);
         if (q !== 'auto') { const t = q as Tier; this.wcr.setTier(TIERS[t]); PHYS.iters = t === 'low' ? 6 : t === 'mid' ? 8 : 10; }
         toast('저장했어요');

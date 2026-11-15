@@ -40,7 +40,7 @@ const TASKS = {
     const stars = int(d.stars, 1, 3);
     const mood = { 1: '고맙지만 마음이 아직 다 풀리지는 않았어요.', 2: '마음이 꽤 가벼워졌어요.', 3: '마음이 활짝 풀렸어요.' }[stars];
     return {
-      model: FAST, max: 500, temp: 0.8,
+      model: FAST, max: 800, temp: 0.8,
       system: [
         `너는 동네 라면 가게에 온 손님 "${name}"이야. 방금 학생 사장님이 끓여 준 라면을 다 먹었어.`,
         `네 고민: ${str(c.story, 300)}`,
@@ -60,7 +60,7 @@ const TASKS = {
     if (!ramen) return null;
     const reason = str(d.reason, 80);
     return {
-      model: FAST, max: 400, temp: 0.7,
+      model: FAST, max: 700, temp: 0.7,
       system: [
         '너는 초등학교 3학년 학생의 글쓰기를 돕는 다정한 선생님이야.',
         '학생은 자기가 끓인 친구라면을 대표 라면으로 고르고, 그 까닭을 "…때문이에요."로 끝나는 한 문장으로 쓰는 중이야.',
@@ -78,7 +78,7 @@ const TASKS = {
     const name = str(d.name, 30);
     if (!name) return null;
     return {
-      model: FAST, max: 400, temp: 0,
+      model: FAST, max: 700, temp: 0,
       system: [
         '너는 초등학교 3학년 교실 게임의 말 검사 도우미야. 학생이 지은 라면 이름을 손님에게 그대로 들려줘도 되는지 판단해.',
         '안 되는 경우: 욕설이나 비속어(초성·변형 포함), 놀림·비하·외모 평가, 성적인 말, 폭력·죽음, 특정 친구나 실제 사람을 놀리는 말, 유행하는 혐오 표현.',
@@ -126,7 +126,7 @@ async function solar(job, key) {
   const body = {
     model: job.model,
     messages: [{ role: 'system', content: job.system }, { role: 'user', content: job.user }],
-    max_tokens: job.max,
+    max_tokens: job.max, // 추론 글자도 여기에 들어가서 넉넉히 줘요
     temperature: job.temp,
     reasoning_effort: 'low',
   };

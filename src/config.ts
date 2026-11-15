@@ -6,4 +6,6 @@ export const TINKERBELL_URL = '';
 export const TEACHER_PIN = '1234';
 // 대표 라면 카드를 만들 수 있게 되는 그릇 수
 export const ROUNDS = 10;
+// AI 도우미(업스테이지 Solar) 중계 서버 주소. 비워 두면 AI 기능 없이 돌아가요. (선생님 화면에서 끄거나 바꿀 수 있어요)
+export const AI_URL = 'https://ramen-ai.vercel.app';
 // ─────────────────────────────────────────────────────────────

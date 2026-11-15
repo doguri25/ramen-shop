@@ -6,6 +6,7 @@ import { AMOUNTS, ING, INGREDIENTS, STEPS } from '../data/ingredients';
 import { TUTOR_STEP } from '../data/text';
 import type { Amount, Customer, Ingredient, Owner, Picks, RamenRecord, Step } from '../data/types';
 import { buildName, isBad, MAX_NAME, TEMPLATES, wordPools, type Template } from '../game/naming';
+import type { ClassStats } from '../ai/solar';
 import type { ScoreResult } from '../game/scoring';
 import { pickedList } from '../game/scoring';
 import { drawCard, methodLines } from '../share/card';
@@ -274,7 +275,7 @@ export const UI = {
   },
 
   // ── 이름 짓기 ─────────────────────────────
-  naming(picks: Picks, c: Customer, tutorial: boolean): Promise<string> {
+  naming(picks: Picks, c: Customer, tutorial: boolean, check?: (name: string) => Promise<{ ok: boolean; why: string } | null>): Promise<string> {
     return new Promise((res) => {
       const pools = wordPools(picks);
       let tpl: Template = 'blow', a = '', b = '';
@@ -282,11 +283,27 @@ export const UI = {
       const input = h('input', { class: 'inp', maxLength: MAX_NAME, placeholder: '라면 이름' }) as HTMLInputElement;
       const cnt = h('span', { class: 'cnt' });
       const warn = h('div', { class: 'name-warn' });
-      const ok = h('button', { class: 'btn big', onclick: () => {
+      let checking = false;
+      const OK_LABEL = '이 이름으로 내어 주기!';
+      const ok = h('button', { class: 'btn big', onclick: async () => {
         const v = input.value.trim();
-        if (!valid()) return;
+        if (checking || !valid()) return;
+        // 낱말 카드로만 지은 이름은 이미 고운 말이라 바로 내어 줘요. 직접 쓴 이름은 AI에게 한 번 더 물어봐요
+        if (check && v !== buildName(tpl, a, b)) {
+          checking = true; ok.disabled = true; ok.textContent = '이름을 살펴보는 중…';
+          const r = await check(v);
+          checking = false; ok.textContent = OK_LABEL;
+          if (!sheet.isConnected) return;
+          if (r && !r.ok) {
+            sfx.back();
+            warn.textContent = r.why || '손님이 들으면 속상할 수 있어요. 다른 이름을 지어 볼까요?';
+            ok.disabled = true; // 이름을 고치면 다시 눌러져요
+            return;
+          }
+          if (input.value.trim() !== v) { valid(); return; } // 살펴보는 사이에 고쳤으면 다시 눌러요
+        }
         sfx.pop(); sheet.remove(); res(v);
-      } }, '이 이름으로 내어 주기!') as HTMLButtonElement;
+      } }, OK_LABEL) as HTMLButtonElement;
       const valid = () => {
         const v = input.value.trim();
         cnt.textContent = `${[...v].length}/${MAX_NAME}`;
@@ -329,14 +346,14 @@ export const UI = {
   },
 
   // ── 손님 반응 ─────────────────────────────
-  reaction(c: Customer, stars: number, heartOn: boolean, onLine: (i: number, who: number) => void): Promise<void> {
+  reaction(c: Customer, stars: number, heartOn: boolean, onLine: (i: number, who: number) => void, lines?: string[]): Promise<void> {
     const starRow = h('div', { class: 'stars' }, [0, 1, 2].map(() => h('span', null, '★')));
     const extra = h('div', null, starRow, heartOn ? heart('stamp') : null);
     setTimeout(() => starRow.querySelectorAll('span').forEach((s, i) => { if (i < stars) setTimeout(() => { s.classList.add('on'); sfx.star(i); }, i * 380); }), 200);
     if (heartOn) setTimeout(() => sfx.heart(), 200 + stars * 380 + 200);
     if (stars === 3) setTimeout(() => { sfx.fanfare(); confetti(); }, 200 + 3 * 380);
     else setTimeout(() => sfx.soft(), 200 + stars * 380);
-    return UI.dialog(c, c.reactions[stars as 1 | 2 | 3], { onLine, final: { label: '마음 쪽지 보기' }, extra }).then(() => {});
+    return UI.dialog(c, lines ?? c.reactions[stars as 1 | 2 | 3], { onLine, final: { label: '마음 쪽지 보기' }, extra }).then(() => {});
   },
 
   // ── 마음 쪽지 ─────────────────────────────
@@ -446,7 +463,7 @@ export const UI = {
   },
 
   // ── 레시피 카드 만들고 띵커벨에 올리기 ──────────────────
-  maker(o: { rec: RamenRecord; customer: Customer; photo: HTMLImageElement | null; author: string; tinkerbell: string }): Promise<void> {
+  maker(o: { rec: RamenRecord; customer: Customer; photo: HTMLImageElement | null; author: string; tinkerbell: string; hint?: (reason: string) => Promise<string | null> }): Promise<void> {
     return new Promise((res) => {
       const reason = h('textarea', { class: 'inp', maxLength: 60, placeholder: '예) 친구가 슬플 때 토닥여 주고 싶기' }) as HTMLTextAreaElement;
       const who = h('input', { class: 'inp', maxLength: 14, placeholder: '예) 우리 반 친구 (안 써도 돼요)' }) as HTMLInputElement;
@@ -454,6 +471,20 @@ export const UI = {
       const preview = h('img', { alt: '친구라면 레시피 카드' }) as HTMLImageElement;
       let canvas: HTMLCanvasElement | null = null;
       let tm = 0;
+      // 생각 도우미: 글을 대신 써 주지 않고, 더 생각해 볼 질문만 하나 건네요 (한 카드에 다섯 번까지)
+      const hintBox = h('div', { class: 'hint-bubble', hidden: true });
+      let hints = 0, asking = false;
+      const hintBtn = o.hint ? h('button', { class: 'btn soft small hint-btn', onclick: async () => {
+        if (asking) return;
+        if (hints >= 5) { toast('이제 내 생각으로 끝까지 써 볼까요?'); return; }
+        asking = true; hintBtn!.textContent = '💭 생각하는 중…';
+        const q = await o.hint!(reason.value);
+        asking = false; hintBtn!.textContent = '💡 생각 도우미';
+        if (!q) { toast('지금은 도우미를 부를 수 없어요. 내 생각대로 써 봐요!'); return; }
+        hints++; sfx.pop();
+        hintBox.hidden = false; hintBox.textContent = '💭 ' + q;
+        hintBox.animate([{ opacity: 0, transform: 'translateY(4px)' }, { opacity: 1, transform: 'none' }], { duration: 220 });
+      } }, '💡 생각 도우미') as HTMLButtonElement : null;
       const draw = () => {
         canvas = drawCard({ rec: o.rec, customer: o.customer, photo: o.photo, reason: reason.value, who: who.value, author: author.value.trim() || o.author });
         preview.src = canvas.toDataURL('image/png');
@@ -486,7 +517,7 @@ export const UI = {
           h('div', { style: 'display:flex;align-items:center;gap:10px' },
             h('div', { style: 'flex:1' }, h('h2', null, '친구라면 레시피 카드'), h('div', { style: 'font-family:var(--head);font-size:20px;margin-top:2px' }, h('span', { style: 'color:var(--accent)' }, o.rec.name), h('span', { class: 'muted', style: 'font-size:16px' }, `  ·  ${o.customer.name}에게 ${'★'.repeat(o.rec.stars)}`))),
             iconBtn(ICON.close, () => { sfx.back(); el.remove(); res(); }, '닫기')),
-          h('div', { class: 'q card' }, h('div', { class: 'ql' }, h('span', { class: 'qn' }, '1'), '내가 이 라면을 고른 까닭은? ', h('span', { class: 'muted', style: 'font-size:15px' }, '"…때문이에요."로 들어가요')), reason),
+          h('div', { class: 'q card' }, h('div', { class: 'ql' }, h('span', { class: 'qn' }, '1'), '내가 이 라면을 고른 까닭은? ', h('span', { class: 'muted', style: 'font-size:15px' }, '"…때문이에요."로 들어가요')), reason, hintBtn ? h('div', { class: 'hint-row' }, hintBtn, hintBox) : null),
           h('div', { class: 'q card' }, h('div', { class: 'ql' }, h('span', { class: 'qn' }, '2'), '누구에게 끓여 주고 싶나요? ', h('span', { class: 'muted', style: 'font-size:15px' }, '안 써도 돼요')), who),
           h('div', { class: 'q card' }, h('div', { class: 'ql' }, h('span', { class: 'qn' }, '3'), '만든 사장님 이름'), author),
           h('div', { class: 'actions', style: 'justify-content:flex-start;margin-top:4px' },
@@ -522,8 +553,48 @@ export const UI = {
     });
   },
 
-  teacher(o: { url: string; defaultUrl: string; quality: string; owners: Owner[]; counts: Map<string, number>; onSave: (url: string, q: string) => void; onDelete: (o: Owner) => Promise<void> }): Promise<void> {
+  teacher(o: {
+    url: string; defaultUrl: string; quality: string; owners: Owner[]; counts: Map<string, number>;
+    ai: { on: boolean; url: string; defaultUrl: string };
+    onCheck: (url: string) => Promise<'ok' | 'nokey' | 'fail'>;
+    onSummary: () => Promise<{ stats: ClassStats; text: string | null }>;
+    onSave: (url: string, q: string, aiOn: boolean, aiUrl: string) => void; onDelete: (o: Owner) => Promise<void>;
+  }): Promise<void> {
     return new Promise((res) => {
+      // AI 도우미 (업스테이지 Solar)
+      let aiOn = o.ai.on;
+      const aiUrl = h('input', { class: 'inp', value: o.ai.url, placeholder: o.ai.defaultUrl || 'https://….vercel.app', style: 'width:100%' }) as HTMLInputElement;
+      const aiSel = h('div', { class: 'sel' });
+      const drawAi = () => { aiSel.innerHTML = ''; [[true, '켜기'], [false, '끄기']].forEach(([k, l]) => aiSel.append(h('button', { class: aiOn === k ? 'on' : '', onclick: () => { aiOn = k as boolean; drawAi(); } }, l as string))); };
+      drawAi();
+      const aiState = h('span', { class: 'muted', style: 'font-size:15px' });
+      const checkBtn = h('button', { class: 'btn ghost small', onclick: async () => {
+        aiState.textContent = '확인하는 중…';
+        const r = await o.onCheck(aiUrl.value);
+        aiState.textContent = r === 'ok' ? '✓ 연결됐어요' : r === 'nokey' ? '중계 서버는 켜져 있지만 업스테이지 키가 아직 없어요' : '연결하지 못했어요. 주소와 인터넷을 확인해 주세요';
+      } }, '연결 확인');
+      const sumBox = h('div', { class: 'ai-sum', hidden: true });
+      const sumBtn = h('button', { class: 'btn soft small', onclick: async () => {
+        sumBtn.disabled = true; sumBtn.textContent = '정리하는 중… (30초쯤)';
+        const { stats: st, text } = await o.onSummary();
+        sumBtn.disabled = false; sumBtn.textContent = '우리 반 요약 다시 만들기';
+        sumBox.hidden = false; sumBox.innerHTML = '';
+        const facts = [
+          `사장님 ${st.owners}명 · 끓인 라면 ${st.bowls}그릇 · ${ROUNDS}그릇 채운 사장님 ${st.done10}명`,
+          `별 셋 ${st.stars3} · 별 둘 ${st.stars2} · 별 하나 ${st.stars1} · 하트 도장 ${st.hearts}`,
+          st.topEffects.length ? `잘 맞힌 마음: ${st.topEffects.slice(0, 3).join(', ')}` : '',
+          st.hardEffects.length ? `어려워한 마음: ${st.hardEffects.slice(0, 3).join(', ')}` : '',
+          st.words.length ? `이름에 자주 쓴 낱말: ${st.words.slice(0, 8).join(', ')}` : '',
+        ].filter(Boolean);
+        sumBox.append(h('div', { class: 'facts' }, facts.map((f) => h('div', null, f))));
+        if (text) {
+          const body = h('div', { class: 'text' }, text);
+          sumBox.append(body, h('div', { class: 'actions', style: 'justify-content:flex-start;margin-top:8px' },
+            h('button', { class: 'btn ghost small', onclick: async () => {
+              try { await navigator.clipboard.writeText(text); toast('복사했어요'); } catch { toast('복사하지 못했어요. 글을 길게 눌러 복사해 주세요'); }
+            } }, '글 복사하기')), h('div', { class: 'muted', style: 'font-size:13px;margin-top:4px' }, 'AI가 쓴 글이에요. 숫자는 위 기록과 맞는지 한 번 확인해 주세요.'));
+        } else sumBox.append(h('div', { class: 'muted', style: 'margin-top:6px' }, st.bowls ? 'AI 요약은 만들지 못했어요. 위 숫자는 태블릿 기록 그대로예요.' : '아직 끓인 라면이 없어요.'));
+      } }, '우리 반 요약 만들기');
       const wrap = h('div', { class: 'modal-wrap fade-in' });
       const url = h('input', { class: 'inp', value: o.url, placeholder: o.defaultUrl || 'https://www.tkbell.co.kr/…', style: 'width:100%' }) as HTMLInputElement;
       let q = o.quality;
@@ -548,8 +619,15 @@ export const UI = {
         h('h2', null, '선생님 화면'),
         h('div', { class: 'sec' }, h('h3', null, '띵커벨 보드 주소'), url, h('div', { class: 'muted', style: 'margin-top:6px;font-size:15px' }, '비워 두면 config.ts에 적은 주소를 써요. 보드는 손님 참여와 이미지 올리기를 허용해 주세요.')),
         h('div', { class: 'sec' }, h('h3', null, '화질'), qsel),
+        h('div', { class: 'sec' }, h('h3', null, 'AI 도우미 (업스테이지)'),
+          h('div', { class: 'muted', style: 'font-size:15px;margin-bottom:8px' }, '손님 맞춤 한마디, 고른 까닭 생각 도우미, 고운 말 검사에 써요. 학생 이름은 보내지 않아요. 인터넷이 없으면 저절로 원래대로 돌아가요.'),
+          aiSel, h('div', { style: 'margin-top:8px' }, aiUrl),
+          h('div', { class: 'actions', style: 'justify-content:flex-start;align-items:center;margin-top:8px' }, checkBtn, aiState)),
+        h('div', { class: 'sec' }, h('h3', null, '우리 반 요약'),
+          h('div', { class: 'muted', style: 'font-size:15px;margin-bottom:8px' }, '이 태블릿에 있는 모든 사장님 기록을 모아 정리해요. 수업 결과를 쓸 때 참고해 주세요.'),
+          sumBtn, sumBox),
         h('div', { class: 'sec' }, h('h3', null, '사장님 기록'), list),
-        h('div', { class: 'actions' }, h('button', { class: 'btn', onclick: () => { o.onSave(url.value.trim(), q); sfx.pop(); wrap.remove(); res(); } }, '저장하고 닫기'))));
+        h('div', { class: 'actions' }, h('button', { class: 'btn', onclick: () => { o.onSave(url.value.trim(), q, aiOn, aiUrl.value.trim()); sfx.pop(); wrap.remove(); res(); } }, '저장하고 닫기'))));
       mount(wrap);
     });
   },

@@ -1,7 +1,7 @@
 import { del, get, set } from 'idb-keyval';
 import type { Owner, RamenRecord } from '../data/types';
 
-export interface TeacherSettings { tinkerbell?: string; quality?: 'auto' | 'high' | 'mid' | 'low' }
+export interface TeacherSettings { tinkerbell?: string; quality?: 'auto' | 'high' | 'mid' | 'low'; ai?: boolean; aiUrl?: string }
 
 const safe = async <T>(p: Promise<T>, fallback: T): Promise<T> => { try { return await p; } catch (e) { console.warn('[db]', e); return fallback; } };
 
