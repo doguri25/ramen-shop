@@ -461,7 +461,8 @@ export class App {
       if (!cur || runs > cur.runs) m.set(num, { name, runs });
     };
     rows?.forEach((r) => put(r.num, r.name, r.runs));
-    owners.filter((o) => o.ev && o.ev.grade === grade && o.ev.cls === cls).forEach((o) => put(o.number, maskName(o.name), 1));
+    // 한 그릇도 안 끓인 판(가게 문만 연 판)은 들어온 번호로 치지 않아요
+    owners.filter((o) => o.ev && o.ev.grade === grade && o.ev.cls === cls && (o.ev.done || o.round > 0)).forEach((o) => put(o.number, maskName(o.name), 1));
     if (!rows && !m.size) return null;
     return { names: new Map([...m].map(([k, v]) => [k, v.name])), partial: !rows };
   }
@@ -509,6 +510,7 @@ export class App {
       const [owners, st] = await Promise.all([db.owners(), rank.status(w).then((r) => r ?? rank.status(w))]);
       busy.remove();
       let mine = owners.filter((o) => o.ev?.key === key).sort((a, b) => a.ev!.runNo - b.ev!.runNo);
+      const hereBefore = mine.length > 0; // 지우기 전에: 이 태블릿에 이 학생 이름으로 만든 판이 있었어요
       // 만들기만 하고 한 그릇도 안 끓인 판은 지우고 새로 셈해요
       for (const o of mine.filter((x) => !x.ev!.done && x.round === 0)) await db.deleteOwner(o.id);
       mine = mine.filter((x) => x.ev!.done || x.round > 0);
@@ -517,7 +519,7 @@ export class App {
       // 같은 학생인지는 이 학생 이름으로 쌓인 기록이 있는지로 봐요. 서버에 닿지 않으면 가린 이름끼리 견줘요
       if (takenBy && !asked) {
         asked = true;
-        const same = mine.length > 0 || (st ? st.status.runs > 0 : maskName(w.name) === takenBy);
+        const same = hereBefore || (st ? st.status.runs > 0 : maskName(w.name) === takenBy);
         if (!same && (await EV.dupe(w, takenBy)) === 'retry') return 'back';
       }
       const best = st?.status.best ?? this.localBest(mine);
@@ -545,18 +547,23 @@ export class App {
       // 판 끝: 마지막 그릇 기록을 보내 두고(늦어도 6초) 내 결과만 보여 줘요. 랭킹은 선생님 화면에서만 봐요
       const sent = await Promise.race([this.sending ?? Promise.resolve(null), sleep(6000).then(() => null)]);
       const ev = o.ev!;
-      // 별이 같으면 별 다섯 그릇이 많은 판, 그것도 같으면 먼저 한 판이 최고 기록이에요 (서버와 같은 기준)
-      const isBest = !best || best.runNo === ev.runNo || ev.total > best.total || (ev.total === best.total && ev.fives > best.fives);
-      // 지금까지 판 기록: 서버 기록 + 이 태블릿 기록 + 방금 끝낸 판
+      // 서버가 이미 세 판을 했다며 받지 않은 판은 기록에 남지 않아요
+      const lost = sent?.error === 'max_runs';
+      // 서버 답이 있으면 그게 가장 새 최고 기록이에요. 없으면 시작할 때 받아 둔 기록과 견줘요
+      // (별이 같으면 별 다섯 그릇이 많은 판, 그것도 같으면 먼저 한 판: 서버와 같은 기준)
+      const top = sent?.status?.best ?? best;
+      const isBest = !lost && (sent?.status?.best ? sent.status.best.runNo === ev.runNo
+        : !best || best.runNo === ev.runNo || ev.total > best.total || (ev.total === best.total && ev.fives > best.fives));
+      // 지금까지 판 기록: 서버 기록 + 이 태블릿 기록 + 방금 끝낸 판 (기록에 남은 판만)
       const runs = new Map<number, number>();
       (sent?.status?.list ?? st?.status.list ?? []).forEach((x) => runs.set(x.runNo, x.total));
       mine.forEach((x) => { if (!runs.has(x.ev!.runNo)) runs.set(x.ev!.runNo, x.ev!.total); });
-      runs.set(ev.runNo, ev.total);
+      if (!lost) runs.set(ev.runNo, ev.total);
       let cheer = true;
       for (;;) {
         const left = MAX_RUNS - Math.max(ev.runNo, sent?.status?.runs ?? 0, used.length + 1);
         const f = await EV.result({
-          who: w, runNo: ev.runNo, total: ev.total, fives: ev.fives, isBest, best: best ? { total: best.total, runNo: best.runNo } : null,
+          who: w, runNo: ev.runNo, total: ev.total, fives: ev.fives, isBest, lost, best: top ? { total: top.total, runNo: top.runNo } : null,
           runs: [...runs].map(([runNo, total]) => ({ runNo, total })), cheer,
           actions: [
             { id: 'home', label: '처음으로', kind: 'ghost' },
@@ -681,7 +688,7 @@ export class App {
         toast('저장했어요');
       },
       onDelete: async (ow) => { await db.deleteOwner(ow.id); toast(`${ow.name} 사장님 기록을 지웠어요`); },
-      rank: EVENT ? { open: () => this.teacherRanking(), hasKey: () => !!rank.savedKey(), forget: () => rank.saveKey('') } : undefined,
+      rank: EVENT ? { open: () => this.teacherRanking(), hasKey: () => rank.rememberedKey(), forget: () => rank.saveKey('') } : undefined,
     });
   }
 }

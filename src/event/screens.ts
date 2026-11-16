@@ -59,7 +59,9 @@ export const EV = {
         b.title = nm ? `${nm} (이미 들어왔어요)` : '';
         (b.querySelector('.who') as HTMLElement).textContent = nm ?? '';
       });
-      const loadRoster = async () => {
+      let pending: Promise<void> = Promise.resolve();
+      // 들어온 번호 불러오기 (도전 시작을 누르면 이게 끝날 때까지 기다려서 겹친 번호를 놓치지 않아요)
+      const loadRoster = () => (pending = (async () => {
         const my = ++seq;
         // 고른 학년·반은 바로 기억해요 (다음 친구가 같은 반이면 다시 누르지 않게)
         if (grade || cls) try { localStorage.setItem(LAST, JSON.stringify({ grade, cls })); } catch { /* 괜찮아요 */ }
@@ -73,7 +75,7 @@ export const EV = {
         legend.append(h('i', { class: 'dot' }), !m ? '기록 서버에 닿지 않아 들어온 번호를 보여 주지 못했어요.'
           : m.partial ? `기록 서버에 닿지 않아 이 기기에서 들어온 번호만 보여요 (${taken.size}명).`
             : taken.size ? `초록색 번호는 이미 들어온 친구예요 (${taken.size}명). 다시 할 때는 처음과 똑같은 이름을 써요.` : '아직 이 반에서 들어온 친구가 없어요.');
-      };
+      })());
       const warn = h('div', { class: 'name-warn' });
       const ok = h('button', { class: 'btn big', disabled: true }, '도전 시작') as HTMLButtonElement;
       // 지금까지 고른 것: 5학년 2반 3번 김민수
@@ -88,9 +90,16 @@ export const EV = {
         ok.disabled = !(grade && cls && num && NAME_RE.test(n));
       };
       name.addEventListener('input', () => check());
-      ok.addEventListener('click', () => {
+      ok.addEventListener('click', async () => {
         const n = name.value.replace(/\s+/g, '').normalize('NFC');
         if (ok.disabled) return;
+        // 이 반에서 들어온 번호를 아직 확인하는 중이면 끝날 때까지 기다려요 (겹친 번호를 놓치지 않게)
+        ok.disabled = true;
+        const label = ok.textContent;
+        ok.textContent = '확인하는 중…';
+        await pending.catch(() => { /* 못 불러와도 넘어가요 */ });
+        if (!wrap.isConnected) return;
+        ok.textContent = label;
         try { localStorage.setItem(LAST, JSON.stringify({ grade, cls })); } catch { /* 괜찮아요 */ }
         seq++; sfx.pop(); wrap.remove(); res({ who: { grade, cls, num, name: n }, takenBy: taken.get(num) ?? null });
       });
@@ -165,7 +174,7 @@ export const EV = {
 
   // ── 판 끝: 내 결과만 (다른 친구 기록과 등수는 보여 주지 않아요) ─────────────
   result<A extends string>(o: {
-    who: Who; runNo: number; total: number; fives: number; isBest: boolean; best: { total: number; runNo: number } | null;
+    who: Who; runNo: number; total: number; fives: number; isBest: boolean; lost?: boolean; best: { total: number; runNo: number } | null;
     runs: { runNo: number; total: number }[]; cheer?: boolean;
     actions: { id: A; label: string; kind?: 'main' | 'soft' | 'ghost' }[];
   }): Promise<A> {
@@ -181,9 +190,10 @@ export const EV = {
         h('div', { class: 'ev-score' },
           h('div', null, h('span', null, '이번 판 별'), h('b', null, `★ ${o.total}`), h('i', null, `/ ${ROUNDS * MAX_STARS}`)),
           h('div', null, h('span', null, '별 다섯 그릇'), h('b', null, `${o.fives}`), h('i', null, `/ ${ROUNDS}`)),
-          h('div', null, h('span', null, '내 최고 기록'), h('b', null, `★ ${o.isBest || !o.best ? o.total : o.best.total}`), h('i', null, o.isBest || !o.best ? '이번 판' : `${o.best.runNo}번째 판`))),
+          h('div', null, h('span', null, '내 최고 기록'), h('b', null, `★ ${o.isBest || !o.best ? (o.lost ? '-' : o.total) : o.best.total}`), h('i', null, o.isBest || !o.best ? (o.lost ? '' : '이번 판') : `${o.best.runNo}번째 판`))),
         runs,
-        h('p', { class: 'sub' }, o.isBest ? '지금까지 가장 잘한 판이에요! 이 별이 내 기록으로 남아요.' : `가장 잘한 판(★ ${o.best!.total})이 내 기록으로 남아 있어요.`),
+        h('p', { class: 'sub' }, o.lost ? `이 이름으로 이미 세 판을 해서 이번 판은 기록에 남지 않았어요.${o.best ? ` 가장 잘한 판(★ ${o.best.total})이 내 기록이에요.` : ''}`
+          : o.isBest ? '지금까지 가장 잘한 판이에요! 이 별이 내 기록으로 남아요.' : `가장 잘한 판(★ ${o.best!.total})이 내 기록으로 남아 있어요.`),
         h('div', { class: 'actions' }, o.actions.map((a) => h('button', { class: `btn ${a.kind === 'ghost' ? 'ghost small' : a.kind === 'soft' ? 'soft' : ''}`, onclick: () => { sfx.pop(); wrap.remove(); res(a.id); } }, a.label)))));
       mount(wrap);
       if (o.isBest && o.cheer) confetti();

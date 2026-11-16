@@ -26,6 +26,7 @@ export const keyOf = (w: Who) => `${w.grade}-${w.cls}-${w.num}-${w.name}`;
 export const BAND_NAME: Record<Band, string> = { '12': '1~2학년', '34': '3~4학년', '56': '5~6학년' };
 
 const Q = 'event-rank-queue';
+let memKey = ''; // 기억하지 않기로 한 랭킹 암호 (이 화면을 띄운 동안만)
 interface Item { who: Who; run: RunSend }
 // 모아 둔 기록은 메모리에도 들고 있어요. 브라우저 저장 공간이 꽉 차거나 막혀도 이번 접속 동안은 보내요
 let memQ: Record<string, Item> | null = null;
@@ -79,12 +80,15 @@ export const rank = {
     const r = await post<ClassBoard & { ok?: boolean; error?: string }>({ op: 'classes', by, key }, 9000);
     return r?.ok ? r : err(r);
   },
-  // 랭킹 암호: '이 기기에서 기억하기'를 고르면 남겨 두고, 아니면 이번 접속 동안만 써요
-  savedKey(): string { try { return localStorage.getItem(KEY) || sessionStorage.getItem(KEY) || ''; } catch { return ''; } },
+  // 랭킹 암호: '이 기기에서 기억하기'를 고르면 기기에 남기고, 아니면 메모리에만 둬요 (처음으로·새로 고침이면 잊어요)
+  savedKey(): string { try { return localStorage.getItem(KEY) || memKey; } catch { return memKey; } },
+  // 기기에 정말 기억해 둔 암호가 있는지 (선생님 화면 안내용)
+  rememberedKey(): boolean { try { return !!localStorage.getItem(KEY); } catch { return false; } },
   saveKey(k: string, remember = true) {
+    memKey = remember ? '' : k;
     try {
       localStorage.removeItem(KEY); sessionStorage.removeItem(KEY);
-      if (k) (remember ? localStorage : sessionStorage).setItem(KEY, k);
+      if (k && remember) localStorage.setItem(KEY, k);
     } catch { /* 이번만 써요 */ }
   },
   // 첫 화면에서 미리 한 번 불러 깨워 둬요 (오래 쉬던 서버가 처음 대답할 때 느려서)
