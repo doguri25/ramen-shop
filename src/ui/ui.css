@@ -490,3 +490,9 @@ body.cooking .prog .bar { display: none; }
   .heartnote .actions { bottom: -16px; margin-bottom: -16px; padding-bottom: 16px; }
   .name-sheet .actions { bottom: -12px; margin-bottom: -12px; padding-bottom: 12px; }
 }
+/* 도감: 라면마다 사진 저장 */
+.rwrap { position: relative; display: flex; }
+.rwrap > .rcard { flex: 1; min-width: 0; }
+.rsave { position: absolute; left: 16px; top: 16px; padding: 6px 10px; border: 0; border-radius: 999px; background: rgba(255,255,255,.94);
+  box-shadow: 0 1px 4px rgba(60,40,20,.18); font: inherit; font-size: 14px; font-weight: 700; color: var(--ink); cursor: pointer; }
+.rsave:active { transform: scale(.96); }

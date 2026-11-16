@@ -10,7 +10,7 @@ import type { ClassStats } from '../ai/solar';
 import type { ScoreResult } from '../game/scoring';
 import { pickedList } from '../game/scoring';
 import { drawCard, methodLines } from '../share/card';
-import { openTinkerbell, saveCard } from '../share/tinkerbell';
+import { openTinkerbell, saveCard, savePhoto } from '../share/tinkerbell';
 import { clues, confetti, h, ICON, iconBtn, longPress, richText, toast } from './dom';
 
 const root = () => document.getElementById('ui')!;
@@ -476,6 +476,16 @@ export const UI = {
       const sorted = recs.slice().sort((a, b) => b.createdAt - a.createdAt);
       const imgs = new Map<string, HTMLImageElement>();
       const done = (v: RamenRecord | null) => { el.remove(); res(v); };
+      // 라면 사진을 태블릿에 '라면이름.png'로 저장
+      let saving = false;
+      const savePic = async (r: RamenRecord, img: HTMLImageElement) => {
+        if (saving) return;
+        if (!img.src || !img.complete || !img.naturalWidth) { toast('사진을 불러오는 중이에요. 잠시 뒤에 다시 눌러 주세요'); return; }
+        saving = true; sfx.pop();
+        const ok = await savePhoto(img.src, r.name);
+        saving = false;
+        toast(ok ? `📷 '${r.name}' 사진을 태블릿 다운로드 폴더에 저장했어요` : '사진을 저장하지 못했어요. 다시 눌러 주세요');
+      };
       const render = () => {
         el.innerHTML = '';
         el.classList.toggle('choose', choosing);
@@ -495,14 +505,18 @@ export const UI = {
           let img = imgs.get(r.id);
           if (!img) { img = h('img', { alt: '' }) as HTMLImageElement; imgs.set(r.id, img); photo(r).then((u) => { img!.src = u; }); }
           const c = customer(r.customerId);
-          grid.append(h('button', { class: `rcard ${chosen?.id === r.id ? 'pick' : ''}`, onclick: () => { sfx.tap(); if (choosing) { chosen = r; render(); } else detail(r, img!.src); } },
-            img, r.heart ? heart('hrt') : null,
-            h('div', { class: 'nm' }, r.name),
-            h('div', { class: 'meta' }, h('span', null, c?.name ?? ''), h('span', { class: 'st' }, '★'.repeat(r.stars) + '☆'.repeat(3 - r.stars)))));
+          const im = img;
+          grid.append(h('div', { class: 'rwrap' },
+            h('button', { class: `rcard ${chosen?.id === r.id ? 'pick' : ''}`, onclick: () => { sfx.tap(); if (choosing) { chosen = r; render(); } else detail(r, im); } },
+              im, r.heart ? heart('hrt') : null,
+              h('div', { class: 'nm' }, r.name),
+              h('div', { class: 'meta' }, h('span', null, c?.name ?? ''), h('span', { class: 'st' }, '★'.repeat(r.stars) + '☆'.repeat(3 - r.stars)))),
+            choosing ? null : h('button', { class: 'rsave', 'aria-label': `${r.name} 사진 저장`, onclick: () => savePic(r, im) }, '📷 사진 저장')));
         }
         el.append(head, bar, grid);
       };
-      const detail = (r: RamenRecord, src: string) => {
+      const detail = (r: RamenRecord, im: HTMLImageElement) => {
+        const src = im.src;
         const c = customer(r.customerId);
         const wrap = h('div', { class: 'modal-wrap fade-in', onclick: (e: Event) => { if (e.target === wrap) wrap.remove(); } });
         wrap.append(h('div', { class: 'modal card pop-in' },
@@ -510,7 +524,9 @@ export const UI = {
             h('img', { src, style: 'width:180px;height:180px;border-radius:18px' }),
             h('div', { style: 'flex:1;min-width:220px' }, h('h2', null, r.name), h('div', { class: 'sub' }, `${c?.name ?? ''}에게 · ${'★'.repeat(r.stars)}${'☆'.repeat(3 - r.stars)}${r.heart ? ' · ❤️' : ''}`))),
           h('div', { class: 'steps' }, methodLines(r.picks).map((l, i) => h('div', null, h('b', null, `${i + 1}. `), l))),
-          h('div', { class: 'actions' }, h('button', { class: 'btn', onclick: () => { sfx.back(); wrap.remove(); } }, '닫기'))));
+          h('div', { class: 'actions' },
+            h('button', { class: 'btn ghost', onclick: () => savePic(r, im) }, '📷 사진 저장'),
+            h('button', { class: 'btn', onclick: () => { sfx.back(); wrap.remove(); } }, '닫기'))));
         el.append(wrap);
       };
       render();
@@ -551,10 +567,10 @@ export const UI = {
       const showSteps = (opened: boolean | null) => {
         status.innerHTML = '';
         if (opened === null) {
-          status.append(h('div', null, h('b', null, '올리는 방법 '), '① 아래 버튼을 누르면 카드 그림이 태블릿에 저장되고 띵커벨이 열려요. ② 띵커벨 보드에서 ＋ 를 누르고 ③ 사진 올리기에서 방금 저장한 ', h('b', null, '친구라면카드'), ' 그림을 골라요.'));
+          status.append(h('div', null, h('b', null, '올리는 방법 '), '① 아래 버튼을 누르면 카드 그림이 태블릿에 저장되고 띵커벨이 열려요. ② 띵커벨 보드에서 ＋ 를 누르고 ③ 사진 올리기에서 방금 저장한 ', h('b', null, `${o.rec.name}_카드`), ' 그림을 골라요.'));
           if (!o.tinkerbell) status.append(h('div', { class: 'muted', style: 'margin-top:6px' }, '선생님이 아직 띵커벨 주소를 넣지 않았어요. 지금은 카드 그림만 저장할 수 있어요.'));
         } else {
-          status.append(h('div', null, h('b', null, '✓ 카드 그림을 저장했어요! '), opened ? '띵커벨 탭에서 ＋ → 사진 올리기 → 친구라면카드 그림을 골라요.' : (o.tinkerbell ? '띵커벨이 열리지 않았다면 아래 "띵커벨 열기"를 눌러요.' : '갤러리나 다운로드 폴더에서 카드를 볼 수 있어요.')));
+          status.append(h('div', null, h('b', null, '✓ 카드 그림을 저장했어요! '), opened ? `띵커벨 탭에서 ＋ → 사진 올리기 → '${o.rec.name}_카드' 그림을 골라요.` : (o.tinkerbell ? '띵커벨이 열리지 않았다면 아래 "띵커벨 열기"를 눌러요.' : '갤러리나 다운로드 폴더에서 카드를 볼 수 있어요.')));
           status.append(h('div', { class: 'muted', style: 'margin-top:6px' }, '저장이 안 되면 오른쪽 카드 그림을 꾹 눌러 "이미지 다운로드"를 골라도 돼요.'));
           if (o.tinkerbell) status.append(h('div', { class: 'actions', style: 'justify-content:flex-start;margin-top:10px' }, h('button', { class: 'btn soft small', onclick: () => { sfx.tap(); if (!openTinkerbell(o.tinkerbell)) toast('팝업이 막혔어요. 주소창 오른쪽의 팝업 허용을 눌러 주세요.'); } }, '띵커벨 열기')));
         }
