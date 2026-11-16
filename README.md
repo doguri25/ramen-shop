@@ -33,7 +33,7 @@ Three.js + WebGL + GLSL + Canvas2D + Vite로 만들었어요. 빌드하면 `dist
 
 ## 선생님이 바꿀 곳: `src/config.ts`
 - `TINKERBELL_URL` : 띵커벨 보드 주소 (비워 두면 카드 저장만 돼요)
-- `TEACHER_PIN` : 교사 화면 암호 (기본 1234)
+- `TEACHER_PIN` : 교사 화면 암호 네 자리
 - `ROUNDS` : 대표 라면 카드를 만들 수 있게 되는 그릇 수 (기본 10)
 - `AI_URL` : AI 도우미 중계 서버 주소 (비워 두면 AI 없이 돌아가요)
 

@@ -5,7 +5,7 @@ import { EVENT } from './event/flag';
 // 띵커벨 보드 주소를 따옴표 안에 붙여 넣으세요. (비워 두면 카드 저장만 됩니다)
 export const TINKERBELL_URL = '';
 // 교사 화면 암호 (제목을 2초 동안 길게 누르면 나와요)
-export const TEACHER_PIN = '1234';
+export const TEACHER_PIN = '9027';
 // 대표 라면 카드를 만들 수 있게 되는 그릇 수
 export const ROUNDS = 10;
 // 만든이와 문의 연락처 (첫 화면 아래에 보여요)
