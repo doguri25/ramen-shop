@@ -498,7 +498,7 @@ body.cooking .prog .bar { display: none; }
 .rsave:active { transform: scale(.96); }
 /* 첫 화면 만든이 */
 /* 첫 화면 만든이·연락처: 흰 바탕 알약으로 또렷하게 */
-.credit { position: absolute; left: 50%; bottom: 14px; transform: translateX(-50%); display: inline-flex; align-items: center; flex-wrap: wrap; justify-content: center; gap: 4px 14px;
+.credit { position: relative; margin-top: 10px; display: inline-flex; align-items: center; flex-wrap: wrap; justify-content: center; gap: 4px 14px;
   max-width: calc(100vw - 24px); padding: 8px 18px; border-radius: 999px; background: rgba(255,255,255,.95); box-shadow: 0 2px 10px rgba(60,40,20,.14), 0 0 0 1.5px rgba(194,86,14,.18);
   font-size: 16px; color: var(--ink); white-space: nowrap; pointer-events: auto; user-select: text; -webkit-user-select: text; }
 .credit .cr-item { display: inline-flex; align-items: center; gap: 6px; }
@@ -507,12 +507,10 @@ body.cooking .prog .bar { display: none; }
 .credit b { font-weight: 800; color: var(--accent); }
 .credit .cr-mail { letter-spacing: .1px; }
 .credit .cr-sep { width: 1px; height: 16px; background: rgba(60,40,20,.2); }
-.scr-title { padding-bottom: calc(7vh + 44px); }
 /* 휴대폰처럼 낮은 화면: 오른쪽 위로 옮겨서 다른 버튼과 겹치지 않게 */
 @media (max-height: 520px) {
-  .credit { left: auto; right: 10px; top: 10px; bottom: auto; transform: none; padding: 6px 12px; font-size: 13.5px; gap: 2px 10px; }
+  .credit { position: absolute; margin: 0; right: 10px; top: 10px; padding: 6px 12px; font-size: 13.5px; gap: 2px 10px; }
   .credit .cr-k { font-size: 12px; } .credit .cr-ic { font-size: 13px; }
-  .scr-title { padding-bottom: 7vh; }
 }
 /* 좁은 세로 화면: 두 줄로 */
 @media (max-width: 480px) and (min-height: 521px) { .credit { border-radius: 18px; padding: 8px 14px; } .credit .cr-sep { display: none; } }
