@@ -3,7 +3,8 @@ import { blob, ctx2d, makeCanvas, seeded } from '../paint/brush';
 import { tex } from '../paint/textures';
 
 const cache = new Map<string, THREE.Texture>();
-const once = (k: string, make: () => HTMLCanvasElement) => { let t = cache.get(k); if (!t) { t = tex(make()); cache.set(k, t); } return t; };
+// 여러 물체가 같이 쓰는 그림이라 물체를 치울 때 지우지 않아요 (shared)
+const once = (k: string, make: () => HTMLCanvasElement) => { let t = cache.get(k); if (!t) { t = tex(make()); t.userData.shared = true; cache.set(k, t); } return t; };
 
 export const glowTex = () => once('glow', () => {
   const c = makeCanvas(128, 128), g = ctx2d(c);

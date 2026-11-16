@@ -168,6 +168,8 @@ export function makeShop() {
   const lampPivots: THREE.Group[] = [];
   for (const x of [-0.75, 0.75]) {
     const pv = group(root, [x, 3.04, -0.1]);
+    // 흔들리는 등은 조명 굽기에서 빼요. 넣으면 흔들린 만큼 지문이 달라져서 저장본을 한 번도 못 써요
+    pv.userData.noBake = true;
     lampPivots.push(pv);
     const l = group(pv, [0, -0.59, 0]);
     mesh(cylG(0.006, 0.006, 0.6, 4), M('#5A3A28'), [0, 0.35, 0], 1, [0, 0, 0], l);

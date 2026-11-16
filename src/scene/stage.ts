@@ -1007,8 +1007,11 @@ export class Stage {
     const surf = () => food.localToWorld(V(side * 0.07, Math.max(B.box.level(), B.box.mound() * 0.6) + 0.004, 0));
     // 냄비는 높고 커서 그릇처럼 숙여 내려다보면 얼굴이 냄비 속으로 들어가요. 몸은 조금만 숙이고, 냄비 위쪽을 바라봐요
     const pot = B.kind === 'pot';
-    const LEAN = pot ? 0.05 : 0.16;
-    const view = () => (pot ? surf().add(V(0, 0.1, 0)) : surf());
+    // 주둥이·부리가 긴 손님은 덜 숙이고, 조금 더 위를 보고, 음식을 주둥이 끝까지 가져가요
+    const R = ch.faceReach * sc;
+    const LEAN = (pot ? 0.05 : 0.16) * Math.max(0.15, 1 - R * 4);
+    const view = () => (pot ? surf().add(V(0, 0.1 + R * 0.6, 0)) : surf().add(V(0, R * 0.5, 0)));
+    ch.trunkCurl = 1;
     const noodles = food.getObjectByName('noodles');
     const p = this.served;
     const color = this.liquidColor(B.liquid);
@@ -1040,7 +1043,7 @@ export class Stage {
     };
     // 냄비는 테두리가 입 높이에 가까워요. 고개를 조금 더 들고 젓가락을 눕혀야 손이 냄비 속으로 내려가지 않아요
     const DOWN = V(-0.12, -1, 0.25).normalize(), MOUTH = pot ? V(-0.15, 0.3, -0.94).normalize() : V(-0.15, 0.62, -0.77).normalize();
-    const UP = pot ? 0.22 : 0.08;
+    const UP = (pot ? 0.22 : 0.08) + R * 0.6;
     const bites = noodles ? (B.shared ? 2 : 3) : 1;
     for (let b = 0; b < bites; b++) {
       ch.lean = LEAN;
@@ -1065,7 +1068,7 @@ export class Stage {
       await tween(0.8, (k) => {
         const e = ease.inOutCubic(k);
         const mouth = ch.mouthWorld();
-        placeTip(dipTip.clone().lerp(mouth.clone().add(V(0.02, -0.03, 0.07)), e), DOWN.clone().lerp(MOUTH, e));
+        placeTip(dipTip.clone().lerp(mouth.clone().add(V(0.02, -0.03, 0.07 + R)), e), DOWN.clone().lerp(MOUTH, e));
         ch.headExtra.x = -0.05 - UP * k;
         ch.lean = LEAN * (1 - 0.875 * k);
         bundle.hold(ch.chopTipWorld());
@@ -1103,7 +1106,7 @@ export class Stage {
       await tween(0.6, (k) => {
         const e = ease.inOutCubic(k);
         const mouth = ch.mouthWorld();
-        placeTip(tp.clone().lerp(mouth.clone().add(V(0.02, -0.02, 0.06)), e), DOWN.clone().lerp(MOUTH, e));
+        placeTip(tp.clone().lerp(mouth.clone().add(V(0.02, -0.02, 0.06 + R)), e), DOWN.clone().lerp(MOUTH, e));
         top.position.copy(ch.chopTipWorld()).add(V(0, -0.012, 0));
         ch.lean = LEAN * 0.875 * (1 - 0.857 * k);
         ch.headExtra.x = -0.05 - UP * k;
@@ -1118,8 +1121,9 @@ export class Stage {
     // 국물 마시기
     this.phase = 'drink';
     ch.showChop(false);
-    if (B.kind === 'pot') await this.sipWithSpoon(ch, B, side, placeTip, color, onSlurp);
-    else await this.drinkFrom(ch, B, onSlurp);
+    if (B.kind === 'pot') await this.sipWithSpoon(ch, B, side, placeTip, color, onSlurp, R);
+    else await this.drinkFrom(ch, B, onSlurp, R);
+    ch.trunkCurl = 0;
     food.children.forEach((c) => { if (c.name !== 'broth') c.visible = false; });
     B.steam.set(0.15);
     ch.manual = false;
@@ -1131,7 +1135,7 @@ export class Stage {
   }
 
   // 그릇을 두 손으로 들고 기울여 마셔요. 국물 면은 기울여도 수평이라 입 쪽 테두리로 모여요
-  private async drinkFrom(ch: Chibi, B: BowlInfo, onSlurp?: () => void) {
+  private async drinkFrom(ch: Chibi, B: BowlInfo, onSlurp?: () => void, R = 0) {
     const bowl = B.group;
     const home = bowl.position.clone();
     const hands = () => {
@@ -1144,7 +1148,9 @@ export class Stage {
     ch.lean = 0.12;
     await wait(0.35);
     const mouth0 = ch.mouthWorld();
-    const lift = mouth0.clone().add(pot ? V(0, -0.21, 0.27) : V(0, -0.15, 0.16));
+    // 주둥이가 길면 그릇을 더 앞, 조금 더 아래로 들고 고개를 덜 숙여요
+    const lift = mouth0.clone().add(pot ? V(0, -0.21, 0.27) : V(0, -0.15, 0.16)).add(V(0, -R * 0.5, R * 1.1));
+    const tilt = 0.3 * (1 - Math.min(0.7, R * 3));
     await tween(pot ? 0.75 : 0.55, (k) => { bowl.position.lerpVectors(home, lift, k); bowl.rotation.x = -0.15 * k; hands(); ch.lean = 0.12 - 0.2 * k; }, { ease: ease.inOutCubic });
     sfx.slurp();
     onSlurp?.();
@@ -1155,21 +1161,21 @@ export class Stage {
     await tween(1.1, (k) => {
       const s = Math.sin(k * PI * 0.5);
       bowl.rotation.x = -0.15 - tiltMax * s;
-      ch.headExtra.x = -0.3 * s;
+      ch.headExtra.x = -tilt * s;
       hands();
       if (L) L.level = lerp(L0, Lend, k);
       if (noodles && k > 0.5) noodles.visible = false;
     }, { ease: ease.linear });
     ch.chewing = false;
     const r0 = bowl.rotation.x;
-    await tween(0.55, (k) => { bowl.position.lerpVectors(lift, home, k); bowl.rotation.x = r0 * (1 - k); hands(); ch.headExtra.x = -0.3 * (1 - k); }, { ease: ease.inOutCubic });
+    await tween(0.55, (k) => { bowl.position.lerpVectors(lift, home, k); bowl.rotation.x = r0 * (1 - k); hands(); ch.headExtra.x = -tilt * (1 - k); }, { ease: ease.inOutCubic });
     bowl.rotation.x = 0;
     sfx.soft();
     L?.kick(0, -0.2);
   }
 
   // 뜨거운 냄비는 들지 않고 숟가락으로 떠 마셔요
-  private async sipWithSpoon(ch: Chibi, B: BowlInfo, side: number, placeTip: (tip: THREE.Vector3, aim: THREE.Vector3, reach?: number) => void, color: string, onSlurp?: () => void) {
+  private async sipWithSpoon(ch: Chibi, B: BowlInfo, side: number, placeTip: (tip: THREE.Vector3, aim: THREE.Vector3, reach?: number) => void, color: string, onSlurp?: () => void, R = 0) {
     const spoon = makeSpoon();
     ch.arms[1].hand.add(spoon);
     const sl = spoon.getObjectByName('liquid') as THREE.Mesh;
@@ -1180,7 +1186,8 @@ export class Stage {
     const DOWN = V(-0.1, -1, 0.3).normalize(), MOUTH = V(-0.15, 0.3, -0.94).normalize();
     for (let i = 0; i < 2; i++) {
       const s = B.food.localToWorld(V(side * 0.09 + (Math.random() - 0.5) * 0.03, (L ? L.level : 0) + 0.002, 0.04));
-      ch.lean = 0.05; ch.look = s.clone().add(V(0, 0.1, 0)); ch.headExtra.x = -0.05;
+      const lean = 0.05 * Math.max(0.15, 1 - R * 4);
+      ch.lean = lean; ch.look = s.clone().add(V(0, 0.1 + R * 0.6, 0)); ch.headExtra.x = -0.05;
       placeTip(s, DOWN, 0.2);
       await wait(0.45);
       sl.visible = true;
@@ -1189,8 +1196,8 @@ export class Stage {
       ch.look = null;
       await tween(0.6, (k) => {
         const e = ease.inOutCubic(k);
-        placeTip(s.clone().lerp(ch.mouthWorld().add(V(0.02, -0.02, 0.06)), e), DOWN.clone().lerp(MOUTH, e), 0.2);
-        ch.lean = 0.05 * (1 - 0.875 * k); ch.headExtra.x = -0.05 - 0.22 * k;
+        placeTip(s.clone().lerp(ch.mouthWorld().add(V(0.02, -0.02, 0.06 + R)), e), DOWN.clone().lerp(MOUTH, e), 0.2);
+        ch.lean = lean * (1 - 0.875 * k); ch.headExtra.x = -0.05 - (0.22 + R * 0.6) * k;
       }, { ease: ease.linear });
       sfx.slurp();
       onSlurp?.();

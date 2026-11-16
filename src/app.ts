@@ -48,6 +48,7 @@ export class App {
   probe!: QualityProbe;
   private last = 0;
   private running = true;
+  private ctxLost = false;
   private raf = 0; // 그리기 예약 번호 (탭을 다시 열 때 겹치지 않게)
   private photoUrls = new Map<string, string>();
   inRound = false;
@@ -85,10 +86,16 @@ export class App {
       this.thumbs.set(ing.id, this.stage.thumb(ing, 192).toDataURL('image/webp', 0.9));
       if (++i % 6 === 0) { setStatus(`재료를 그리는 중… ${i}/${INGREDIENTS.length}`); await new Promise((r) => setTimeout(r, 0)); }
     }
-    canvas.addEventListener('webglcontextlost', (e) => { e.preventDefault(); this.running = false; toast('화면을 다시 그리는 중이에요…'); });
+    // 그래픽이 잠깐 끊기면 멈춰 두고, 다시 살아나면 새로 열어요. 6초가 지나도 안 살아나면(아이패드에서 흔해요) 그냥 새로 열어요
+    // 판 기록은 그릇마다 저장해 두어서 새로 열어도 이어서 할 수 있어요
+    canvas.addEventListener('webglcontextlost', (e) => {
+      e.preventDefault(); this.ctxLost = true; this.running = false; toast('화면을 다시 그리는 중이에요…', 6000);
+      setTimeout(() => { if (this.ctxLost && !document.hidden) location.reload(); }, 6000);
+    });
     canvas.addEventListener('webglcontextrestored', () => location.reload());
     document.addEventListener('visibilitychange', () => {
       if (document.hidden) { this.running = false; suspendAudio(); window.speechSynthesis?.cancel(); }
+      else if (this.ctxLost) location.reload();
       else { this.running = true; this.last = performance.now(); resumeAudio(); cancelAnimationFrame(this.raf); this.raf = requestAnimationFrame(this.loop); }
     });
     window.addEventListener('pointerdown', () => unlockAudio(), { capture: true });
@@ -117,19 +124,25 @@ export class App {
     this.stage.resize(window.innerWidth, window.innerHeight);
   }
 
+  private loopErrors = 0;
   private loop = (t: number) => {
     if (!this.running) return;
+    // 다음 장면을 먼저 예약해요. 한 장면에서 문제가 나도 게임이 얼어붙지 않게요
+    this.raf = requestAnimationFrame(this.loop);
     const raw = Math.min(0.1, Math.max(0, (t - this.last) / 1000));
     this.last = t;
     const dt = raw * this.timeScale;
-    updateTweens(dt);
-    shared.uTime.value += dt;
-    this.stage.update(dt);
-    const d = this.stage.dof;
-    this.wcr.setDof(d.focus, d.range, d.amount);
-    this.wcr.render(this.stage.scene, this.stage.cam);
-    this.probe.sample(raw);
-    this.raf = requestAnimationFrame(this.loop);
+    try {
+      updateTweens(dt);
+      shared.uTime.value += dt;
+      this.stage.update(dt);
+      const d = this.stage.dof;
+      this.wcr.setDof(d.focus, d.range, d.amount);
+      this.wcr.render(this.stage.scene, this.stage.cam);
+      this.probe.sample(raw);
+    } catch (e) {
+      if (this.loopErrors++ < 5) console.error('[loop]', e);
+    }
   };
 
   // ── 흐름 ─────────────────────────────
@@ -352,8 +365,9 @@ export class App {
         saved = true;
         rec = { id: uid(), ownerId: o.id, round: o.round, customerId: c.id, picks, name, stars: shown, heart, photoKey: '', createdAt: Date.now() };
         rec.photoKey = rec.id;
-        const photo = this.stage.photo(picks, 512);
-        const blob = await new Promise<Blob | null>((res) => photo.toBlob(res, 'image/webp', 0.86));
+        // 그래픽이 끊긴 동안 찍으면 빈 사진이 돼서 그때는 사진을 건너뛰어요
+        const photo = this.ctxLost ? null : this.stage.photo(picks, 512);
+        const blob = photo ? await new Promise<Blob | null>((res) => photo.toBlob(res, 'image/webp', 0.86)) : null;
         if (blob) await db.savePhoto(rec.photoKey, blob);
         this.records.push(rec);
         const ok = await db.saveRecords(o.id, this.records);
@@ -634,7 +648,8 @@ export class App {
         this.teacher = { tinkerbell: url || undefined, quality: q as TeacherSettings['quality'], ai: aiOn, aiUrl: aiUrl || undefined };
         ai.configure(this.teacher.aiUrl, aiOn);
         db.saveTeacher(this.teacher);
-        if (q !== 'auto') { const t = q as Tier; this.wcr.setTier(TIERS[t]); PHYS.iters = t === 'low' ? 6 : t === 'mid' ? 8 : 10; }
+        // 선생님이 화질을 고정하면 자동 측정이 나중에 바꾸지 않게 멈춰요
+        if (q !== 'auto') { const t = q as Tier; this.wcr.setTier(TIERS[t]); PHYS.iters = t === 'low' ? 6 : t === 'mid' ? 8 : 10; this.probe.done = true; }
         toast('저장했어요');
       },
       onDelete: async (ow) => { await db.deleteOwner(ow.id); toast(`${ow.name} 사장님 기록을 지웠어요`); },

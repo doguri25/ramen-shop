@@ -70,6 +70,11 @@ export class Chibi {
   tail: THREE.Object3D | null = null;
   beak: THREE.Object3D | null = null;
   trunk: THREE.Object3D | null = null;
+  // 머리 앞으로 튀어나온 주둥이·부리·코 길이 (먹을 때 그릇·냄비에 박히지 않게 자세를 고쳐요)
+  faceReach = 0;
+  // 코끼리가 먹는 동안 코를 옆으로 걷어 둬요 (0~1)
+  trunkCurl = 0;
+  private trunkNow = 0;
   eyeTex: THREE.Texture;
   mouthTex: THREE.Texture | null = null;
   mood: Mood = 'neutral';
@@ -181,6 +186,11 @@ export class Chibi {
     const noseOnly: ChibiSpec['kind'][] = ['rabbit', 'cat', 'hamster', 'human', 'monkey', 'mole', 'pig', 'sheep', 'turtle', 'frog', 'panda', 'seal', 'sloth', 'bee', 'axolotl', 'gorilla', 'shark', 'bat'];
     const beakKinds: ChibiSpec['kind'][] = ['duck', 'chick', 'penguin', 'owl', 'parrot', 'sparrow', 'crow', 'peacock', 'rooster', 'eagle', 'pelican'];
 
+    if (sn) this.faceReach = Math.max(0, sn.z + sn.r * sn.sz - HR);
+    else if (s.kind === 'pelican') this.faceReach = 0.3;
+    else if (s.kind === 'duck') this.faceReach = 0.08;
+    else if (beakKinds.includes(s.kind)) this.faceReach = 0.05;
+    else if (s.kind === 'elephant') this.faceReach = 0.18;
     if (sn) {
       const snout = mesh(sphereG(sn.r, 20, 14), M(sn.col ?? fur2), [0, sn.y, sn.z], [sn.sx, sn.sy, sn.sz], [0, 0, 0], this.head);
       // 코
@@ -916,6 +926,12 @@ export class Chibi {
       if (this.beak) this.beak.scale.y = (this.spec.kind === 'duck' ? 0.05 : 1) * (open ? 1.5 : 1);
       if (this.trunk) this.trunk.rotation.x = Math.sin(this.talkT * 9) * 0.08;
     } else if (this.mouthTex) setCell(this.mouthTex, false, mo);
+    // 말하지 않을 때는 부리·코를 닫아 둬요 (벌린 채로 먹지 않게)
+    this.trunkNow += (this.trunkCurl - this.trunkNow) * Math.min(1, dt * 6);
+    if (this.chewing || !this.talking) {
+      if (this.beak) this.beak.scale.y = this.spec.kind === 'duck' ? 0.05 : 1;
+      if (this.trunk) { this.trunk.rotation.x = -0.35 * this.trunkNow; this.trunk.rotation.z = -0.9 * this.trunkNow; }
+    }
 
     // 걷기
     if (this.walking > 0) this.walkPhase += dt * 11;

@@ -52,7 +52,8 @@ export function disposeTree(o: THREE.Object3D) {
     const mats = (m as any).material ? (Array.isArray((m as any).material) ? (m as any).material : [(m as any).material]) : [];
     for (const mat of mats as THREE.Material[]) {
       if (shared.has(mat)) continue;
-      if ((mat as THREE.MeshBasicMaterial).isMeshBasicMaterial && (mat as THREE.MeshBasicMaterial).map) (mat as THREE.MeshBasicMaterial).map!.dispose();
+      const map = (mat as THREE.MeshBasicMaterial).isMeshBasicMaterial ? (mat as THREE.MeshBasicMaterial).map : null;
+      if (map && !map.userData.shared) map.dispose();
       mat.dispose();
     }
   });

@@ -189,6 +189,8 @@ function fadeIn(sec = 1.6) {
 
 export async function bakeLighting(root: THREE.Object3D, o: BakeOpts): Promise<{ verts: number; ms: number; cached: boolean; key: string } | null> {
   const t0 = performance.now();
+  // 일꾼(Worker)을 못 쓰는 기기에서는 굽지 않아요 (모양만 잘게 나눠 놓고 못 굽는 일이 없게)
+  if (typeof Worker === 'undefined') return null;
   root.updateMatrixWorld(true);
   // 1) 고르기: 받는 면(수채 재질, 불투명, 빛나지 않음)과 가리는 면
   const picked: Picked[] = [];
