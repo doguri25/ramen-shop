@@ -140,7 +140,7 @@ export class App {
     {
       UI.clearAll();
       this.stage.setView('wide', 0);
-      await UI.title(() => this.openTeacher());
+      await UI.title(() => this.openTeacher(), ai.url ? { on: ai.ready, check: () => ai.check() } : undefined);
       unlockAudio();
       await this.chooseOwner();
       if (!this.owner!.tutorialDone) {

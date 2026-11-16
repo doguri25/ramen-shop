@@ -63,6 +63,7 @@ export const ai = {
         need: fx?.name ?? '',
         style: [c.greet, ...c.reactions[stars]].map(plain).filter((l) => l).slice(0, 3),
       },
+      said: plain(c.reactions[stars][0] ?? ''), // 바로 앞에 한 말 (되풀이하지 않게)
       stars, ramen: name, ingredients: pickedList(picks).map((i) => i.name),
     }, 25000);
     return okLine(r?.text, 90);

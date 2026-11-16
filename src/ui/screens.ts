@@ -14,6 +14,18 @@ import { openTinkerbell, saveCard } from '../share/tinkerbell';
 import { clues, confetti, h, ICON, iconBtn, longPress, richText, toast } from './dom';
 
 const root = () => document.getElementById('ui')!;
+export interface AiInfo { on: boolean; check: () => Promise<'ok' | 'nokey' | 'fail'> }
+// 업스테이지 AI가 쓰이는 네 곳 (첫 화면 띠와 안내 창에 같이 써요)
+const AI_USES = [
+  { icon: '🍜', short: '손님 맞춤 한마디', title: '손님 맞춤 한마디', where: '손님이 라면을 다 먹은 뒤', model: 'Solar Mini 4',
+    desc: '손님이 내가 지은 라면 이름이나 넣은 재료를 콕 집어서 한마디를 더 해 줘요. 같은 손님이라도 사장님마다 다른 말을 들어요.' },
+  { icon: '💡', short: '생각 도우미', title: '고른 까닭 생각 도우미', where: '레시피 카드 만들기', model: 'Solar Mini 4',
+    desc: '대표 라면을 고른 까닭을 쓸 때, 글을 대신 써 주지 않고 더 생각해 볼 수 있는 질문을 하나 건네요.' },
+  { icon: '🌱', short: '고운 말 검사', title: '고운 말 검사', where: '라면 이름 짓기', model: 'Solar Mini 4',
+    desc: '직접 지은 라면 이름이 손님 마음을 다치게 하지 않는지 한 번 더 살피고, 고칠 점을 부드럽게 알려 줘요.' },
+  { icon: '📊', short: '우리 반 요약', title: '우리 반 요약', where: '선생님 화면', model: 'Solar Pro 4',
+    desc: '우리 반이 끓인 라면 기록(별, 하트 도장, 많이 맞힌 마음)을 숫자와 짧은 글로 정리해 수업 기록에 보탬이 돼요.' },
+];
 // 별 두 개일 때: 무엇이 모자랐는지 콕 집어 알려 줘요
 const starHint = (r: ScoreResult, fxName: string, famName: string, subName: string) =>
   !r.exact ? `💡 '${fxName}' 마음이 담긴 재료를 하나 넣어 보세요. 별 세 개에 가까워져요!`
@@ -52,15 +64,59 @@ export const UI = {
   clearAll() { root().innerHTML = ''; },
 
   // ── 제목 ───────────────────────────────
-  title(onTeacher: () => void): Promise<void> {
+  title(onTeacher: () => void, ai?: AiInfo): Promise<void> {
     return new Promise((res) => {
       const logo = h('div', { class: 'logo pop-in' },
         h('div', { class: 'l1' }, '마음을 채워 주는'),
         h('div', { class: 'l2' }, '후루룩 친구라면 가게'),
         h('div', { class: 'l3' }, '손님 이야기를 듣고, 꼭 맞는 라면을 끓여 주세요'));
       longPress(logo, 2000, () => { sfx.tap(); onTeacher(); });
+      // 업스테이지 AI가 어디에 쓰였는지 첫 화면에서 바로 보여요 (누르면 자세히)
+      const aiStrip = ai ? h('button', { class: 'ai-strip fade-in', onclick: () => { sfx.tap(); UI.aiInfo(ai); } },
+        h('span', { class: 'ai-badge' }, h('span', { class: 'spark' }, '✦'), 'Upstage Solar AI'),
+        h('span', { class: 'ai-feats' }, AI_USES.map((u) => h('span', { class: 'ai-chip' }, u.icon + ' ' + u.short))),
+        h('span', { class: 'ai-more' }, '어떻게 쓰였나요? ›')) : null;
       const el = mount(h('div', { class: 'scr-title' }, logo,
-        h('button', { class: 'btn big pulse', onclick: () => { sfx.pop(); el.remove(); res(); } }, '가게 문 열기')));
+        h('button', { class: 'btn big pulse', onclick: () => { sfx.pop(); el.remove(); res(); } }, '가게 문 열기'), aiStrip));
+    });
+  },
+
+  // ── 업스테이지 AI 활용 안내 ───────────────────
+  aiInfo(ai: AiInfo): Promise<void> {
+    return new Promise((res) => {
+      const wrap = h('div', { class: 'modal-wrap fade-in' });
+      const state = h('div', { class: 'ai-state' }, h('i', { class: 'dot wait' }), ai.on ? 'AI 연결을 확인하는 중…' : '선생님이 AI를 꺼 두었어요. 지금은 AI 없이 돌아가요.');
+      if (ai.on) ai.check().then((r) => {
+        state.innerHTML = '';
+        const [cls, msg] = r === 'ok' ? ['ok', 'AI가 연결돼 있어요'] : r === 'nokey' ? ['wait', '중계 서버는 켜져 있지만 아직 AI 키가 없어요'] : ['off', '지금은 인터넷이 닿지 않아 AI 없이 돌아가요'];
+        state.append(h('i', { class: `dot ${cls}` }), msg);
+      });
+      const close = () => { sfx.back(); wrap.remove(); res(); };
+      wrap.addEventListener('click', (e) => { if (e.target === wrap) close(); });
+      wrap.appendChild(h('div', { class: 'modal card pop-in ai-info' },
+        h('div', { class: 'ai-head' },
+          h('span', { class: 'ai-badge' }, h('span', { class: 'spark' }, '✦'), 'Upstage Solar AI'),
+          h('h2', null, '업스테이지 AI는 이렇게 쓰여요'),
+          h('p', { class: 'sub' }, '한국어를 잘하는 업스테이지의 Solar 모델이 네 군데에서 사장님과 선생님을 도와요.'),
+          state),
+        h('div', { class: 'ai-grid' }, AI_USES.map((u) => h('div', { class: 'ai-card' },
+          h('div', { class: 'ai-ic' }, u.icon),
+          h('div', null,
+            h('h3', null, u.title),
+            h('p', null, u.desc),
+            h('div', { class: 'ai-meta' }, h('span', null, '📍 ' + u.where), h('span', null, u.model)))))),
+        h('div', { class: 'ai-flow' },
+          h('span', null, '📱 태블릿'), h('b', null, '→'), h('span', null, '🔒 중계 서버 (버셀)'), h('b', null, '→'), h('span', null, '✦ 업스테이지 Solar')),
+        h('div', { class: 'ai-safe' },
+          h('h3', null, '이렇게 지켜요'),
+          h('ul', null,
+            h('li', null, '학생 이름과 번호는 보내지 않아요. 라면 이름, 넣은 재료, 고른 까닭 글만 보내요.'),
+            h('li', null, 'AI 키는 태블릿이 아닌 중계 서버에만 있어서 밖으로 드러나지 않아요.'),
+            h('li', null, '정해진 네 가지 일만 부탁할 수 있고, 중계 서버는 주고받은 글을 저장하지 않아요.'),
+            h('li', null, 'AI는 글을 대신 써 주지 않아요. 생각을 넓히는 질문만 건네요.'),
+            h('li', null, '인터넷이 끊기거나 답이 늦으면 AI 없이 원래 게임대로 이어져요.'))),
+        h('div', { class: 'actions' }, h('button', { class: 'btn', onclick: close }, '알겠어요'))));
+      mount(wrap);
     });
   },
 
