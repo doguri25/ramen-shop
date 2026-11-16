@@ -40,7 +40,7 @@ const TASKS = {
     const stars = int(d.stars, 1, 3);
     const mood = { 1: '고맙지만 마음이 아직 다 풀리지는 않았어요.', 2: '마음이 꽤 가벼워졌어요.', 3: '마음이 활짝 풀렸어요.' }[stars];
     return {
-      model: FAST, max: 800, temp: 0.8,
+      model: FAST, max: 2500, temp: 0.8,
       system: [
         `너는 동네 라면 가게에 온 손님 "${name}"이야. 방금 학생 사장님이 끓여 준 라면을 다 먹었어.`,
         `네 고민: ${str(c.story, 300)}`,
@@ -60,7 +60,7 @@ const TASKS = {
     if (!ramen) return null;
     const reason = str(d.reason, 80);
     return {
-      model: FAST, max: 700, temp: 0.7,
+      model: FAST, max: 2500, temp: 0.7,
       system: [
         '너는 초등학교 3학년 학생의 글쓰기를 돕는 다정한 선생님이야.',
         '학생은 자기가 끓인 친구라면을 대표 라면으로 고르고, 그 까닭을 "…때문이에요."로 끝나는 한 문장으로 쓰는 중이야.',
@@ -78,7 +78,7 @@ const TASKS = {
     const name = str(d.name, 30);
     if (!name) return null;
     return {
-      model: FAST, max: 700, temp: 0,
+      model: FAST, max: 2500, temp: 0,
       system: [
         '너는 초등학교 3학년 교실 게임의 말 검사 도우미야. 학생이 지은 라면 이름을 손님에게 그대로 들려줘도 되는지 판단해.',
         '안 되는 경우: 욕설이나 비속어(초성·변형 포함), 놀림·비하·외모 평가, 성적인 말, 폭력·죽음, 특정 친구나 실제 사람을 놀리는 말, 유행하는 혐오 표현.',
@@ -107,7 +107,7 @@ const TASKS = {
       라면_이름_예: strs(s.names, 30, 30),
     };
     return {
-      model: SMART, max: 1800, temp: 0.4,
+      model: SMART, max: 4000, temp: 0.4,
       system: [
         '너는 초등학교 3학년 담임 선생님을 돕는 조수야. 마음 건강 수업 게임 「후루룩 친구라면 가게」 기록을 보고 선생님이 수업 결과를 정리할 때 참고할 요약을 써.',
         '손님마다 꼭 필요한 마음이 있고, 학생은 재료를 골라 라면을 끓인 뒤 이름을 지어 줘. 별 셋은 필요한 마음을 잘 맞힌 것, 하트 도장은 라면 이름에 손님 마음 낱말을 넣은 것이야.',
@@ -122,14 +122,18 @@ const TASKS = {
 };
 
 // ── 업스테이지 부르기 ─────────────────────────────
+// Solar 4는 먼저 생각(추론)한 뒤에 답해요. 짧은 대사에는 생각이 길 필요가 없어서
+// 가장 짧게 생각하는 세기부터 시도하고, 모델이 모르는 값이면 다음 값으로 넘어가요. 통한 값은 기억해요.
+const EFFORTS = (process.env.REASONING || 'none,minimal,low').split(',').map((s) => s.trim()).filter(Boolean);
+let effortAt = 0;
 async function solar(job, key) {
   const body = {
     model: job.model,
     messages: [{ role: 'system', content: job.system }, { role: 'user', content: job.user }],
-    max_tokens: job.max, // 추론 글자도 여기에 들어가서 넉넉히 줘요
+    max_tokens: job.max, // 생각하는 글자도 여기에 들어가서 넉넉히 줘요
     temperature: job.temp,
-    reasoning_effort: 'low',
   };
+  if (effortAt < EFFORTS.length) body.reasoning_effort = EFFORTS[effortAt];
   if (job.out === 'json') body.response_format = { type: 'json_schema', json_schema: job.schema };
   const go = async (b) => {
     const ac = new AbortController();
@@ -139,11 +143,12 @@ async function solar(job, key) {
     } finally { clearTimeout(tm); }
   };
   let r = await go(body);
-  // 모델이 추론 세기나 구조화 출력을 모르면 빼고 한 번 더
-  if (r.status === 400) {
+  for (let tries = 0; r.status === 400 && tries < 4; tries++) {
     const t = await r.text();
-    if (/reasoning/i.test(t)) delete body.reasoning_effort;
-    else if (/response_format|json_schema/i.test(t) && body.response_format) body.response_format = { type: 'json_object' };
+    if (/reasoning/i.test(t) && 'reasoning_effort' in body) {
+      effortAt++;
+      if (effortAt < EFFORTS.length) body.reasoning_effort = EFFORTS[effortAt]; else delete body.reasoning_effort;
+    } else if (/response_format|json_schema/i.test(t) && body.response_format?.type === 'json_schema') body.response_format = { type: 'json_object' };
     else return { error: 'upstage_400', detail: t.slice(0, 200) };
     r = await go(body);
   }
@@ -151,9 +156,10 @@ async function solar(job, key) {
   const j = await r.json();
   const ch = j.choices?.[0] ?? {};
   const text = (ch.message?.content ?? '').trim();
+  const think = j.usage?.completion_tokens_details?.reasoning_tokens ?? null;
   // 빈 답일 때 원인을 볼 수 있게 (키나 글 내용은 넣지 않아요)
-  const why = text ? null : { finish: ch.finish_reason ?? null, usage: j.usage ?? null, fields: Object.keys(ch.message ?? {}) };
-  return { text, why };
+  const why = text ? null : { finish: ch.finish_reason ?? null, usage: j.usage ?? null, effort: body.reasoning_effort ?? null };
+  return { text, why, think, effort: body.reasoning_effort ?? null };
 }
 
 // 대사 한 줄 다듬기: 줄을 이어 붙이고, 통째로 감싼 따옴표만 벗기고, 짝이 안 맞는 따옴표는 지워요
@@ -223,11 +229,11 @@ export default async function handler(req) {
       let v = null;
       try { v = JSON.parse(r.text); } catch { const m = r.text.match(/\{[\s\S]*\}/); if (m) try { v = JSON.parse(m[0]); } catch { /* 아래에서 처리 */ } }
       if (!v || typeof v.ok !== 'boolean') return json({ error: 'bad_reply' }, 502, h);
-      return json({ ok: v.ok, why: tidyLine(String(v.why || ''), 60) }, 200, h);
+      return json({ ok: v.ok, why: tidyLine(String(v.why || ''), 60), think: r.think, effort: r.effort }, 200, h);
     }
     const text = job.out === 'line' ? tidyLine(r.text, 90) : r.text.replace(/[*#`]/g, '').slice(0, 1500);
     if (!text) { console.log('empty reply', d.task, JSON.stringify(r.why)); return json({ error: 'empty', why: r.why }, 502, h); }
-    return json({ text }, 200, h);
+    return json({ text, think: r.think, effort: r.effort }, 200, h);
   } catch (e) {
     return json({ error: e?.name === 'AbortError' ? 'timeout' : 'fail' }, 504, h);
   }
