@@ -54,7 +54,7 @@
 2. Network Access에 `0.0.0.0/0`을 넣어요. 버셀 함수는 부를 때마다 인터넷 주소가 바뀌어서 주소 하나만 허락할 수 없어요.
 3. Atlas의 Connect → Drivers에서 연결 문자열(`mongodb+srv://…`)을 복사해 비밀번호 자리를 채워요.
 4. vercel.com → `ramen-ai` → Settings → Environment Variables에 Key `MONGODB_URI`, Value에 연결 문자열을 넣어요(Production).
-5. 같은 곳에 Key `RANK_ADMIN_KEY`, Value에 선생님만 아는 랭킹 암호를 넣어요(Production). 게임의 선생님 화면 → 랭킹 보기에서 이 암호를 한 번 넣으면 그 기기가 기억해요.
+5. 같은 곳에 Key `RANK_ADMIN_KEY`, Value에 선생님만 아는 랭킹 암호를 넣어요(Production). 게임의 선생님 화면 → 랭킹 보기에서 이 암호를 넣을 때 '이 기기에서 기억하기'를 켜 두면 그 기기가 기억해요. 학생에게 돌려주는 반 명단(roster)은 번호와 가린 이름(김○○), 판 수만 담아요.
 6. Deployments 탭에서 맨 위 배포의 ⋯ → Redeploy
 
 | 이름 | 기본값 | 뜻 |
