@@ -3,6 +3,8 @@
 『라면 먹는 개』 마음건강 수업용 1인칭 수채화풍 3D 라면 가게 게임입니다.
 Three.js + WebGL + GLSL + Canvas2D + Vite로 만들었어요. 빌드하면 `dist` 폴더 하나에 게임 전체가 들어 있어요.
 
+만든이: 도구리 · 문의: [raccoon@ai.cne.go.kr](mailto:raccoon@ai.cne.go.kr)
+
 ### ✦ 업스테이지 Solar AI 활용
 | 쓰는 곳 | 하는 일 | 모델 |
 | --- | --- | --- |

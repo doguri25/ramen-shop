@@ -1,4 +1,4 @@
-import { ROUNDS } from '../config';
+import { CREDIT, ROUNDS } from '../config';
 import { eulReul } from '../core/korean';
 import { sfx } from '../core/sound';
 import { FAMILY, FX } from '../data/effects';
@@ -77,7 +77,8 @@ export const UI = {
         h('span', { class: 'ai-feats' }, AI_USES.map((u) => h('span', { class: 'ai-chip' }, u.icon + ' ' + u.short))),
         h('span', { class: 'ai-more' }, '어떻게 쓰였나요? ›')) : null;
       const el = mount(h('div', { class: 'scr-title' }, logo,
-        h('button', { class: 'btn big pulse', onclick: () => { sfx.pop(); el.remove(); res(); } }, '가게 문 열기'), aiStrip));
+        h('button', { class: 'btn big pulse', onclick: () => { sfx.pop(); el.remove(); res(); } }, '가게 문 열기'), aiStrip,
+        h('div', { class: 'credit' }, `만든이 ${CREDIT.name}`, h('span', { class: 'sep' }, '·'), `문의 ${CREDIT.contact}`)));
     });
   },
 
