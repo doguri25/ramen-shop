@@ -1,7 +1,7 @@
 import { AI_URL, MAX_RUNS, ROUNDS, TEACHER_PIN, TINKERBELL_URL } from './config';
 import { ai, classStats } from './ai/solar';
 import { eulReul } from './core/korean';
-import { hashStr, mulberry32, uid } from './core/rng';
+import { hashStr, mulberry32, shuffle, uid } from './core/rng';
 import { resumeAudio, setSound, setTts, sfx, speak, suspendAudio, ttsEnabled, unlockAudio, soundOn } from './core/sound';
 import { updateTweens, wait } from './core/tween';
 import { CUS, CUSTOMERS, TUTORIAL } from './data/customers';
@@ -29,8 +29,8 @@ import { UI } from './ui/screens';
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 // 수업용 손님과 행사용 5~6학년 손님을 모두 찾을 수 있게
 const CUSX = new Map<string, Customer>([...CUS, ...CUS_14, ...CUS_56]);
-// 행사용 1~4학년 손님 72명 (수업용 36명 + 새 손님 36명)
-const CUSTOMERS_EV14 = [...CUSTOMERS, ...CUSTOMERS_14];
+// 수업용과 행사용 1~4학년 손님 72명 (처음 손님 36명 + 새 손님 36명)
+const CUSTOMERS_72 = [...CUSTOMERS, ...CUSTOMERS_14];
 const whoOf = (o: Owner): Who => ({ grade: o.ev!.grade, cls: o.ev!.cls, num: o.number, name: o.name });
 const EMPTY: Picks = { broth: null, noodle: null, soup: null, toppings: [], finish: [] };
 const TUTOR_HINTS: Partial<Record<Step, string[]>> = {
@@ -184,7 +184,7 @@ export class App {
     if (r.owner) { this.owner = r.owner; this.fixOrder(this.owner); }
     else if (r.create) {
       const id = uid();
-      const o: Owner = { id, number: r.create.number, name: r.create.name, round: 0, order: makeOrder(CUSTOMERS, hashStr(id) ^ Date.now()), tutorialDone: false, createdAt: Date.now() };
+      const o: Owner = { id, number: r.create.number, name: r.create.name, round: 0, order: makeOrder(CUSTOMERS_72, hashStr(id) ^ Date.now()), tutorialDone: false, createdAt: Date.now() };
       owners.push(o);
       await db.saveOwners(owners);
       this.owner = o;
@@ -194,15 +194,23 @@ export class App {
   }
 
   // 행사용 5~6학년은 5~6학년 손님을 만나요
-  private listFor(o: Owner) { return !EVENT || !o.ev ? CUSTOMERS : o.ev.grade >= 5 ? CUSTOMERS_56 : CUSTOMERS_EV14; }
+  private listFor(o: Owner) { return EVENT && o.ev && o.ev.grade >= 5 ? CUSTOMERS_56 : CUSTOMERS_72; }
 
-  // 손님 목록이 바뀐 뒤에도 예전 학생 기록이 멈추지 않게: 없어진 손님은 빼고 새 손님은 뒤에 붙여요
+  // 손님 목록이 바뀐 뒤에도 예전 학생 기록이 멈추지 않게: 없어진 손님은 빼고 새 손님은 끼워 넣어요
   private fixOrder(o: Owner) {
     const list = this.listFor(o);
     const known = new Set(list.map((c) => c.id));
     const kept = o.order.filter((id) => known.has(id));
     const add = list.map((c) => c.id).filter((id) => !kept.includes(id));
-    if (kept.length !== o.order.length || add.length) { o.order = [...kept, ...add]; this.saveOwner(o); }
+    if (kept.length === o.order.length && !add.length) return;
+    if (o.ev || !add.length) { o.order = [...kept, ...add]; this.saveOwner(o); return; }
+    // 수업용: 아직 안 만난 손님 사이에 새 손님을 섞어서, 다음 손님부터 바로 만날 수 있게 해요
+    const met = kept.slice(0, Math.min(o.round, kept.length));
+    let rest = shuffle([...kept.slice(met.length), ...add], mulberry32(hashStr(o.id) ^ add.length));
+    const gap = o.round - met.length; // 한 바퀴를 넘게 돈 학생은 이번 자리부터 새 손님이 오게 돌려요
+    if (gap > 0) { const k = gap % rest.length; rest = [...rest.slice(rest.length - k), ...rest.slice(0, rest.length - k)]; }
+    o.order = [...met, ...rest];
+    this.saveOwner(o);
   }
 
   // 행사용 5~6학년: 손님마다 단서 밑줄이 있기도 하고 없기도 해요 (학생마다 다르게)
@@ -401,7 +409,7 @@ export class App {
 
   // 시험용
   debugShow(i: number, mood: 'neutral' | 'happy' | 'sad' | 'worried' | 'angry' | 'delight' = 'neutral') {
-    const c = i < 0 ? TUTORIAL : CUSTOMERS[i];
+    const c = i < 0 ? TUTORIAL : CUSTOMERS_72[i];
     this.stage.showInstant(c);
     this.stage.mood(mood);
     return c.name;

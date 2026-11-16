@@ -81,7 +81,7 @@ export const UI = {
         h('span', { class: 'ai-feats' }, AI_USES.map((u) => h('span', { class: 'ai-chip' }, u.icon + ' ' + u.short))),
         h('span', { class: 'ai-more' }, '어떻게 쓰였나요? ›')) : null;
       const el = mount(h('div', { class: 'scr-title' }, logo,
-        h('button', { class: 'btn big pulse', onclick: () => { sfx.pop(); el.remove(); res(); } }, EVENT ? [h('span', { class: 'gi-wrap', html: icon('bowl', 34) }), '도전하러 가기'] : '가게 문 열기'), aiStrip,
+        h('button', { class: 'btn big pulse', onclick: () => { sfx.pop(); el.remove(); res(); } }, h('span', { class: 'gi-wrap', html: icon('bowl', 34) }), EVENT ? '도전하러 가기' : '가게 문 열기'), aiStrip,
         onRank ? h('button', { class: 'btn ghost big title-rank', onclick: () => { sfx.tap(); onRank(); } }, h('span', { class: 'gi-wrap', html: icon('trophy', 34) }), '현재 랭킹 보기') : null,
         h('div', { class: 'credit' },
           h('span', { class: 'cr-item' }, h('span', { class: 'cr-ic' }, '🧑‍🏫'), h('span', { class: 'cr-k' }, '만든이'), h('b', null, CREDIT.name)),
