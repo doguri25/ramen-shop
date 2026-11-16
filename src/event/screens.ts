@@ -1,4 +1,4 @@
-// 행사용 화면: 학년·반·번호·이름 입력, 도전 안내, 판 끝, 랭킹
+// 행사용 화면: 학년·반·번호·이름 입력, 도전 안내, 판 끝 랭킹
 import { AVG_MIN_BOWLS, MAX_RUNS, MAX_STARS, ROUNDS } from '../config';
 import { sfx } from '../core/sound';
 import { confetti, h, iconBtn, ICON, toast } from '../ui/dom';
@@ -97,60 +97,53 @@ export const EV = {
     });
   },
 
-  // ── 판 끝 ───────────────────────────────
-  finish(o: { who: Who; runNo: number; total: number; fives: number; best: Best | null; rank: number | null; offline: boolean }): Promise<'rank' | 'lib' | 'again' | 'home'> {
+  // ── 랭킹 (판이 끝나면 내 결과와 함께, 첫 화면·상단 바에서는 랭킹만) ─────────────
+  // 열려 있는 동안 20초마다 저절로 새로 불러와요 (행사 때 큰 화면에 띄워 둘 수 있게)
+  ranking<A extends string>(o: {
+    band: Band; by?: By; who?: Who | null; load: (band: Band, by: By) => Promise<Board | null>;
+    result?: { runNo: number; total: number; fives: number; isBest: boolean; bestTotal: number | null; cheer?: boolean };
+    actions?: { id: A; label: string; kind?: 'main' | 'soft' | 'ghost' }[];
+  }): Promise<A | 'close'> {
     return new Promise((res) => {
-      const left = MAX_RUNS - o.runNo;
-      const isBest = !o.best || o.total >= o.best.total;
-      const wrap = h('div', { class: 'modal-wrap fade-in' });
-      const go = (v: 'rank' | 'lib' | 'again' | 'home') => { sfx.pop(); wrap.remove(); res(v); };
-      wrap.append(h('div', { class: 'modal card pop-in ev-finish' },
-        h('div', { class: 'ev-who' }, whoText(o.who)),
-        h('h2', null, `🎉 ${o.runNo}번째 판, ${ROUNDS}그릇을 다 끓였어요!`),
-        h('div', { class: 'ev-score' },
-          h('div', null, h('span', null, '모은 별'), h('b', null, `★ ${o.total}`), h('i', null, `/ ${ROUNDS * MAX_STARS}`)),
-          h('div', null, h('span', null, '별 다섯 그릇'), h('b', null, `${o.fives}`), h('i', null, `/ ${ROUNDS}`)),
-          h('div', null, h('span', null, `${BAND_NAME[bandOf(o.who.grade)]} 순위`), h('b', null, o.rank ? `${o.rank}등` : '–'), h('i', null, o.rank ? '최고 기록 기준' : o.offline ? '인터넷이 되면 올라가요' : ''))),
-        h('p', { class: 'sub', style: 'text-align:center' }, isBest ? '지금까지 가장 잘한 판이에요! 이 기록이 랭킹에 올라가요.' : `최고 기록(★ ${o.best!.total})은 그대로 랭킹에 남아 있어요.`),
-        h('div', { class: 'actions', style: 'justify-content:center' },
-          h('button', { class: 'btn ghost small', onclick: () => go('home') }, '처음으로'),
-          h('button', { class: 'btn soft', onclick: () => go('lib') }, '도감·대표 라면 카드'),
-          h('button', { class: 'btn soft', onclick: () => go('rank') }, '🏆 랭킹 보기'),
-          left > 0 ? h('button', { class: 'btn', onclick: () => go('again') }, `다시 도전 (${left}번 남음)`) : null)));
-      mount(wrap);
-      if (isBest) confetti();
-    });
-  },
-
-  // ── 랭킹 ───────────────────────────────
-  ranking(o: { band: Band; by?: By; who?: Who | null; load: (band: Band, by: By) => Promise<Board | null> }): Promise<void> {
-    return new Promise((res) => {
-      let band = o.band, by: By = o.by ?? 'total', seq = 0;
-      const el = h('div', { class: 'ev-rank fade-in' });
+      let band = o.band, by: By = o.by ?? 'total', seq = 0, loadedAt = 0, busy = false;
+      const el = h('div', { class: `ev-rank fade-in ${o.result ? 'with-result' : ''}` });
       const list = h('div', { class: 'ev-list' });
       const mine = h('div', { class: 'ev-mine' });
       const tabs = h('div', { class: 'ev-tabs' });
       const kinds = h('div', { class: 'sel' });
+      const stamp = h('span', { class: 'ev-stamp' });
+      const myRank = h('b', null, '…');
+      const done = (v: A | 'close') => { clearInterval(timer); el.remove(); res(v); };
       const drawTabs = () => {
         tabs.innerHTML = ''; kinds.innerHTML = '';
-        (['12', '34', '56'] as Band[]).forEach((b) => tabs.append(h('button', { class: b === band ? 'on' : '', onclick: () => { sfx.tap(); band = b; drawTabs(); load(); } }, BAND_NAME[b])));
-        ([['total', '⭐ 모은 별'], ['avg', '📊 평균 별']] as [By, string][]).forEach(([k, l]) => kinds.append(h('button', { class: k === by ? 'on' : '', onclick: () => { sfx.tap(); by = k; drawTabs(); load(); } }, l)));
+        (['12', '34', '56'] as Band[]).forEach((b) => tabs.append(h('button', { class: b === band ? 'on' : '', onclick: () => { sfx.tap(); band = b; drawTabs(); load(true); } }, BAND_NAME[b])));
+        ([['total', '⭐ 모은 별'], ['avg', '📊 평균 별']] as [By, string][]).forEach(([k, l]) => kinds.append(h('button', { class: k === by ? 'on' : '', onclick: () => { sfx.tap(); by = k; drawTabs(); load(true); } }, l)));
       };
       const line = (r: { rank: number | null; grade: number; cls: number; num: number; name: string; total: number; fives: number; avg: number; allBowls: number }, me = false) =>
         h('div', { class: `ev-row ${me ? 'me' : ''} ${r.rank && r.rank <= 3 ? 'top' : ''}` },
           h('span', { class: 'rk' }, r.rank ? medal(r.rank) : '–'),
-          h('span', { class: 'nm' }, h('i', null, `${r.grade}-${r.cls}`), ` ${r.name}`),
+          h('span', { class: 'nm' }, h('i', null, `${r.grade}-${r.cls}`), ` ${r.name}`, me ? h('em', null, '나') : null),
           by === 'total'
             ? [h('b', { class: 'sc' }, `★ ${r.total}`), h('span', { class: 'ex' }, `별 다섯 ${r.fives}그릇`)]
             : [h('b', { class: 'sc' }, `★ ${r.avg.toFixed(2)}`), h('span', { class: 'ex' }, `${r.allBowls}그릇 평균`)]);
-      const load = async () => {
+      const tick = () => { if (loadedAt) stamp.textContent = `${Math.max(0, Math.round((Date.now() - loadedAt) / 1000))}초 전 순위`; };
+      // fresh: 처음 열거나 탭을 바꿀 때. 저절로 고칠 때는 '불러오는 중'을 띄우지 않고 보던 자리를 지켜요
+      const load = async (fresh = false) => {
         const my = ++seq;
-        list.innerHTML = ''; mine.innerHTML = '';
-        list.append(h('div', { class: 'ev-empty' }, '랭킹을 불러오는 중…'));
-        const b = await o.load(band, by);
+        if (fresh) { list.innerHTML = ''; mine.innerHTML = ''; list.append(h('div', { class: 'ev-empty' }, '랭킹을 불러오는 중…')); }
+        busy = true;
+        const b = await o.load(band, by).finally(() => { if (my === seq) busy = false; });
         if (my !== seq || !el.isConnected) return;
-        list.innerHTML = '';
-        if (!b) { list.append(h('div', { class: 'ev-empty' }, '📡 랭킹 서버에 닿지 않아요. 인터넷을 확인하고 다시 눌러 주세요.', h('div', null, h('button', { class: 'btn soft small', style: 'margin-top:12px', onclick: () => load() }, '다시 불러오기')))); return; }
+        if (!b) {
+          if (!fresh && loadedAt) { loadedAt = Date.now() - 10000; return; } // 잠깐 끊긴 거면 보던 순위를 그대로 두고 10초 뒤 다시
+          list.innerHTML = ''; mine.innerHTML = '';
+          list.append(h('div', { class: 'ev-empty' }, '📡 랭킹 서버에 닿지 않아요. 인터넷을 확인하고 다시 눌러 주세요.', h('div', null, h('button', { class: 'btn soft small', style: 'margin-top:12px', onclick: () => load(true) }, '다시 불러오기'))));
+          if (o.result) myRank.textContent = '–';
+          return;
+        }
+        const keep = list.scrollTop;
+        list.innerHTML = ''; mine.innerHTML = '';
+        loadedAt = Date.now(); tick();
         if (!b.rows.length) list.append(h('div', { class: 'ev-empty' }, by === 'avg' ? `아직 ${AVG_MIN_BOWLS}그릇 넘게 끓인 친구가 없어요.` : '아직 기록이 없어요. 첫 번째 마음 요리사가 되어 보세요!'));
         b.rows.forEach((r) => list.append(line(r, !!r.me)));
         const hint = by === 'total' ? '세 판 가운데 가장 잘한 판의 별이에요. 별이 같으면 별 다섯 그릇이 많은 친구가 앞서요.'
@@ -160,14 +153,33 @@ export const EV = {
           if (b.me.rank) mine.append(line({ ...b.me, rank: b.me.rank }, true));
           else if (by === 'avg' && b.me.need > 0) mine.append(h('div', { class: 'ev-row me' }, h('span', { class: 'rk' }, '–'), h('span', { class: 'nm' }, '나'), h('span', { class: 'ex' }, `${b.me.need}그릇 더 끓이면 평균 별 랭킹에 올라요`)));
         }
+        if (o.result && o.who && band === bandOf(o.who.grade) && by === 'total') myRank.textContent = b.me?.rank ? `${b.me.rank}등` : '–';
+        if (fresh) list.querySelector('.ev-row.me')?.scrollIntoView({ block: 'center' });
+        else list.scrollTop = keep;
       };
-      el.append(
-        h('header', null, h('h2', null, '🏆 마음 요리사 랭킹'), h('span', { class: 'grow' }),
-          iconBtn(ICON.close, () => { sfx.back(); el.remove(); res(); }, '닫기')),
-        tabs, kinds, list, mine);
+      const timer = window.setInterval(() => { tick(); if (!busy && loadedAt && Date.now() - loadedAt > 20000) load(); }, 1000);
+      const r = o.result;
+      const head = r && o.who
+        ? h('div', { class: 'ev-result card' },
+          h('div', { class: 'ev-who' }, whoText(o.who)),
+          h('h3', null, `🎉 ${r.runNo}번째 판, ${ROUNDS}그릇을 다 끓였어요!`),
+          h('div', { class: 'ev-score' },
+            h('div', null, h('span', null, '이번 판 별'), h('b', null, `★ ${r.total}`), h('i', null, `/ ${ROUNDS * MAX_STARS}`)),
+            h('div', null, h('span', null, '별 다섯 그릇'), h('b', null, `${r.fives}`), h('i', null, `/ ${ROUNDS}`)),
+            h('div', null, h('span', null, `${BAND_NAME[bandOf(o.who.grade)]} 순위`), myRank, h('i', null, '가장 잘한 판 기준'))),
+          h('p', { class: 'sub' }, r.isBest ? '지금까지 가장 잘한 판이에요! 이 기록이 랭킹에 올라가요.' : `가장 잘한 판(★ ${r.bestTotal})이 그대로 랭킹에 남아 있어요.`))
+        : null;
+      const acts = o.actions?.length
+        ? h('div', { class: 'ev-acts' }, o.actions.map((a) => h('button', { class: `btn ${a.kind === 'ghost' ? 'ghost small' : a.kind === 'soft' ? 'soft' : ''}`, onclick: () => { sfx.pop(); done(a.id); } }, a.label)))
+        : null;
+      const header = h('header', null, h('h2', null, '🏆 마음 요리사 랭킹'), stamp, h('span', { class: 'grow' }),
+        h('button', { class: 'btn ghost small', onclick: () => { sfx.tap(); load(true); } }, '↻ 새로 고침'),
+        acts ? null : iconBtn(ICON.close, () => { sfx.back(); done('close'); }, '닫기'));
+      for (const x of [header, head, tabs, kinds, list, mine, acts]) if (x) el.append(x);
       drawTabs();
       mount(el);
-      load();
+      if (r?.isBest && r.cheer) confetti();
+      load(true);
     });
   },
 

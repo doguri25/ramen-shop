@@ -58,3 +58,25 @@
   .ev-row .ex { display: none; }
   .ev-tabs button { font-size: 18px; min-height: 46px; }
 }
+
+/* 판 끝: 내 결과 + 지금 랭킹 */
+.ev-rank header .ev-stamp { font-size: 14px; color: var(--ink-2); }
+.ev-result { margin: 0 16px 8px; padding: 14px 18px; text-align: center; }
+.ev-result h3 { margin: 4px 0 0; font-family: var(--head); font-weight: normal; font-size: 26px; color: var(--accent); }
+.ev-result .ev-score { margin: 10px 0 6px; }
+.ev-result .ev-score b { font-size: 30px; }
+.ev-result .sub { margin: 0; font-size: 16px; color: var(--ink-2); }
+.ev-row .nm em { margin-left: 8px; padding: 2px 8px; border-radius: 999px; background: var(--accent-2); color: #fff; font-style: normal; font-size: 14px; vertical-align: 2px; }
+.ev-acts { display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; padding: 10px 16px 0; }
+.ev-rank.with-result .ev-list { min-height: 120px; }
+.hud .chip.evrank { color: var(--accent); }
+.scr-title .title-rank { margin-top: 14px; }
+@media (max-height: 720px) {
+  .ev-result { padding: 10px 14px; }
+  .ev-result h3 { font-size: 21px; }
+  .ev-result .ev-score { margin: 6px 0 4px; gap: 8px; }
+  .ev-result .ev-score > div { padding: 6px 8px; }
+  .ev-result .ev-score b { font-size: 24px; }
+  .ev-tabs button { min-height: 44px; }
+}
+@media (max-width: 640px) { .ev-result .ev-score { grid-template-columns: repeat(3, 1fr); } }

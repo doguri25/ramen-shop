@@ -81,7 +81,7 @@ export const UI = {
         h('span', { class: 'ai-more' }, '어떻게 쓰였나요? ›')) : null;
       const el = mount(h('div', { class: 'scr-title' }, logo,
         h('button', { class: 'btn big pulse', onclick: () => { sfx.pop(); el.remove(); res(); } }, EVENT ? '도전하러 가기' : '가게 문 열기'), aiStrip,
-        onRank ? h('button', { class: 'btn soft small', style: 'margin-top:14px', onclick: () => { sfx.tap(); onRank(); } }, '🏆 랭킹 보기') : null,
+        onRank ? h('button', { class: 'btn ghost big title-rank', onclick: () => { sfx.tap(); onRank(); } }, '🏆 현재 랭킹 보기') : null,
         h('div', { class: 'credit' },
           h('span', { class: 'cr-item' }, h('span', { class: 'cr-ic' }, '🧑‍🏫'), h('span', { class: 'cr-k' }, '만든이'), h('b', null, CREDIT.name)),
           h('span', { class: 'cr-sep' }),
@@ -172,7 +172,7 @@ export const UI = {
   },
 
   // ── 상단 바 ───────────────────────────────
-  hud(o: { owner: Owner; count: number; round: number | null; sound: boolean; tts: boolean; label?: string; stars?: number; onLib: () => void; onSound: () => void; onTts: () => void; onHome: () => void }) {
+  hud(o: { owner: Owner; count: number; round: number | null; sound: boolean; tts: boolean; label?: string; stars?: number; onRank?: () => void; onLib: () => void; onSound: () => void; onTts: () => void; onHome: () => void }) {
     root().querySelector('.hud')?.remove();
     const pct = Math.min(100, (o.count / ROUNDS) * 100);
     const el = h('div', { class: 'hud' },
@@ -180,6 +180,7 @@ export const UI = {
       o.round !== null ? h('span', { class: 'chip round' }, o.round === 0 ? '연습 손님' : `${o.round}번째 손님`) : null,
       o.stars !== undefined ? h('span', { class: 'chip evstar' }, `★ ${o.stars}`) : null,
       h('span', { class: 'grow' }),
+      o.onRank ? h('button', { class: 'chip evrank', onclick: () => { sfx.tap(); o.onRank!(); } }, '🏆 랭킹') : null,
       h('button', { class: 'chip prog', onclick: () => { sfx.tap(); o.onLib(); } }, h('span', { html: ICON.book, style: 'width:24px;height:24px;display:inline-block' }), '도감',
         h('span', { class: 'bar' }, h('i', { style: `width:${pct}%` })), `${Math.min(o.count, ROUNDS)}/${ROUNDS}`),
       iconBtn(o.sound ? ICON.sound : ICON.mute, () => { o.onSound(); }, '소리', o.sound ? '' : 'off'),

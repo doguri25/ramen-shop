@@ -229,6 +229,10 @@ export class App {
     UI.hud({
       owner: this.owner, count: ev ? this.owner.round : this.records.length, round, sound: soundOn(), tts: ttsEnabled(),
       label: ev ? whoText(whoOf(this.owner)) : undefined, stars: ev ? ev.total : undefined,
+      onRank: ev ? () => {
+        if (this.serving) { toast('손님이 라면을 다 드신 뒤에 랭킹을 볼 수 있어요'); return; }
+        this.showRanking(whoOf(this.owner!));
+      } : undefined,
       onLib: () => {
         // 라면을 내어 드리는 동안 열면 손님 반응·쪽지가 도감 위아래로 겹쳐요. 그때만 잠깐 막아요
         if (this.serving) { toast('손님이 라면을 다 드신 뒤에 도감을 볼 수 있어요'); return; }
@@ -459,14 +463,26 @@ export class App {
       this.records = await db.records(o.id);
       const end = await this.playRun(o);
       if (end === 'stop') return 'home';
-      // 판 끝
-      const res = await Promise.race([this.sending ?? Promise.resolve(null), sleep(6000).then(() => null)]);
+      // 판 끝: 마지막 그릇 기록이 서버에 닿은 뒤(늦어도 6초) 내 결과와 지금 랭킹을 함께 보여 줘요
+      await Promise.race([this.sending ?? Promise.resolve(null), sleep(6000)]);
+      const ev = o.ev!;
+      const isBest = !best || ev.total >= best.total;
+      let cheer = true;
       for (;;) {
-        const f = await EV.finish({ who: w, runNo: o.ev!.runNo, total: o.ev!.total, fives: o.ev!.fives, best, rank: res?.rank ?? null, offline: !res || !!res.error });
-        if (f === 'rank') { await this.showRanking(w); continue; }
+        const left = MAX_RUNS - ev.runNo;
+        const f = await EV.ranking({
+          band: bandOf(w.grade), who: w, load: (b, by) => rank.board(b, by, w),
+          result: { runNo: ev.runNo, total: ev.total, fives: ev.fives, isBest, bestTotal: best?.total ?? null, cheer },
+          actions: [
+            { id: 'home', label: '처음으로', kind: 'ghost' },
+            { id: 'lib', label: '도감·대표 라면 카드', kind: 'soft' },
+            ...(left > 0 ? [{ id: 'again' as const, label: `다시 도전 (${left}번 남음)` }] : []),
+          ],
+        });
+        cheer = false;
         if (f === 'lib') { await this.openLibrary(); continue; }
-        if (f === 'home') return 'home';
-        break; // 다시 도전
+        if (f === 'again') break;
+        return 'home';
       }
     }
   }
