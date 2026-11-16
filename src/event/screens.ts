@@ -27,7 +27,8 @@ function pad(n: number, cols: number, cur: number, set: (v: number) => void) {
 
 export const EV = {
   // ── 학년·반·번호·이름 ───────────────────────
-  login(roster?: (grade: number, cls: number) => Promise<{ names: Map<number, string>; partial: boolean } | null>): Promise<Who | null> {
+  // 돌려주는 takenBy: 고른 번호에 먼저 들어온 친구의 가린 이름(김○○). 없으면 null
+  login(roster?: (grade: number, cls: number) => Promise<{ names: Map<number, string>; partial: boolean } | null>, prefillName = ''): Promise<{ who: Who; takenBy: string | null } | null> {
     return new Promise((res) => {
       let last: Partial<Who> = {};
       try { last = JSON.parse(localStorage.getItem(LAST) || '{}'); } catch { /* 처음 */ }
@@ -35,6 +36,7 @@ export const EV = {
       let taken = new Map<number, string>();
       const wrap = h('div', { class: 'modal-wrap fade-in' });
       const name = h('input', { class: 'inp', maxLength: 8, placeholder: '이름 (예: 김민수)', style: 'flex:1;min-width:200px', autocomplete: 'off' }) as HTMLInputElement;
+      name.value = prefillName; // 번호만 다시 고르러 왔을 때는 쓴 이름을 그대로 둬요
       const legend = h('div', { class: 'ev-legend' });
       // 번호 버튼: 이미 들어온 번호는 초록색으로 칠하고 가린 이름(김○○)을 작게 적어요
       const hint = h('div', { class: 'ev-hint name-hint' });
@@ -90,7 +92,7 @@ export const EV = {
         const n = name.value.replace(/\s+/g, '').normalize('NFC');
         if (ok.disabled) return;
         try { localStorage.setItem(LAST, JSON.stringify({ grade, cls })); } catch { /* 괜찮아요 */ }
-        seq++; sfx.pop(); wrap.remove(); res({ grade, cls, num, name: n });
+        seq++; sfx.pop(); wrap.remove(); res({ who: { grade, cls, num, name: n }, takenBy: taken.get(num) ?? null });
       });
       wrap.append(h('div', { class: 'modal card pop-in ev-login' },
         h('div', { class: 'ev-head' },
@@ -120,6 +122,7 @@ export const EV = {
         h('span', { class: full || used.includes(i + 1) || (i + 1 < o.runNo && !o.resume) ? 'used' : i + 1 === o.runNo ? 'now' : '' }, `${i + 1}판`)));
       wrap.append(h('div', { class: 'modal card pop-in ev-ready' },
         h('div', { class: 'ev-who' }, whoText(o.who)),
+        h('p', { class: 'ev-check' }, '학년·반·번호·이름이 맞나요? 틀렸으면 ‘뒤로’를 눌러 고쳐요.'),
         full ? h('h2', null, '세 판을 모두 도전했어요!')
           : o.resume !== null ? h('h2', null, `${o.runNo}번째 판을 이어서 해요`)
             : h('h2', null, o.runNo === 1 ? '첫 번째 도전이에요' : `${o.runNo}번째 도전이에요`),
@@ -139,6 +142,24 @@ export const EV = {
           h('button', { class: 'btn ghost small', onclick: () => go('back') }, '뒤로'),
           full ? h('button', { class: 'btn', onclick: () => go('lib') }, '도감 보기')
             : h('button', { class: 'btn big pulse', onclick: () => go('start') }, o.resume !== null ? '이어서 하기' : '가게 문 열기'))));
+      mount(wrap);
+    });
+  },
+
+  // ── 이미 다른 친구가 들어온 번호 ─────────────
+  // 앞 친구 기록은 지워지지 않아요. 번호를 잘못 눌렀는지만 한 번 더 물어요
+  dupe(w: Who, takenBy: string): Promise<'retry' | 'go'> {
+    return new Promise((res) => {
+      const wrap = h('div', { class: 'modal-wrap fade-in' });
+      const go = (v: 'retry' | 'go') => { v === 'retry' ? sfx.back() : sfx.pop(); wrap.remove(); res(v); };
+      wrap.append(h('div', { class: 'modal card pop-in ev-dupe' },
+        h('div', { class: 'ev-who' }, whoText(w)),
+        h('h2', null, ...iconLabel('warn', '이미 다른 친구가 들어온 번호예요', 30)),
+        h('p', { class: 'sub' }, `${w.grade}학년 ${w.cls}반 ${w.num}번에는 ${takenBy} 친구가 먼저 들어와 있어요. 번호를 잘못 눌렀다면 다시 입력해요.`),
+        h('p', { class: 'ev-check' }, '내 번호가 맞으면 계속해요. 먼저 들어온 친구 기록은 지워지지 않고, 내 기록은 따로 쌓여요.'),
+        h('div', { class: 'actions' },
+          h('button', { class: 'btn big', onclick: () => go('retry') }, '다시 입력'),
+          h('button', { class: 'btn soft', onclick: () => go('go') }, '계속'))));
       mount(wrap);
     });
   },

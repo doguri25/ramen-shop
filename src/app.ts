@@ -439,10 +439,12 @@ export class App {
     rank.warm();
     await UI.title(() => this.openTeacher(), undefined);
     unlockAudio();
+    let prefill = '';
     for (;;) {
-      const r = await EV.login((g, c) => this.roster(g, c));
+      const r = await EV.login((g, c) => this.roster(g, c), prefill);
       if (r === null) return; // 첫 화면으로
-      if ((await this.student(r)) === 'back') continue; // 이름을 고쳐 쓰려고 뒤로
+      // 뒤로 오면 번호와 이름을 다시 고르게 해요 (쓴 이름은 남겨 둬요)
+      if ((await this.student(r.who, r.takenBy)) === 'back') { prefill = r.who.name; continue; }
       return;
     }
   }
@@ -494,8 +496,9 @@ export class App {
   }
 
   // 한 학생: 몇 번째 판인지 정하고, 끓이고, 끝나면 다시 도전할지 물어요
-  private async student(w: Who): Promise<'back' | 'home'> {
+  private async student(w: Who, takenBy: string | null = null): Promise<'back' | 'home'> {
     const key = keyOf(w);
+    let asked = false;
     for (;;) {
       UI.hideHud(); // 앞 학생의 상단 바가 남지 않게
       this.owner = null;
@@ -509,6 +512,13 @@ export class App {
       for (const o of mine.filter((x) => !x.ev!.done && x.round === 0)) await db.deleteOwner(o.id);
       mine = mine.filter((x) => x.ev!.done || x.round > 0);
       const unfinished = mine.find((x) => !x.ev!.done) ?? null;
+      // 고른 번호에 다른 이름이 먼저 들어와 있으면 한 번 물어요 (잘못 누른 번호일 수 있어요)
+      // 같은 학생인지는 이 학생 이름으로 쌓인 기록이 있는지로 봐요. 서버에 닿지 않으면 가린 이름끼리 견줘요
+      if (takenBy && !asked) {
+        asked = true;
+        const same = mine.length > 0 || (st ? st.status.runs > 0 : maskName(w.name) === takenBy);
+        if (!same && (await EV.dupe(w, takenBy)) === 'retry') return 'back';
+      }
       const best = st?.status.best ?? this.localBest(mine);
       const runNo = unfinished ? unfinished.ev!.runNo : Math.max(st?.status.runs ?? 0, mine.length) + 1;
       // 이미 쓴 판 (서버 기록 + 이 태블릿 기록). 다른 기기에서 한 판도 세어요

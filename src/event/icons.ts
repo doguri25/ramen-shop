@@ -25,6 +25,10 @@ const SVG: Record<string, string> = {
   offline: `<path d="M4 10a12 12 0 0 1 16 0M7 13.2a7.5 7.5 0 0 1 10 0" fill="none" stroke="${INK}" stroke-width="2" stroke-linecap="round"/>
     <circle cx="12" cy="17" r="1.8" fill="#F0974A" ${W}/>
     <path d="M4.5 4.5l15 15" stroke="#E3645A" stroke-width="2.4" stroke-linecap="round"/>`,
+  // 조심 (세모 안 느낌표)
+  warn: `<path d="M12 3.6l9 15.6H3z" fill="#F7C744" ${W}/>
+    <path d="M12 9.2v4.8" stroke="${INK}" stroke-width="2.2" stroke-linecap="round"/>
+    <circle cx="12" cy="16.6" r="1.25" fill="${INK}"/>`,
   // 라면 그릇 (도전하러 가기)
   bowl: `<path d="M5 8.5c1.5-2 2.2-3 4-4M9.5 8.5c1.4-2 2-3 3.6-4" fill="none" stroke="${INK}" stroke-width="1.5" stroke-linecap="round"/>
     <path d="M3.4 11h17.2c0 4.6-3.6 8.2-8.6 8.2S3.4 15.6 3.4 11z" fill="#FFF4E6" ${W}/>

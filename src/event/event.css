@@ -149,3 +149,10 @@
 .ev-login .name-hint:empty { display: none; }
 .ev-keep { display: flex; align-items: center; gap: 8px; margin-top: 10px; font-size: 16px; color: var(--ink-2); }
 .ev-keep input { width: 20px; height: 20px; }
+
+/* 도전 안내·번호 겹침: 학년·반·번호·이름이 맞는지 한 줄로 확인 */
+.ev-check { margin: 2px 0 0; font-size: 14px; color: #8A6A55; text-align: center; }
+.ev-dupe { max-width: 520px; text-align: center; }
+.ev-dupe h2 { display: flex; align-items: center; justify-content: center; gap: 8px; margin: 6px 0 2px; }
+.ev-dupe .sub { margin: 4px 0; }
+.ev-dupe .actions { justify-content: center; gap: 12px; margin-top: 14px; }
