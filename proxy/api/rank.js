@@ -39,6 +39,8 @@ const cleanName = (v) => {
   const s = (typeof v === 'string' ? v : '').normalize('NFC').replace(/\s+/g, '').slice(0, 8);
   return /^[가-힣a-zA-Z0-9]{1,8}$/.test(s) ? s : null;
 };
+// 이름 가리기: 김민수 → 김○○
+export const mask = (n) => { const a = [...String(n ?? '')]; return a.length ? a[0] + '○'.repeat(Math.max(1, a.length - 1)) : ''; };
 const bandOf = (g) => (g <= 2 ? '12' : g <= 4 ? '34' : '56');
 export function who(d) {
   const grade = int(d?.grade, 1, 6), cls = int(d?.cls, 1, 20), num = int(d?.num, 1, 40), name = cleanName(d?.name);
@@ -57,7 +59,8 @@ export async function saveRun(col, w, d) {
   const id = runId(d?.runId), runNo = int(d?.runNo, 1, MAX_RUNS);
   const bowls = int(d?.bowls, 1, ROUNDS), total = int(d?.total, 1, 5 * ROUNDS), fives = int(d?.fives, 0, ROUNDS);
   if (!id || !runNo || !bowls || !total || fives === null) return { error: 'bad_run' };
-  if (total < bowls || total > 5 * bowls || fives > bowls || fives * 5 > total) return { error: 'bad_run' };
+  // 별 다섯 그릇은 5개, 나머지 그릇은 1~4개라서 판 합계가 그 사이에 있어야 해요
+  if (fives > bowls || total < 5 * fives + (bowls - fives) || total > 5 * fives + 4 * (bowls - fives)) return { error: 'bad_run' };
   const done = d?.done === true && bowls === ROUNDS;
   const now = Date.now();
 
@@ -70,12 +73,14 @@ export async function saveRun(col, w, d) {
       r = { runId: id, runNo: runs.length + 1, bowls: 0, total: 0, fives: 0, done: false, startedAt: now, at: now };
       runs.push(r);
     }
-    if (r.done || bowls < r.bowls || total < r.total || fives < r.fives || bowls - r.bowls > ROUNDS) {
+    if (r.done || bowls < r.bowls || total < r.total || fives < r.fives) {
       // 이미 받은 기록보다 작으면 (같은 그릇을 두 번 보냈을 때) 그대로 두고 지금 기록을 알려 줘요
       return { ok: true, same: true, runNo: r.runNo, status: status(s) };
     }
     if (bowls === r.bowls && total === r.total && fives === r.fives && done === r.done) return { ok: true, same: true, runNo: r.runNo, status: status(s) };
-    const addStars = total - r.total, addBowls = bowls - r.bowls;
+    const addStars = total - r.total, addBowls = bowls - r.bowls, addFives = fives - r.fives;
+    // 새로 끓인 그릇만큼만 별이 늘 수 있어요 (그릇 없이 별만 늘리거나, 한 그릇에 별 다섯 넘게 늘리면 받지 않아요)
+    if (addFives > addBowls || addStars < 5 * addFives + (addBowls - addFives) || addStars > 5 * addFives + 4 * (addBowls - addFives)) return { error: 'bad_run' };
     Object.assign(r, { bowls, total, fives, done, at: now });
     // 세 판 가운데 가장 좋은 판 (별이 같으면 별 다섯 그릇이 많은 판, 그것도 같으면 먼저 낸 판)
     const best = runs.map((x) => ({ total: x.total, fives: x.fives, bowls: x.bowls, runNo: x.runNo, at: x.at })).reduce((a, b) => (better(b, a) ? b : a));
@@ -190,6 +195,7 @@ export default async function handler(req, res) {
   if (!allow(ip)) return res.status(429).json({ error: 'busy' });
 
   let d = req.body;
+  if (Number(req.headers?.['content-length'] ?? 0) > 4000) return res.status(413).json({ error: 'too_big' });
   if (typeof d === 'string') { if (d.length > 4000) return res.status(413).json({ error: 'too_big' }); try { d = JSON.parse(d); } catch { return res.status(400).json({ error: 'bad_json' }); } }
   if (!d || typeof d !== 'object') return res.status(400).json({ error: 'bad_json' });
 
@@ -209,8 +215,9 @@ export default async function handler(req, res) {
       // 학년·반을 고르면, 이미 이름을 쓰고 들어온 번호를 알려 줘요 (로그인 화면에 색칠)
       const grade = int(d.grade, 1, 6), cls = int(d.cls, 1, 20);
       if (!grade || !cls) return res.status(400).json({ error: 'bad_class' });
-      const list = await col.find({ grade, cls }, { projection: { num: 1, name: 1, runs: 1, updatedAt: 1 } }).limit(200).toArray();
-      return res.status(200).json({ ok: true, rows: list.map((s) => ({ num: s.num, name: s.name, runs: s.runs?.length ?? 0, done: (s.runs ?? []).filter((r) => r.done).length, at: s.updatedAt ?? 0 })) });
+      // 학생 화면에서 부르는 거라 이름은 첫 글자만 보여 주고(김○○), 판 수 말고 다른 기록은 보내지 않아요
+      const list = await col.find({ grade, cls }, { projection: { num: 1, name: 1, runs: 1 } }).limit(200).toArray();
+      return res.status(200).json({ ok: true, rows: list.map((s) => ({ num: s.num, name: mask(s.name), runs: s.runs?.length ?? 0 })) });
     }
     if (d.op === 'board' || d.op === 'classes') {
       const by = d.by === 'avg' ? 'avg' : 'total';

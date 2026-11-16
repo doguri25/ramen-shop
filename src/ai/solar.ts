@@ -38,6 +38,8 @@ export const ai = {
   configure(url: string | undefined, enabled: boolean) { base = (url || AI_URL || '').trim(); on = enabled; },
   get url() { return base; },
   get ready() { return on && !!base && navigator.onLine !== false; },
+  // 선생님이 AI를 켜 두었는지 (인터넷과 상관없이)
+  get enabled() { return on && !!base; },
 
   // 선생님 화면 연결 확인
   async check(url?: string): Promise<'ok' | 'nokey' | 'fail'> {
@@ -48,6 +50,7 @@ export const ai = {
       const ac = new AbortController();
       const tm = setTimeout(() => ac.abort(), 8000);
       const r = await fetch(endpoint(), { signal: ac.signal }).finally(() => clearTimeout(tm));
+      if (!r.ok) return 'fail'; // 서버 오류를 '키가 없어요'로 잘못 알리지 않게
       const j = await r.json();
       return j?.ready ? 'ok' : 'nokey';
     } catch { return 'fail'; } finally { base = save; }

@@ -237,8 +237,11 @@ export default async function handler(req) {
     if (raw.length > 8000) return json({ error: 'too_big' }, 413, h);
     d = JSON.parse(raw);
   } catch { return json({ error: 'bad_json' }, 400, h); }
-  const make = TASKS[d?.task];
-  const job = make ? make(d.data || {}) : null;
+  // 정해 둔 일만 받아요 ('constructor' 같은 이름으로 아무 요청이나 키로 보내지 못하게 자기 칸만 봐요)
+  const task = typeof d?.task === 'string' && Object.hasOwn(TASKS, d.task) ? d.task : null;
+  const data = d?.data && typeof d.data === 'object' && !Array.isArray(d.data) ? d.data : {};
+  let job = null;
+  try { job = task ? TASKS[task](data) : null; } catch { job = null; }
   if (!job) return json({ error: 'bad_task' }, 400, h);
 
   try {

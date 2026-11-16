@@ -27,7 +27,7 @@ function pad(n: number, cols: number, cur: number, set: (v: number) => void) {
 
 export const EV = {
   // ── 학년·반·번호·이름 ───────────────────────
-  login(roster?: (grade: number, cls: number) => Promise<Map<number, string> | null>): Promise<Who | null> {
+  login(roster?: (grade: number, cls: number) => Promise<{ names: Map<number, string>; partial: boolean } | null>): Promise<Who | null> {
     return new Promise((res) => {
       let last: Partial<Who> = {};
       try { last = JSON.parse(localStorage.getItem(LAST) || '{}'); } catch { /* 처음 */ }
@@ -36,7 +36,8 @@ export const EV = {
       const wrap = h('div', { class: 'modal-wrap fade-in' });
       const name = h('input', { class: 'inp', maxLength: 8, placeholder: '이름 (예: 김민수)', style: 'flex:1;min-width:200px', autocomplete: 'off' }) as HTMLInputElement;
       const legend = h('div', { class: 'ev-legend' });
-      // 번호 버튼: 이미 들어온 번호는 초록색으로 칠하고 이름을 작게 적어요
+      // 번호 버튼: 이미 들어온 번호는 초록색으로 칠하고 가린 이름(김○○)을 작게 적어요
+      const hint = h('div', { class: 'ev-hint name-hint' });
       const nums = h('div', { class: 'numpad ev-nums', style: 'grid-template-columns:repeat(12,minmax(0,1fr))' });
       const numBtns: HTMLButtonElement[] = [];
       for (let i = 1; i <= 35; i++) {
@@ -44,8 +45,8 @@ export const EV = {
           sfx.tap(); num = i;
           numBtns.forEach((x) => x.classList.toggle('on', x === b));
           const nm = taken.get(i);
-          if (nm && (!name.value.trim() || name.dataset.auto === '1')) { name.value = nm; name.dataset.auto = '1'; }
-          else if (!nm && name.dataset.auto === '1') { name.value = ''; name.dataset.auto = ''; }
+          // 이름은 대신 채우지 않아요. 내 번호가 맞는지만 알려 줘요
+          hint.textContent = nm ? `${i}번은 ${nm} 친구가 들어온 번호예요. 나라면 처음과 똑같이 이름을 써요.` : '';
           check();
         } }, h('span', { class: 'n' }, String(i)), h('span', { class: 'who' })) as HTMLButtonElement;
         numBtns.push(b); nums.appendChild(b);
@@ -60,14 +61,16 @@ export const EV = {
         const my = ++seq;
         // 고른 학년·반은 바로 기억해요 (다음 친구가 같은 반이면 다시 누르지 않게)
         if (grade || cls) try { localStorage.setItem(LAST, JSON.stringify({ grade, cls })); } catch { /* 괜찮아요 */ }
-        taken = new Map(); paint(); legend.textContent = '';
+        taken = new Map(); paint(); legend.textContent = ''; hint.textContent = '';
         if (!grade || !cls || !roster) return;
         legend.textContent = '이 반에서 들어온 번호를 확인하는 중…';
         const m = await roster(grade, cls);
         if (my !== seq || !wrap.isConnected) return;
-        taken = m ?? new Map(); paint();
+        taken = m?.names ?? new Map(); paint();
         legend.innerHTML = '';
-        legend.append(h('i', { class: 'dot' }), m ? (taken.size ? `초록색 번호는 이미 이름을 쓰고 들어온 친구예요 (${taken.size}명). 내 번호를 누르면 이름이 저절로 들어가요.` : '아직 이 반에서 들어온 친구가 없어요.') : '기록 서버에 닿지 않아 들어온 번호를 보여 주지 못했어요.');
+        legend.append(h('i', { class: 'dot' }), !m ? '기록 서버에 닿지 않아 들어온 번호를 보여 주지 못했어요.'
+          : m.partial ? `기록 서버에 닿지 않아 이 기기에서 들어온 번호만 보여요 (${taken.size}명).`
+            : taken.size ? `초록색 번호는 이미 들어온 친구예요 (${taken.size}명). 다시 할 때는 처음과 똑같은 이름을 써요.` : '아직 이 반에서 들어온 친구가 없어요.');
       };
       const warn = h('div', { class: 'name-warn' });
       const ok = h('button', { class: 'btn big', disabled: true }, '도전 시작') as HTMLButtonElement;
@@ -82,7 +85,7 @@ export const EV = {
         warn.textContent = n && !NAME_RE.test(n) ? '이름은 한글·영어·숫자로 8글자까지 써 주세요.' : '';
         ok.disabled = !(grade && cls && num && NAME_RE.test(n));
       };
-      name.addEventListener('input', () => { name.dataset.auto = ''; check(); });
+      name.addEventListener('input', () => check());
       ok.addEventListener('click', () => {
         const n = name.value.replace(/\s+/g, '').normalize('NFC');
         if (ok.disabled) return;
@@ -97,7 +100,7 @@ export const EV = {
         step(1, '학년', 'g', pad(6, 6, grade, (v) => { grade = v; check(); loadRoster(); })),
         step(2, '반', 'c', pad(15, 15, cls, (v) => { cls = v; check(); loadRoster(); })),
         step(3, '번호', 'n', nums, legend),
-        step(4, '이름', 'm', name, warn),
+        step(4, '이름', 'm', name, hint, warn),
         h('div', { class: 'actions ev-login-acts' }, summary, ok)));
       mount(wrap);
       check();
@@ -106,14 +109,15 @@ export const EV = {
   },
 
   // ── 도전 안내 (몇 번째 판인지, 최고 기록) ─────────────
-  ready(o: { who: Who; runNo: number; resume: number | null; best: Best | null; offline: boolean }): Promise<'start' | 'lib' | 'back'> {
+  ready(o: { who: Who; runNo: number; used?: number[]; resume: number | null; best: Best | null; offline: boolean }): Promise<'start' | 'lib' | 'back'> {
     return new Promise((res) => {
-      const left = MAX_RUNS - o.runNo;
-      const full = o.runNo > MAX_RUNS;
+      const used = o.used ?? [];
+      const left = MAX_RUNS - Math.max(o.runNo, used.length + 1);
+      const full = o.runNo > MAX_RUNS || used.length >= MAX_RUNS;
       const wrap = h('div', { class: 'modal-wrap fade-in' });
       const go = (v: 'start' | 'lib' | 'back') => { v === 'back' ? sfx.back() : sfx.pop(); wrap.remove(); res(v); };
       const dots = h('div', { class: 'ev-runs' }, Array.from({ length: MAX_RUNS }, (_, i) =>
-        h('span', { class: i + 1 < o.runNo || full ? 'used' : i + 1 === o.runNo ? 'now' : '' }, `${i + 1}판`)));
+        h('span', { class: full || used.includes(i + 1) || (i + 1 < o.runNo && !o.resume) ? 'used' : i + 1 === o.runNo ? 'now' : '' }, `${i + 1}판`)));
       wrap.append(h('div', { class: 'modal card pop-in ev-ready' },
         h('div', { class: 'ev-who' }, whoText(o.who)),
         full ? h('h2', null, '세 판을 모두 도전했어요!')
@@ -124,7 +128,7 @@ export const EV = {
           : o.resume !== null ? `${o.resume}그릇까지 끓였어요. 남은 ${ROUNDS - o.resume}그릇을 끓여요.`
             : `손님 ${ROUNDS}명에게 라면을 끓여 별을 모아요. 한 그릇에 별은 ${MAX_STARS}개까지예요.${left ? ` 이번 판이 끝나도 ${left}번 더 도전할 수 있어요.` : ' 마지막 도전이에요!'}`),
         o.best ? h('div', { class: 'ev-best' }, h('span', null, '지금 최고 기록'), h('b', null, `★ ${o.best.total}`), h('span', { class: 'muted' }, `별 다섯 그릇 ${o.best.fives}개`)) : null,
-        o.offline ? h('div', { class: 'ev-off' }, ...iconLabel('offline', '기록 서버에 닿지 않아요. 기록은 태블릿에 모아 두었다가 인터넷이 되면 보내요.', 20)) : null,
+        o.offline ? h('div', { class: 'ev-off' }, ...iconLabel('offline', '기록 서버에 닿지 않아요. 기록은 태블릿에 모아 두었다가 인터넷이 되면 보내요. 다른 기기에서 이미 세 판을 했다면 이번 판은 기록에 남지 않아요.', 20)) : null,
         full ? null : h('div', { class: 'ev-rules' },
           h('div', null, h('b', null, '★'), ' 라면을 끓였어요'),
           h('div', null, h('b', null, '★★'), ' 손님 마음과 같은 묶음 재료 2가지'),
@@ -167,17 +171,19 @@ export const EV = {
   },
 
   // ── 선생님 랭킹 암호 ─────────────
-  askKey(msg?: string): Promise<string | null> {
+  askKey(msg?: string): Promise<{ key: string; remember: boolean } | null> {
     return new Promise((res) => {
       const wrap = h('div', { class: 'modal-wrap fade-in ev-keywrap' });
       const inp = h('input', { class: 'inp', type: 'password', placeholder: '랭킹 암호', autocomplete: 'off', style: 'width:100%' }) as HTMLInputElement;
-      const ok = h('button', { class: 'btn', onclick: () => { const v = inp.value.trim(); if (!v) return; sfx.pop(); wrap.remove(); res(v); } }, '확인');
+      const keep = h('input', { type: 'checkbox', checked: true }) as HTMLInputElement;
+      const ok = h('button', { class: 'btn', onclick: () => { const v = inp.value.trim(); if (!v) return; sfx.pop(); wrap.remove(); res({ key: v, remember: keep.checked }); } }, '확인');
       inp.addEventListener('keydown', (e) => { if (e.key === 'Enter') ok.click(); });
       wrap.append(h('div', { class: 'modal card pop-in', style: 'width:min(460px,100%)' },
         h('h2', null, '랭킹 암호'),
         msg ? h('div', { class: 'ev-off' }, msg) : null,
-        h('p', { class: 'sub' }, '버셀에 RANK_ADMIN_KEY로 넣은 암호를 써 주세요. 이 기기에서만 기억해요.'),
+        h('p', { class: 'sub' }, '버셀에 RANK_ADMIN_KEY로 넣은 암호를 써 주세요.'),
         inp,
+        h('label', { class: 'ev-keep' }, keep, ' 이 기기에서 기억하기 (학생이 쓰는 태블릿이면 끄세요)'),
         h('div', { class: 'actions' }, h('button', { class: 'btn ghost', onclick: () => { sfx.back(); wrap.remove(); res(null); } }, '닫기'), ok)));
       mount(wrap);
       setTimeout(() => inp.focus(), 50);
@@ -234,19 +240,19 @@ export const EV = {
         loadedAt = Date.now(); tick();
         let hint = '';
         if ('band' in r) {
-          if (!r.rows.length) list.append(h('div', { class: 'ev-empty' }, by === 'avg' ? `아직 ${AVG_MIN_BOWLS}그릇 넘게 끓인 학생이 없어요.` : '아직 기록이 없어요.'));
+          if (!r.rows.length) list.append(h('div', { class: 'ev-empty' }, by === 'avg' ? `아직 ${AVG_MIN_BOWLS}그릇 이상 끓인 학생이 없어요.` : '아직 기록이 없어요.'));
           r.rows.forEach((x) => list.append(by === 'total'
-            ? row(x.rank, h('span', null, h('i', null, `${x.grade}-${x.cls}`), ` ${x.name}`), `★ ${x.total}`, `별 다섯 ${x.fives}그릇`)
-            : row(x.rank, h('span', null, h('i', null, `${x.grade}-${x.cls}`), ` ${x.name}`), `★ ${x.avg.toFixed(2)}`, `${x.allBowls}그릇 평균`)));
-          hint = (by === 'total' ? '세 판 가운데 가장 잘한 판의 별이에요. 별이 같으면 별 다섯 그릇이 많은 학생이 앞서요.' : `끓인 모든 그릇의 별 평균이에요. ${AVG_MIN_BOWLS}그릇을 넘게 끓이면 올라가요.`)
+            ? row(x.rank, h('span', null, h('i', null, `${x.grade}-${x.cls}-${x.num}`), ` ${x.name}`), `★ ${x.total}`, `별 다섯 ${x.fives}그릇`)
+            : row(x.rank, h('span', null, h('i', null, `${x.grade}-${x.cls}-${x.num}`), ` ${x.name}`), `★ ${x.avg.toFixed(2)}`, `${x.allBowls}그릇 평균`)));
+          hint = (by === 'total' ? '세 판 가운데 가장 잘한 판의 별이에요. 별이 같으면 별 다섯 그릇이 많은 학생이 앞서요.' : `끓인 모든 그릇의 별 평균이에요. ${AVG_MIN_BOWLS}그릇부터 올라가요.`)
             + (r.count > r.rows.length ? ` (모두 ${r.count}명 중 ${r.rows.length}등까지 보여요)` : '');
         } else {
-          if (!r.rows.length) list.append(h('div', { class: 'ev-empty' }, by === 'avg' ? `아직 반 전체로 ${r.min}그릇 넘게 끓인 반이 없어요.` : '아직 기록이 없어요.'));
+          if (!r.rows.length) list.append(h('div', { class: 'ev-empty' }, by === 'avg' ? `아직 반 전체로 ${r.min}그릇 이상 끓인 반이 없어요.` : '아직 기록이 없어요.'));
           r.rows.forEach((x) => list.append(by === 'total'
             ? row(x.rank, `${x.grade}학년 ${x.cls}반`, `★ ${x.total}`, `${x.students}명 · 별 다섯 ${x.fives}그릇`)
             : row(x.rank, `${x.grade}학년 ${x.cls}반`, `★ ${x.avg.toFixed(2)}`, `${x.students}명 · ${x.bowls}그릇 평균`)));
           hint = by === 'total' ? '반 친구들이 저마다 가장 잘한 판의 별을 모두 더했어요. 같으면 별 다섯 그릇이 많은 반이 앞서요.'
-            : `반 친구들이 끓인 모든 그릇의 별 평균이에요. 반 전체로 ${r.min}그릇 넘게 끓인 반부터 올라가요.`;
+            : `반 친구들이 끓인 모든 그릇의 별 평균이에요. 반 전체로 ${r.min}그릇 이상 끓인 반부터 올라가요.`;
           if (r.count > r.rows.length) hint += ` (참여한 반 ${r.count}개 중 ${r.rows.length}개)`;
         }
         foot.append(h('div', { class: 'muted ev-hint' }, hint));

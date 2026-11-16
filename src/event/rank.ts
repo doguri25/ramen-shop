@@ -15,7 +15,10 @@ export interface ClassRow { rank: number; grade: number; cls: number; students: 
 export interface ClassBoard { by: By; rows: ClassRow[]; count: number; min: number }
 // 랭킹을 못 받았을 때: 암호가 틀림 / 서버에 암호가 아직 없음 / 여러 번 틀려 잠깐 막힘 / 인터넷
 export type RankErr = 'bad_key' | 'no_admin_key' | 'too_many' | 'offline';
-export interface RosterRow { num: number; name: string; runs: number; done: number; at?: number }
+// 이름 가리기: 김민수 → 김○○ (서버와 같은 방식)
+export const maskName = (n: string) => { const a = [...n]; return a.length ? a[0] + '○'.repeat(Math.max(1, a.length - 1)) : ''; };
+// 이름은 서버가 가려서 보내요 (김○○)
+export interface RosterRow { num: number; name: string; runs: number }
 export interface SendResult { ok?: boolean; same?: boolean; error?: string; runNo?: number; status?: Status }
 
 export const bandOf = (grade: number): Band => (grade <= 2 ? '12' : grade <= 4 ? '34' : '56');
@@ -24,8 +27,14 @@ export const BAND_NAME: Record<Band, string> = { '12': '1~2학년', '34': '3~4�
 
 const Q = 'event-rank-queue';
 interface Item { who: Who; run: RunSend }
-const readQ = (): Record<string, Item> => { try { return JSON.parse(localStorage.getItem(Q) || '{}'); } catch { return {}; } };
-const writeQ = (q: Record<string, Item>) => { try { localStorage.setItem(Q, JSON.stringify(q)); } catch { /* 저장 못 해도 이번에는 그냥 보내요 */ } };
+// 모아 둔 기록은 메모리에도 들고 있어요. 브라우저 저장 공간이 꽉 차거나 막혀도 이번 접속 동안은 보내요
+let memQ: Record<string, Item> | null = null;
+const readQ = (): Record<string, Item> => {
+  if (memQ) return { ...memQ };
+  try { memQ = JSON.parse(localStorage.getItem(Q) || '{}'); } catch { memQ = {}; }
+  return { ...memQ! };
+};
+const writeQ = (q: Record<string, Item>) => { memQ = { ...q }; try { localStorage.setItem(Q, JSON.stringify(q)); } catch { /* 메모리 것으로 보내요 */ } };
 
 const KEY = 'event-rank-key'; // 선생님 기기에만 기억하는 랭킹 암호
 
@@ -70,8 +79,16 @@ export const rank = {
     const r = await post<ClassBoard & { ok?: boolean; error?: string }>({ op: 'classes', by, key }, 9000);
     return r?.ok ? r : err(r);
   },
-  savedKey(): string { try { return localStorage.getItem(KEY) || ''; } catch { return ''; } },
-  saveKey(k: string) { try { if (k) localStorage.setItem(KEY, k); else localStorage.removeItem(KEY); } catch { /* 이번만 써요 */ } },
+  // 랭킹 암호: '이 기기에서 기억하기'를 고르면 남겨 두고, 아니면 이번 접속 동안만 써요
+  savedKey(): string { try { return localStorage.getItem(KEY) || sessionStorage.getItem(KEY) || ''; } catch { return ''; } },
+  saveKey(k: string, remember = true) {
+    try {
+      localStorage.removeItem(KEY); sessionStorage.removeItem(KEY);
+      if (k) (remember ? localStorage : sessionStorage).setItem(KEY, k);
+    } catch { /* 이번만 써요 */ }
+  },
+  // 첫 화면에서 미리 한 번 불러 깨워 둬요 (오래 쉬던 서버가 처음 대답할 때 느려서)
+  warm() { if (RANK_URL) fetch(RANK_URL, { method: 'GET' }).catch(() => {}); },
 
   // 한 그릇 끓일 때마다 불러요. 보내지 못하면 모아 두었다가 다음에 다시 보내요
   async submit(w: Who, run: RunSend): Promise<SendResult | null> {

@@ -8,7 +8,7 @@ import { CUS, CUSTOMERS, TUTORIAL } from './data/customers';
 import { CUS_56, CUSTOMERS_56 } from './data/customers56';
 import { CUS_14, CUSTOMERS_14 } from './data/customers14';
 import { EVENT } from './event/flag';
-import { bandOf, keyOf, rank, type Best, type SendResult, type Who } from './event/rank';
+import { bandOf, keyOf, maskName, rank, type Best, type SendResult, type Who } from './event/rank';
 import { EV, whoText } from './event/screens';
 import { ING, INGREDIENTS } from './data/ingredients';
 import { TUTOR_INTRO } from './data/text';
@@ -155,7 +155,9 @@ export class App {
         this.serving = false;
         this.timeScale = 1;
         try { this.stage.clearGuests(); this.stage.resetPot(); } catch { /* 무시 */ }
-        toast('문제가 생겨서 첫 화면으로 돌아왔어요');
+        document.body.classList.remove('cooking');
+        // 첫 화면을 다시 그리면서 알림이 지워지지 않게 조금 뒤에 띄워요
+        setTimeout(() => toast('문제가 생겨서 첫 화면으로 돌아왔어요', 3500), 300);
       }
       this.owner = null;
     }
@@ -166,7 +168,8 @@ export class App {
     {
       UI.clearAll();
       this.stage.setView('wide', 0);
-      await UI.title(() => this.openTeacher(), ai.url ? { on: ai.ready, check: () => ai.check() } : undefined);
+      // 인터넷이 끊긴 것을 '선생님이 AI를 껐다'고 알리지 않게, 켜 두었는지만 넘기고 연결은 check가 알려 줘요
+      await UI.title(() => this.openTeacher(), ai.url ? { on: ai.enabled, check: () => ai.check() } : undefined);
       unlockAudio();
       await this.chooseOwner();
       if (!this.owner!.tutorialDone) {
@@ -322,6 +325,8 @@ export class App {
       this.stage.showPaws(false);
       const name = await UI.naming(picks, c, tutorial, EVENT ? undefined : (n) => ai.kind(n));
       document.querySelector('.memo')?.remove();
+      // 이름 짓는 동안 메모에서 다시 연 이야기도 닫아요
+      document.querySelectorAll('.dialog').forEach((d) => d.remove());
       const r = score(c, picks);
       const heart = hasHeart(c, name);
       const shown = EVENT ? fiveStars(r, heart) : r.stars; // 보여 주고 기록하는 별
@@ -431,6 +436,7 @@ export class App {
     UI.clearAll();
     this.stage.setView('wide', 0);
     rank.flush(); // 지난번에 못 보낸 기록이 있으면 보내요
+    rank.warm();
     await UI.title(() => this.openTeacher(), undefined);
     unlockAudio();
     for (;;) {
@@ -442,18 +448,19 @@ export class App {
   }
 
   // 이 반에서 이미 들어온 번호와 이름 (서버 기록 + 이 태블릿 기록). 서버에 닿지 않으면 이 태블릿 것만
-  private async roster(grade: number, cls: number): Promise<Map<number, string> | null> {
+  // 이름은 첫 글자만 보여 줘요(김○○). 친구 이름으로 잘못 들어가지 않게, 번호를 눌러도 이름을 대신 채우지 않아요
+  private async roster(grade: number, cls: number): Promise<{ names: Map<number, string>; partial: boolean } | null> {
     const [rows, owners] = await Promise.all([rank.roster(grade, cls), db.owners()]);
-    const m = new Map<number, { name: string; runs: number; at: number }>();
-    const put = (num: number, name: string, runs: number, at: number) => {
+    const m = new Map<number, { name: string; runs: number }>();
+    const put = (num: number, name: string, runs: number) => {
       const cur = m.get(num);
-      // 같은 번호에 이름이 여럿이면 판을 더 많이 한 이름, 같으면 최근 이름
-      if (!cur || runs > cur.runs || (runs === cur.runs && at > cur.at)) m.set(num, { name, runs, at });
+      // 같은 번호에 이름이 여럿이면 판을 더 많이 한 이름
+      if (!cur || runs > cur.runs) m.set(num, { name, runs });
     };
-    rows?.forEach((r) => put(r.num, r.name, r.runs, r.at ?? 0));
-    owners.filter((o) => o.ev && o.ev.grade === grade && o.ev.cls === cls).forEach((o) => put(o.number, o.name, 1, o.createdAt));
+    rows?.forEach((r) => put(r.num, r.name, r.runs));
+    owners.filter((o) => o.ev && o.ev.grade === grade && o.ev.cls === cls).forEach((o) => put(o.number, maskName(o.name), 1));
     if (!rows && !m.size) return null;
-    return new Map([...m].map(([k, v]) => [k, v.name]));
+    return { names: new Map([...m].map(([k, v]) => [k, v.name])), partial: !rows };
   }
 
   private lastBand() {
@@ -465,8 +472,9 @@ export class App {
     let msg: string | undefined;
     for (;;) {
       if (!key) {
-        const k = await EV.askKey(msg);
-        if (!k) return;
+        const ask = await EV.askKey(msg);
+        if (!ask) return;
+        const k = ask.key;
         // 맞는 암호인지 먼저 확인하고 기억해요
         const busy = h('div', { class: 'toast' }, '암호를 확인하는 중…');
         document.getElementById('ui')!.appendChild(busy);
@@ -476,7 +484,7 @@ export class App {
         if (t === 'too_many') { toast('암호를 여러 번 틀려서 10분 동안 막혔어요', 4000); return; }
         if (t === 'no_admin_key') { toast('서버에 랭킹 암호가 아직 없어요. 버셀에 RANK_ADMIN_KEY를 넣고 다시 배포해 주세요', 5000); return; }
         if (t === 'offline') { toast('랭킹 서버에 닿지 않아요. 인터넷을 확인해 주세요'); return; }
-        key = k; rank.saveKey(k);
+        key = k; rank.saveKey(k, ask.remember);
       }
       const k = key;
       const r = await EV.ranking({ band: this.lastBand(), people: (b, by) => rank.board(b, by, k), classes: (by) => rank.classes(by, k) });
@@ -493,7 +501,8 @@ export class App {
       this.owner = null;
       const busy = h('div', { class: 'toast' }, '기록을 확인하는 중…');
       document.getElementById('ui')!.appendChild(busy);
-      const [owners, st] = await Promise.all([db.owners(), rank.status(w)]);
+      // 오래 쉬던 서버는 첫 대답이 느려서, 못 받으면 한 번 더 물어요
+      const [owners, st] = await Promise.all([db.owners(), rank.status(w).then((r) => r ?? rank.status(w))]);
       busy.remove();
       let mine = owners.filter((o) => o.ev?.key === key).sort((a, b) => a.ev!.runNo - b.ev!.runNo);
       // 만들기만 하고 한 그릇도 안 끓인 판은 지우고 새로 셈해요
@@ -502,7 +511,10 @@ export class App {
       const unfinished = mine.find((x) => !x.ev!.done) ?? null;
       const best = st?.status.best ?? this.localBest(mine);
       const runNo = unfinished ? unfinished.ev!.runNo : Math.max(st?.status.runs ?? 0, mine.length) + 1;
-      const pick = await EV.ready({ who: w, runNo, resume: unfinished ? unfinished.round : null, best, offline: !st });
+      // 이미 쓴 판 (서버 기록 + 이 태블릿 기록). 다른 기기에서 한 판도 세어요
+      const known = new Set<number>([...(st?.status.list ?? []).map((x) => x.runNo), ...mine.map((x) => x.ev!.runNo)]);
+      const used = [...known].filter((n) => n !== runNo);
+      const pick = await EV.ready({ who: w, runNo, used, resume: unfinished ? unfinished.round : null, best, offline: !st });
       if (pick === 'back') return 'back';
       if (pick === 'lib') {
         const last = mine[mine.length - 1];
@@ -522,7 +534,8 @@ export class App {
       // 판 끝: 마지막 그릇 기록을 보내 두고(늦어도 6초) 내 결과만 보여 줘요. 랭킹은 선생님 화면에서만 봐요
       const sent = await Promise.race([this.sending ?? Promise.resolve(null), sleep(6000).then(() => null)]);
       const ev = o.ev!;
-      const isBest = !best || ev.total >= best.total;
+      // 별이 같으면 별 다섯 그릇이 많은 판, 그것도 같으면 먼저 한 판이 최고 기록이에요 (서버와 같은 기준)
+      const isBest = !best || best.runNo === ev.runNo || ev.total > best.total || (ev.total === best.total && ev.fives > best.fives);
       // 지금까지 판 기록: 서버 기록 + 이 태블릿 기록 + 방금 끝낸 판
       const runs = new Map<number, number>();
       (sent?.status?.list ?? st?.status.list ?? []).forEach((x) => runs.set(x.runNo, x.total));
@@ -530,7 +543,7 @@ export class App {
       runs.set(ev.runNo, ev.total);
       let cheer = true;
       for (;;) {
-        const left = MAX_RUNS - ev.runNo;
+        const left = MAX_RUNS - Math.max(ev.runNo, sent?.status?.runs ?? 0, used.length + 1);
         const f = await EV.result({
           who: w, runNo: ev.runNo, total: ev.total, fives: ev.fives, isBest, best: best ? { total: best.total, runNo: best.runNo } : null,
           runs: [...runs].map(([runNo, total]) => ({ runNo, total })), cheer,
@@ -591,10 +604,13 @@ export class App {
   }
 
   // 한 그릇 끓일 때마다 랭킹 서버에 이번 판 기록을 보내요
+  private maxRunsWarned = new Set<string>();
   private sendRun(o: Owner) {
     const ev = o.ev!;
     const p = rank.submit(whoOf(o), { runId: ev.runId, runNo: ev.runNo, bowls: o.round, total: ev.total, fives: ev.fives, done: ev.done }).then((r) => {
       if (r?.runNo && r.runNo !== ev.runNo) { ev.runNo = r.runNo; this.saveOwner(o); }
+      // 세 판을 넘긴 판이라는 알림은 판마다 한 번만
+      if (r?.error === 'max_runs') { if (this.maxRunsWarned.has(ev.runId)) return r; this.maxRunsWarned.add(ev.runId); }
       EV.sent(r);
       return r;
     });

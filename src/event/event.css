@@ -132,3 +132,20 @@
   .ev-login .ev-step-h { padding-top: 0; }
 }
 .ev-login .name-warn:empty { display: none; }
+
+/* 휴대폰처럼 좁은 화면: 반·번호를 두 줄 넘게 나눠 손가락으로 누르기 쉽게, 상단 바는 줄여서 집 버튼이 잘리지 않게 */
+@media (max-width: 640px) {
+  .ev-login .s-c .numpad { grid-template-columns: repeat(8, minmax(0, 1fr)) !important; }
+  .ev-login .ev-nums { grid-template-columns: repeat(7, minmax(0, 1fr)) !important; }
+  .ev-login .numpad button { min-height: 42px; font-size: 17px; }
+}
+@media (max-width: 480px) {
+  .hud { gap: 4px; padding: 8px 6px; }
+  .hud .chip { padding-left: 9px; padding-right: 9px; font-size: 15px; }
+  .hud .chip.evstar .gi-wrap { display: none; }
+}
+/* 이름 칸 아래: 고른 번호에 이미 들어온 친구가 있으면 알려 줘요 */
+.ev-login .name-hint { font-size: 15px; color: #2F6B1F; }
+.ev-login .name-hint:empty { display: none; }
+.ev-keep { display: flex; align-items: center; gap: 8px; margin-top: 10px; font-size: 16px; color: var(--ink-2); }
+.ev-keep input { width: 20px; height: 20px; }

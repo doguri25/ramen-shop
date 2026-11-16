@@ -1010,14 +1010,13 @@ export class Stage {
     // 주둥이·부리가 긴 손님은 덜 숙이고, 조금 더 위를 보고, 음식을 주둥이 끝까지 가져가요
     const R = ch.faceReach * sc;
     const LEAN = (pot ? 0.05 : 0.16) * Math.max(0.15, 1 - R * 4);
-    const view = () => (pot ? surf().add(V(0, 0.1 + R * 0.6, 0)) : surf().add(V(0, R * 0.5, 0)));
-    ch.trunkCurl = 1;
+    const view = () => (pot ? surf().add(V(0, 0.1 + R * 1.2, 0)) : surf().add(V(0, R * 1.6, 0)));
     const noodles = food.getObjectByName('noodles');
     const p = this.served;
     const color = this.liquidColor(B.liquid);
     ch.manual = true;
     ch.talking = false;
-    ch.look = surf();
+    ch.look = view();
     ch.showChop(true);
     ch.chop.scale.setScalar(0.01);
     tween(0.3, (k) => ch.chop.scale.setScalar(Math.max(0.01, k)), { ease: ease.outBack });
@@ -1123,7 +1122,6 @@ export class Stage {
     ch.showChop(false);
     if (B.kind === 'pot') await this.sipWithSpoon(ch, B, side, placeTip, color, onSlurp, R);
     else await this.drinkFrom(ch, B, onSlurp, R);
-    ch.trunkCurl = 0;
     food.children.forEach((c) => { if (c.name !== 'broth') c.visible = false; });
     B.steam.set(0.15);
     ch.manual = false;
@@ -1187,7 +1185,7 @@ export class Stage {
     for (let i = 0; i < 2; i++) {
       const s = B.food.localToWorld(V(side * 0.09 + (Math.random() - 0.5) * 0.03, (L ? L.level : 0) + 0.002, 0.04));
       const lean = 0.05 * Math.max(0.15, 1 - R * 4);
-      ch.lean = lean; ch.look = s.clone().add(V(0, 0.1 + R * 0.6, 0)); ch.headExtra.x = -0.05;
+      ch.lean = lean; ch.look = s.clone().add(V(0, 0.1 + R * 1.2, 0)); ch.headExtra.x = -0.05;
       placeTip(s, DOWN, 0.2);
       await wait(0.45);
       sl.visible = true;

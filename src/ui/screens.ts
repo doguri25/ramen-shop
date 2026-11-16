@@ -32,7 +32,7 @@ const AI_USES = [
 const GOAL = EVENT ? '별 네 개' : '별 세 개';
 const starHint = (r: ScoreResult, fxName: string, famName: string, subName: string) =>
   !r.exact ? `💡 '${fxName}' 마음이 담긴 재료를 하나 넣어 보세요. ${GOAL}에 가까워져요!`
-    : r.match < 3 ? `💡 ${famName} 묶음 재료를 ${3 - r.match}가지 더 넣으면 ${GOAL}!`
+    : r.match < 3 ? `💡 ${famName} 묶음 재료를 ${3 - r.match}가지 더${r.help ? '' : `, ${subName} 묶음 재료도 하나`} 넣으면 ${GOAL}!`
       : `💡 ${subName} 묶음 재료를 함께 넣으면 ${GOAL}!`;
 export const starText = (n: number) => '★'.repeat(n) + '☆'.repeat(Math.max(0, MAX_STARS - n));
 const mount = <T extends HTMLElement>(el: T) => { root().appendChild(el); return el; };
@@ -730,7 +730,7 @@ export const UI = {
           h('div', { class: 'muted', style: 'font-size:15px;margin-bottom:8px' }, '이 태블릿에 있는 모든 사장님 기록을 모아 정리해요. 수업 결과를 쓸 때 참고해 주세요.'),
           sumBtn, sumBox),
         o.rank ? rankSec(o.rank, () => wrap) : null,
-        h('div', { class: 'sec' }, h('h3', null, '사장님 기록'), list),
+        h('div', { class: 'sec' }, h('h3', null, '사장님 기록'), EVENT ? h('div', { class: 'muted', style: 'font-size:15px;margin-bottom:6px' }, '이 기기에 남은 기록만 지워요. 랭킹 서버에 모인 기록은 그대로 남아요.') : null, list),
         h('div', { class: 'actions' }, h('button', { class: 'btn', onclick: () => { o.onSave(url.value.trim(), q, aiOn, aiUrl.value.trim()); sfx.pop(); wrap.remove(); res(); } }, '저장하고 닫기'))));
       mount(wrap);
     });

@@ -9,7 +9,8 @@ const PAGE_WAIT = 3000; // 화면은 3초 기다려 보고, 늦으면 저장본�
 
 self.addEventListener('install', (e) => {
   // 게임 파일을 전부 받아 둬요. 하나라도 실패하면 설치하지 않고 예전 저장본을 그대로 써요
-  e.waitUntil(caches.open(CACHE).then((c) => c.addAll(['./', ...FILES])).then(() => self.skipWaiting()));
+  // 브라우저가 잠깐 들고 있던 예전 파일(최대 10분)을 받지 않도록 꼭 서버에서 새로 받아요
+  e.waitUntil(caches.open(CACHE).then((c) => c.addAll(['./', ...FILES].map((u) => new Request(u, { cache: 'reload' })))).then(() => self.skipWaiting()));
 });
 
 self.addEventListener('activate', (e) => {
@@ -40,7 +41,8 @@ self.addEventListener('fetch', (e) => {
     // 화면(index.html): 새것을 먼저 기다리되, 늦거나 오류면 저장본
     e.respondWith((async () => {
       const cached = (await caches.match(r)) || (await caches.match('./index.html')) || (await caches.match('./'));
-      const net = fetch(r).then((res) => (res.ok ? putIfGood(r, res) : cached || res)).catch(() => cached || Response.error());
+      // 화면은 브라우저 캐시를 거치지 않고 서버에 확인해요 (새로 올린 판이 예전 화면에 가려 멈추지 않게)
+      const net = fetch(r.url, { cache: 'no-cache', credentials: 'same-origin' }).then((res) => (res.ok ? putIfGood(r, res) : cached || res)).catch(() => cached || Response.error());
       if (!cached) return net;
       const timer = new Promise((res) => setTimeout(() => res(cached), PAGE_WAIT));
       return Promise.race([net, timer]);

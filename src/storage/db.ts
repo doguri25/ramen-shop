@@ -12,9 +12,14 @@ const del = (k: string) => d0(k, store);
 
 const safe = async <T>(p: Promise<T>, fallback: T): Promise<T> => { try { return await p; } catch (e) { console.warn('[db]', e); return fallback; } };
 
+// 사장님 목록을 못 읽은 채로 덮어쓰면 반 전체 목록이 지워져요. 마지막 읽기가 실패했으면 쓰지 않아요
+let ownersRead = true;
+
 export const db = {
-  owners: () => safe(get<Owner[]>('owners').then((v) => v ?? []), [] as Owner[]),
-  saveOwners: (o: Owner[]) => safe(set('owners', o), undefined),
+  async owners(): Promise<Owner[]> {
+    try { const v = await get<Owner[]>('owners'); ownersRead = true; return v ?? []; } catch (e) { console.warn('[db]', e); ownersRead = false; return []; }
+  },
+  saveOwners: (o: Owner[]) => (ownersRead ? safe(set('owners', o), undefined) : (console.warn('[db] 목록을 못 읽어서 저장을 건너뛰어요'), Promise.resolve(undefined))),
   records: (ownerId: string) => safe(get<RamenRecord[]>('records:' + ownerId).then((v) => v ?? []), [] as RamenRecord[]),
   // 저장이 됐는지 알려 줘요 (공간이 모자라면 false)
   saveRecords: (ownerId: string, r: RamenRecord[]) => safe(set('records:' + ownerId, r).then(() => true), false),
