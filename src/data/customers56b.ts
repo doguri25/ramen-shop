@@ -236,7 +236,7 @@ export const CUSTOMERS_56B: Customer[] = [
     greet: '옆 반 애들은 다 별로예요.',
     story: ['체육대회에서 [[옆 반에 졌어요]].', '우리 반 단톡방에 옆 반 [[흉보는 말]]이 가득해요.', '그런데 옆 반이 [[넘어진 우리 반 친구를 일으켜]] 줬던 게 생각나요.'],
     needs: { effect: '좋은 점 찾기', sub: 'together' },
-    feelingWords: ['미움', '화', '좋은', '함께', '친구', '웃음'],
+    feelingWords: ['미움', '화', '좋은 점', '함께', '친구', '웃음'],
     reactions: R('고마워요! 옆 반도 멋진 점이 있어요. 다음엔 경기 끝나고 서로 박수 쳐 주자고 할래요.', '고마워요. 미운 마음이 조금 줄었어요.', '잘 먹었어요. 그런데 저는 옆 반의 좋은 점을 찾아보고 싶었어요.'),
     prop: '포스터', propModel: 'poster',
   },
@@ -319,6 +319,7 @@ export const CUSTOMERS_56B: Customer[] = [
     feelingWords: ['걱정', '떨림', '멈춤', '차분', '용기', '가벼워', '시원해'],
     reactions: R('고마워요. 잠깐 멈추고 생각하니 그 친구가 많이 속상할 일이에요. 저는 안 하겠다고 말할래요.', '고마워요. 쿵쾅거림이 조금 줄었어요.', '잘 먹었어요. 그런데 저는 따라 하기 전에 잠깐 멈추는 마음이 필요했어요.'),
     prop: '자', propModel: 'ruler',
+    safetyNote: SAFE_TELL,
   },
   {
     id: 'v_lunch', name: '판다 재이', source: 'new',

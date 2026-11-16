@@ -1012,7 +1012,8 @@ export class Stage {
     const pot = B.kind === 'pot';
     // 주둥이·부리가 긴 손님은 덜 숙이고, 조금 더 위를 보고, 음식을 주둥이 끝까지 가져가요
     const R = ch.faceReach * sc;
-    const LEAN = (pot ? 0.05 : 0.16) * Math.max(0.15, 1 - R * 4);
+    // 머리가 큰 손님이 그릇에 얼굴을 파묻은 것처럼 보이지 않게 조금만 숙여요
+    const LEAN = (pot ? 0.05 : 0.11) * Math.max(0.15, 1 - R * 4);
     const view = () => (pot ? surf().add(V(0, 0.1 + R * 1.2, 0)) : surf().add(V(0, R * 1.6, 0)));
     const noodles = food.getObjectByName('noodles');
     const p = this.served;
@@ -1139,37 +1140,43 @@ export class Stage {
   private async drinkFrom(ch: Chibi, B: BowlInfo, onSlurp?: () => void, R = 0) {
     const bowl = B.group;
     const home = bowl.position.clone();
+    const pot = B.kind === 'pot';
+    // 마실 때는 그릇 아래쪽 옆면을 몸 쪽에서 감싸 쥐어요 (손이 덜 멀어서 팔이 길어 보이지 않게)
+    const G = pot ? B.grips : [V(-0.135, 0.045, -0.035), V(0.135, 0.045, -0.035)];
     const hands = () => {
       bowl.updateMatrixWorld();
-      const l = bowl.localToWorld(B.grips[0].clone()), r = bowl.localToWorld(B.grips[1].clone());
+      const l = bowl.localToWorld(G[0].clone()), r = bowl.localToWorld(G[1].clone());
       ch.setHandWorld(0, l, r.clone().sub(l)); ch.setHandWorld(1, r, l.clone().sub(r));
     };
-    const pot = B.kind === 'pot';
     hands();
     ch.lean = 0.12;
     await wait(0.35);
-    const mouth0 = ch.mouthWorld();
-    // 주둥이가 길면 그릇을 더 앞, 조금 더 아래로 들고 고개를 덜 숙여요
-    const lift = mouth0.clone().add(pot ? V(0, -0.21, 0.27) : V(0, -0.15, 0.16)).add(V(0, -R * 0.5, R * 1.1));
-    const tilt = 0.3 * (1 - Math.min(0.7, R * 3));
-    await tween(pot ? 0.75 : 0.55, (k) => { bowl.position.lerpVectors(home, lift, k); bowl.rotation.x = -0.15 * k; hands(); ch.lean = 0.12 - 0.2 * k; }, { ease: ease.inOutCubic });
+    // 손님 쪽 테두리를 입술 바로 앞에 대요. 고개를 젖히거나 몸을 펴도 매 순간 입 위치를 다시 봐서 따라가요
+    // (주둥이가 긴 손님은 주둥이 끝에 대요). 그릇 테두리: 높이 0.105, 반지름 0.165
+    const RIM = pot ? V(0, 0.2, -(POT_R + 0.01)) : V(0, 0.105, -0.165);
+    const AX = V(1, 0, 0);
+    const at = (rot: number) => ch.mouthWorld().add(V(0, -0.02, 0.012 + R * 0.9)).sub(RIM.clone().applyAxisAngle(AX, rot));
+    // 고개는 젖히지 않고 그릇 쪽으로 살짝 숙여요 (입이 내려와서 팔을 덜 뻗어요). 대신 그릇을 더 기울여요
+    const tilt = -0.12;
+    await tween(pot ? 0.75 : 0.55, (k) => { bowl.rotation.x = -0.15 * k; bowl.position.lerpVectors(home, at(bowl.rotation.x), k); hands(); ch.lean = 0.12 - 0.08 * k; ch.headExtra.x = -tilt * k * 0.5; }, { ease: ease.inOutCubic });
     sfx.slurp();
     onSlurp?.();
     ch.chewing = true;
     const L = B.liquid, L0 = L ? L.level : 0, Lend = B.box.prof.floorAt(0) + 0.006;
-    const tiltMax = pot ? 0.42 : 0.5;
+    const tiltMax = pot ? 0.42 : 0.62;
     const noodles = B.food.getObjectByName('noodles');
     await tween(1.1, (k) => {
       const s = Math.sin(k * PI * 0.5);
       bowl.rotation.x = -0.15 - tiltMax * s;
-      ch.headExtra.x = -tilt * s;
+      ch.headExtra.x = -tilt * (0.5 + 0.5 * s);
+      bowl.position.copy(at(bowl.rotation.x));
       hands();
       if (L) L.level = lerp(L0, Lend, k);
       if (noodles && k > 0.5) noodles.visible = false;
     }, { ease: ease.linear });
     ch.chewing = false;
-    const r0 = bowl.rotation.x;
-    await tween(0.55, (k) => { bowl.position.lerpVectors(lift, home, k); bowl.rotation.x = r0 * (1 - k); hands(); ch.headExtra.x = -tilt * (1 - k); }, { ease: ease.inOutCubic });
+    const r0 = bowl.rotation.x, p0 = bowl.position.clone();
+    await tween(0.55, (k) => { bowl.position.lerpVectors(p0, home, k); bowl.rotation.x = r0 * (1 - k); hands(); ch.headExtra.x = -tilt * (1 - k); ch.lean = 0.04 * (1 - k); }, { ease: ease.inOutCubic });
     bowl.rotation.x = 0;
     sfx.soft();
     L?.kick(0, -0.2);

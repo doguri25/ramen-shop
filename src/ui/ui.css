@@ -91,7 +91,7 @@ button { font-family: var(--head); border: 0; cursor: pointer; color: inherit; b
 /* ── 상단 바 ── */
 .hud { position: absolute; top: 0; left: 0; right: 0; display: flex; align-items: center; gap: 10px; padding: 12px 14px; pointer-events: none; }
 .hud > * { pointer-events: auto; }
-.chip { display: inline-flex; align-items: center; gap: 8px; min-height: 44px; padding: 0 16px; border-radius: 999px; background: rgba(255,255,255,.94); box-shadow: var(--shadow-s); font-family: var(--head); font-size: 19px; }
+.chip { display: inline-flex; align-items: center; gap: 8px; min-height: 44px; white-space: nowrap; padding: 0 16px; border-radius: 999px; background: rgba(255,255,255,.94); box-shadow: var(--shadow-s); font-family: var(--head); font-size: 19px; }
 .chip .dot { width: 12px; height: 12px; border-radius: 50%; }
 .hud .grow { flex: 1; }
 .hud .round { color: var(--accent); }
@@ -209,7 +209,7 @@ button { font-family: var(--head); border: 0; cursor: pointer; color: inherit; b
 .lib .grid { flex: 1; overflow: auto; padding: 8px 16px 24px; display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 14px; align-content: start; }
 .rcard { background: #fff; border-radius: 20px; box-shadow: var(--shadow-s); padding: 10px; text-align: left; display: flex; flex-direction: column; gap: 6px; border: 3px solid transparent; position: relative; }
 .rcard img { width: 100%; aspect-ratio: 1; border-radius: 14px; object-fit: cover; background: #FFF8EE; }
-.rcard .nm { font-family: var(--head); font-size: 18px; line-height: 1.25; word-break: keep-all; }
+.rcard .nm { font-family: var(--head); font-size: 18px; line-height: 1.25; word-break: keep-all; overflow-wrap: anywhere; }
 .rcard .meta { font-size: 15px; color: var(--ink-2); display: flex; justify-content: space-between; align-items: center; }
 .rcard .st { color: var(--gold); letter-spacing: 1px; font-size: 16px; }
 .rcard .hrt { position: absolute; top: 14px; right: 14px; width: 40px; height: 40px; }
@@ -378,7 +378,7 @@ body.cooking .prog .bar { display: none; }
 .memo.open .body { display: block; }
 .memo .cl { margin-top: 0; }
 .memo .replay { margin-top: 10px; }
-.guide { top: 66px; right: 12px; width: min(300px, 26vw); }
+.guide { top: 66px; bottom: auto; left: auto; right: 12px; width: min(300px, 26vw); }
 .cook { padding: 8px 12px 10px; }
 .cook-top { display: flex; align-items: center; gap: 10px; }
 .cook-top .tabs { flex: 1; min-width: 0; }
@@ -419,11 +419,11 @@ body.cooking .prog .bar { display: none; }
 @media (max-width: 480px) { .hud .owner-chip { display: none; } }
 .logo .l2 { word-break: keep-all; }
 /* 내용이 길어 화면을 넘쳐도 아래 버튼은 늘 보이게 */
-.name-sheet .actions, .heartnote .actions, .modal .actions { position: sticky; z-index: 1; background: var(--paper); }
-.modal .actions { bottom: -28px; margin-bottom: -28px; padding: 10px 0 28px; }
+.name-sheet .actions, .heartnote .actions, .modal > .actions { position: sticky; z-index: 1; background: var(--paper); }
+.modal > .actions { bottom: -28px; margin-bottom: -28px; padding: 10px 0 28px; }
 .heartnote .actions { bottom: -24px; margin-bottom: -24px; padding: 10px 0 24px; }
 .name-sheet .actions { bottom: -20px; margin-bottom: -20px; padding: 10px 0 20px; }
-@media (max-height: 720px) { .modal .actions { bottom: -18px; margin-bottom: -18px; padding-bottom: 18px; } }
+@media (max-height: 720px) { .modal > .actions { bottom: -18px; margin-bottom: -18px; padding-bottom: 18px; } }
 .heartnote .actions { background: #FFFCF4; }
 /* 가로로 누운 휴대폰: 설명과 길잡이를 위에 나란히, 카드는 작게 */
 @media (max-height: 430px) and (orientation: landscape) {
@@ -494,7 +494,7 @@ body.cooking .prog .bar { display: none; }
 .rwrap { position: relative; display: flex; }
 .rwrap > .rcard { flex: 1; min-width: 0; }
 .rsave { position: absolute; left: 16px; top: 16px; padding: 6px 10px; border: 0; border-radius: 999px; background: rgba(255,255,255,.94);
-  box-shadow: 0 1px 4px rgba(60,40,20,.18); font: inherit; font-size: 14px; font-weight: 700; color: var(--ink); cursor: pointer; }
+  box-shadow: 0 1px 4px rgba(60,40,20,.18); font: inherit; font-size: 14px; font-weight: 700; color: var(--ink); cursor: pointer; min-height: 40px; }
 .rsave:active { transform: scale(.96); }
 /* 첫 화면 만든이 */
 /* 첫 화면 만든이·연락처: 흰 바탕 알약으로 또렷하게 */
@@ -526,6 +526,10 @@ body.cooking .prog .bar { display: none; }
 .tab.past:not(.done) { background: #EEE6DC; color: #A08C7C; }
 .tab.later { opacity: .7; }
 /* 휴대폰처럼 좁거나 낮은 화면: 이름 짓는 동안 이야기 메모가 낱말 카드를 가리지 않게 숨겨요 */
-@media (max-width: 760px), (max-height: 560px) {
+@media (max-width: 860px), (max-height: 560px) {
   body.naming .memo { display: none; }
 }
+/* 숨긴 버튼은 정말 숨겨요 (.btn의 display가 hidden을 이기지 않게) */
+.btn[hidden] { display: none; }
+/* 휴대폰: 사장님 등록 번호판은 여섯 칸씩 (손가락으로 누르기 쉽게) */
+@media (max-width: 480px) { .modal .numpad { grid-template-columns: repeat(6, minmax(0, 1fr)); } }

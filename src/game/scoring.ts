@@ -37,14 +37,14 @@ export const fiveStars = (r: ScoreResult, heart: boolean) =>
 const NEG = '슬픔|그리움|눈물|외로움|걱정|떨림|화|짜증|피곤함|서운함|미움';
 const POS = '기쁨|웃음|설렘';
 // '슬픔을 키워', '기쁨을 날려'처럼 뜻이 거꾸로인 이름은 하트를 주지 않아요
-const BACKWARD = [new RegExp(`(${NEG})(을|를)(키워|채워)`), new RegExp(`(${POS})(을|를)(날려|녹여|덜어|식혀)`)];
+const BACKWARD = [new RegExp(`(?:^|\\s)(${NEG})\\s*(을|를)\\s*(키워|채워)`), new RegExp(`(?:^|\\s)(${POS})\\s*(을|를)\\s*(날려|녹여|덜어|식혀)`)];
 // 한 글자 낱말('화', '힘', '잠')은 다른 낱말 속에 섞이기 쉬워서('대화', '손님') 낱말 맨 앞에 조사와 함께 있을 때만 봐요
 const ONE = /^(.)(을|를|이|가|은|는|도|)$/;
 export const hasHeart = (c: Customer, name: string) => {
   const raw = name.replace(/\s/g, '');
-  if (BACKWARD.some((r) => r.test(raw))) return false;
-  const n = raw.replace(/친구/g, '').replace(/^마음이/, '');
-  const tokens = name.trim().split(/\s+/);
+  if (BACKWARD.some((r) => r.test(name.trim()))) return false;
+  const n = raw.replace(/친구|만들어|다시마/g, '').replace(/^마음이/, ''); // '들어'·'다시'가 다른 낱말 속에 있을 때는 빼요
+  const tokens = name.trim().split(/\s+/).map((t) => t.replace(/[^가-힣]/g, ''));
   return c.feelingWords.some((w0) => {
     const w = w0.replace(/\s/g, '');
     if (!w || w === '친구') return false;

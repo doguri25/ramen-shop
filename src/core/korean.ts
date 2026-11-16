@@ -1,12 +1,12 @@
 // 받침 확인과 조사 붙이기
 export const hasBatchim = (w: string) => {
-  const t = w.trim();
+  const t = w.trim().replace(/[^0-9A-Za-z가-힣]+$/, '');
   const c = t.charCodeAt(t.length - 1);
   if (c >= 0xac00 && c <= 0xd7a3) return (c - 0xac00) % 28 !== 0;
   return /[136780lmnLMN]$/.test(t); // 숫자·영문 끝소리 대충 맞추기
 };
 const isRieul = (w: string) => {
-  const c = w.trim().charCodeAt(w.trim().length - 1);
+  const t = w.trim().replace(/[^0-9A-Za-z가-힣]+$/, ''); const c = t.charCodeAt(t.length - 1);
   return c >= 0xac00 && c <= 0xd7a3 && (c - 0xac00) % 28 === 8;
 };
 export const eulReul = (w: string) => w + (hasBatchim(w) ? '을' : '를');

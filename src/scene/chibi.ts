@@ -5,6 +5,7 @@ import { EYES, faceAtlas, MOUTH, tex } from '../paint/textures';
 import { boxG, capsuleG, coneG, cylG, group, M, mesh, shellG, sphereG, torusG, tube } from './geo';
 
 export const HR = 0.34; // 머리 반지름
+const ARM_MAX = 0.52; // 팔(어깨~손) 길이: 이보다 멀면 곧게 펴지고 조금 늘어나요
 const PI = Math.PI;
 const FRONT = PI / 2;
 const INK = '#3A2A22';
@@ -43,7 +44,7 @@ function setCell(t: THREE.Texture, eye: boolean, i: number) {
 }
 
 export type Act = 'idle' | 'talk' | 'wave' | 'bow' | 'cheer' | 'clap' | 'scratch' | 'think' | 'fist' | 'worry' | 'sad' | 'full' | 'nod' | 'thumbs';
-interface Arm { side: number; shoulder: THREE.Vector3; upper: THREE.Mesh; joint: THREE.Mesh; cuff: THREE.Mesh; hand: THREE.Group; cur: THREE.Vector3; target: THREE.Vector3; aim: THREE.Vector3 | null; aimCur: THREE.Vector3 }
+interface Arm { side: number; shoulder: THREE.Vector3; upper: THREE.Mesh; fore: THREE.Mesh; elbow: THREE.Mesh; joint: THREE.Mesh; cuff: THREE.Mesh; hand: THREE.Group; cur: THREE.Vector3; target: THREE.Vector3; aim: THREE.Vector3 | null; aimCur: THREE.Vector3 }
 const V = (x = 0, y = 0, z = 0) => new THREE.Vector3(x, y, z);
 const UP = V(0, 1, 0);
 export const LEG = 0.14; // 서 있을 때 몸을 들어 올리는 높이
@@ -105,11 +106,14 @@ export class Chibi {
       mesh(sphereG(1, 16, 12), M(shoe, { spec: s.kind === 'human' ? 0.3 : 0 }), [0, -0.15, 0.04], [0.075, 0.05, 0.1], [0, 0, 0], hip);
       this.legs.push(hip);
     }
-    // 팔: 어깨에서 손까지 늘었다 줄었다 하는 소매
+    // 팔: 어깨-팔꿈치-손 두 마디 소매. 멀리 뻗을 때만 만화처럼 조금 늘어나요
     const pawCol = s.kind === 'mole' ? fur2 : fur;
     for (const side of [-1, 1]) {
       const shoulder = V(side * 0.245 * bw, 0.47, 0.02);
-      const upper = mesh(cylG(0.066, 0.06, 1, 14), M(s.cloth, { noise: 1.6 }), [0, 0, 0], 1, [0, 0, 0], this.body);
+      const sleeve = M(s.cloth, { noise: 1.6 });
+      const upper = mesh(cylG(0.06, 0.064, 1, 14), sleeve, [0, 0, 0], 1, [0, 0, 0], this.body);
+      const fore = mesh(cylG(0.055, 0.06, 1, 14), sleeve, [0, 0, 0], 1, [0, 0, 0], this.body);
+      const elbow = mesh(sphereG(0.06, 12, 10), sleeve, [0, 0, 0], 1, [0, 0, 0], this.body);
       const joint = mesh(sphereG(0.072, 14, 10), M(s.cloth, { noise: 1.6 }), [shoulder.x, shoulder.y, shoulder.z], 1, [0, 0, 0], this.body);
       const hand = group(this.body);
       const cuff = mesh(torusG(0.056, 0.02, 8, 18), M(lighten(s.cloth, 0.4)), [0, 0, 0], 1, [0, 0, 0], this.body);
@@ -118,7 +122,7 @@ export class Chibi {
       mesh(sphereG(0.028, 10, 8), M(pawCol), [-side * 0.065, 0.018, 0.045], 1, [0, 0, 0], hand);
       if (s.kind !== 'human') mesh(sphereG(1, 10, 8), M('#E9A0A8', { rim: 0.2 }), [0, -0.055, 0.04], [0.035, 0.012, 0.03], [0, 0, 0], hand);
       const rest = V(side * 0.3, 0.26, 0.08);
-      this.arms.push({ side, shoulder, upper, joint, cuff, hand, cur: rest.clone(), target: rest.clone(), aim: null, aimCur: V(0, -0.4, 1).normalize() });
+      this.arms.push({ side, shoulder, upper, fore, elbow, joint, cuff, hand, cur: rest.clone(), target: rest.clone(), aim: null, aimCur: V(0, -0.4, 1).normalize() });
     }
     // 젓가락 (오른손)
     for (const dx of [-0.011, 0.011]) mesh(cylG(0.0045, 0.0065, 0.21, 6), M('#B9763E', { spec: 0.4 }), [dx, 0.004, 0.125], 1, [PI / 2, 0, dx * 1.4], this.chop);
@@ -821,7 +825,8 @@ export class Chibi {
         R.aim = V(0.3, 0.6, 1);
         break;
       case 'wave':
-        R.target.set(0.36 + Math.sin(t * 11) * 0.06, 1.0, 0.18);
+        // 손은 머리 옆 높이에서 흔들어요 (팔꿈치를 굽혀서, 팔이 길게 늘어나지 않게)
+        R.target.set(0.34 + Math.sin(t * 11) * 0.06, 0.84, 0.22);
         R.aim = V(0, 1, 0.3);
         this.headExtra.z = -0.08;
         break;
@@ -831,7 +836,7 @@ export class Chibi {
         L.target.set(-0.08, 0.45, 0.3); R.target.set(0.08, 0.45, 0.3);
         break;
       case 'cheer':
-        L.target.set(-0.32, 1.08 + Math.sin(t * 9) * 0.05, 0.12); R.target.set(0.32, 1.08 + Math.sin(t * 9 + 1) * 0.05, 0.12);
+        L.target.set(-0.31, 0.9 + Math.sin(t * 9) * 0.04, 0.16); R.target.set(0.31, 0.9 + Math.sin(t * 9 + 1) * 0.04, 0.16);
         L.aim = V(0, 1, 0.2); R.aim = V(0, 1, 0.2);
         this.headExtra.x = -0.15;
         break;
@@ -846,7 +851,7 @@ export class Chibi {
         this.headExtra.z = -0.06;
         break;
       case 'scratch':
-        R.target.set(0.34 + Math.sin(t * 14) * 0.015, 1.0, 0.04); R.aim = V(-0.6, 0.6, 0.2);
+        R.target.set(0.35 + Math.sin(t * 14) * 0.015, 0.9, 0.06); R.aim = V(-0.6, 0.6, 0.2);
         this.headExtra.z = 0.12;
         break;
       case 'think':
@@ -880,19 +885,39 @@ export class Chibi {
     this.lean = lean;
   }
 
+  // 두 마디 팔: 손까지 거리보다 팔 길이를 조금 길게 잡아 팔꿈치가 자연스럽게 굽어요.
+  // 팔꿈치는 바깥쪽 아래로. 아주 멀면(0.56 넘게) 곧게 펴지며 조금 늘어나요
   private updateArm(arm: Arm, dt: number) {
     const k = 1 - Math.exp(-dt * 14);
     arm.cur.lerp(arm.target, k);
     const a = arm.shoulder, b = arm.cur;
-    const dir = b.clone().sub(a);
-    const len = Math.max(0.02, dir.length());
-    dir.divideScalar(len);
-    arm.upper.position.copy(a).addScaledVector(dir, len * 0.5);
-    arm.upper.quaternion.setFromUnitVectors(UP, dir);
-    arm.upper.scale.set(1, Math.max(0.01, len - 0.03), 1);
-    arm.cuff.position.copy(b).addScaledVector(dir, -0.05);
-    arm.cuff.quaternion.setFromUnitVectors(V(0, 0, 1), dir);
-    const wantAim = arm.aim ?? dir.clone().add(V(0, -0.35, 0.4)).normalize();
+    const SB = b.clone().sub(a);
+    const d = Math.max(0.02, SB.length());
+    const dir = SB.divideScalar(d);
+    // 가까울수록 팔꿈치를 더 굽히고(×1.25), 멀리 뻗을수록 덜 굽혀서(×1.1) 팔이 길어 보이지 않게
+    const bend = 1.25 - 0.15 * Math.min(1, Math.max(0, (d - 0.3) / 0.15));
+    const total = Math.max(d, Math.min(d * bend, ARM_MAX));
+    const seg = total / 2;
+    const x = d / 2, hgt = Math.sqrt(Math.max(0, seg * seg - x * x));
+    // 팔꿈치는 옆으로 벌어지고 조금 아래로 (손을 들 때 겨드랑이를 벌리는 모양)
+    const pole = V(arm.side, -0.65, -0.2);
+    pole.addScaledVector(dir, -pole.dot(dir));
+    if (pole.lengthSq() < 1e-6) pole.set(arm.side, 0, 0);
+    pole.normalize();
+    const E = a.clone().addScaledVector(dir, x).addScaledVector(pole, hgt);
+    const bone = (mh: THREE.Mesh, A: THREE.Vector3, B: THREE.Vector3, trim: number) => {
+      const v = B.clone().sub(A); const len = Math.max(1e-3, v.length());
+      mh.position.copy(A).addScaledVector(v, 0.5);
+      mh.quaternion.setFromUnitVectors(UP, v.divideScalar(len));
+      mh.scale.set(1, Math.max(0.01, len - trim), 1);
+    };
+    bone(arm.upper, a, E, 0);
+    bone(arm.fore, E, b, 0.03);
+    arm.elbow.position.copy(E);
+    const fdir = b.clone().sub(E).normalize();
+    arm.cuff.position.copy(b).addScaledVector(fdir, -0.05);
+    arm.cuff.quaternion.setFromUnitVectors(V(0, 0, 1), fdir);
+    const wantAim = arm.aim ?? fdir.clone().add(V(0, -0.35, 0.4)).normalize();
     arm.aimCur.lerp(wantAim, k).normalize();
     arm.hand.position.copy(b);
     const m = new THREE.Matrix4().lookAt(V(), arm.aimCur.clone().negate(), Math.abs(arm.aimCur.y) > 0.95 ? V(0, 0, 1) : UP);

@@ -280,7 +280,11 @@ export const UI = {
         info.animate([{ transform: 'scale(.97)' }, { transform: 'scale(1)' }], { duration: 180 });
       };
 
+      // 화면을 돌리거나 칸이 늘어나 요리 판 높이가 바뀌면 메모·안내 자리도 바로 맞춰요
+      const setH = () => document.documentElement.style.setProperty('--cookH', panel.offsetHeight + 'px');
+      const ro = new ResizeObserver(setH); ro.observe(panel);
       const finish = () => {
+        ro.disconnect();
         panel.remove(); info.remove(); guide?.remove();
         document.body.classList.remove('cooking');
         res(picks);

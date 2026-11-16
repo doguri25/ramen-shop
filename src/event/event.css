@@ -128,14 +128,14 @@
   .ev-nums button { min-height: 44px; }
 }
 @media (max-width: 640px) {
-  .ev-login .ev-step { flex-direction: column; gap: 4px; }
-  .ev-login .ev-step-h { padding-top: 0; }
+  .ev-login .ev-step { flex-direction: column; align-items: stretch; gap: 4px; }
+  .ev-login .ev-step-h { flex: 0 0 auto; padding-top: 0; }
 }
 .ev-login .name-warn:empty { display: none; }
 
 /* 휴대폰처럼 좁은 화면: 반·번호를 두 줄 넘게 나눠 손가락으로 누르기 쉽게, 상단 바는 줄여서 집 버튼이 잘리지 않게 */
 @media (max-width: 640px) {
-  .ev-login .s-c .numpad { grid-template-columns: repeat(8, minmax(0, 1fr)) !important; }
+  .ev-login .s-c .numpad { grid-template-columns: repeat(5, minmax(0, 1fr)) !important; }
   .ev-login .ev-nums { grid-template-columns: repeat(7, minmax(0, 1fr)) !important; }
   .ev-login .numpad button { min-height: 42px; font-size: 17px; }
 }
@@ -156,3 +156,7 @@
 .ev-dupe h2 { display: flex; align-items: center; justify-content: center; gap: 8px; margin: 6px 0 2px; }
 .ev-dupe .sub { margin: 4px 0; }
 .ev-dupe .actions { justify-content: center; gap: 12px; margin-top: 14px; }
+/* 랭킹 머리줄: 좁은 화면에서는 줄을 바꿔요 (제목이 한 글자씩 쌓이거나 닫기 버튼이 줄지 않게) */
+.ev-rank header { flex-wrap: wrap; }
+.ev-rank header h2 { white-space: nowrap; }
+.ev-rank header .icon-btn { flex-shrink: 0; }
