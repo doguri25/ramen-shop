@@ -6,6 +6,7 @@ import { darken, lighten } from '../paint/brush';
 import { makePot } from './food';
 import { birdTex, cloudsTex, glowTex, makeGlow, makeShadow, makeSunShafts } from './fx';
 import { fitTo, loadModel } from './models';
+import { Noren, type Ball } from './noren';
 
 const PI = Math.PI;
 
@@ -32,9 +33,9 @@ export function makeShop() {
   mesh(boxG(6, 0.9, 0.05), wain, [0, 0.45, -1.72], 1, [0, 0, 0], root);
   mesh(boxG(6, 0.06, 0.09), M('#8A5A3B'), [0, 0.92, -1.7], 1, [0, 0, 0], root);
 
-  // 창문 (마을 그림 + 흘러가는 구름 + 새)
+  // 창문 (마을 그림 + 흘러가는 구름 + 새). 오른쪽 벽시계와 겹치지 않게 조금 왼쪽에 둬요
   const village = tex(villageCanvas());
-  const win = group(root, [-0.15, 1.78, -1.72]);
+  const win = group(root, [-0.28, 1.78, -1.72]);
   mesh(new THREE.PlaneGeometry(1.9, 0.95), wc('#FFFFFF', { map: village, rim: 0, flat: 0.85 }), [0, 0, 0.01], 1, [0, 0, 0], win);
   const cloudT = cloudsTex(); cloudT.wrapS = THREE.RepeatWrapping; cloudT.repeat.set(1, 1);
   const clouds = mesh(new THREE.PlaneGeometry(1.9, 0.46), new THREE.MeshBasicMaterial({ map: cloudT, transparent: true, depthWrite: false, opacity: 0.9 }), [0, 0.24, 0.016], 1, [0, 0, 0], win);
@@ -66,25 +67,30 @@ export function makeShop() {
     p.renderOrder = 1;
   });
 
-  // 문: 경첩에 달려 열리고 닫혀요. 문 뒤에는 바깥 골목 그림
+  // 문: 오른쪽 경첩에 달려 가게 안쪽 오른편으로 열려요 (손님이 지나가는 왼쪽 길을 막지 않게). 문 뒤에는 바깥 골목 그림
   const doorX = 1.75;
   const outside = mesh(new THREE.PlaneGeometry(0.9, 2.15), wc('#FFFFFF', { map: village, rim: 0, flat: 0.9 }), [doorX, 1.08, -1.745], 1, [0, 0, 0], root);
   (outside.material as THREE.ShaderMaterial).uniforms.uColor.value.set('#FFF6E0');
   for (const [x, y, w, h] of [[doorX - 0.5, 1.12, 0.08, 2.24], [doorX + 0.5, 1.12, 0.08, 2.24], [doorX, 2.27, 1.08, 0.08]] as const) mesh(boxG(w, h, 0.1), M('#9A6232'), [x, y, -1.7], 1, [0, 0, 0], root);
-  const hinge = group(root, [doorX - 0.455, 0, -1.7]);
-  const leaf = group(hinge, [0.455, 0, 0]);
+  const hinge = group(root, [doorX + 0.455, 0, -1.7]);
+  const leaf = group(hinge, [-0.455, 0, 0]);
   leaf.userData.noBake = true; // 여닫는 문
   mesh(boxG(0.91, 2.18, 0.05), M('#B5793F', { noise: 1.5 }), [0, 1.09, 0], 1, [0, 0, 0], leaf);
   mesh(boxG(0.72, 0.85, 0.06), M('#DDEFFA', { flat: 0.6, rim: 0, spec: 0.3 }), [0, 1.55, 0.01], 1, [0, 0, 0], leaf);
   for (const x of [-0.12, 0.12]) mesh(boxG(0.03, 0.85, 0.07), M('#9A6232'), [x, 1.55, 0.01], 1, [0, 0, 0], leaf);
-  mesh(sphereG(0.04), M('#E7B84E', { spec: 0.7 }), [0.36, 1.05, 0.05], 1, [0, 0, 0], leaf);
-  const noren = mesh(new THREE.PlaneGeometry(1.0, 0.65, 18, 6), wc('#FFFFFF', { map: tex(norenCanvas()), rim: 0, side: THREE.DoubleSide, transparent: true, wave: 0.012 }), [doorX, 1.95, -1.58], 1, [0, 0, 0], root);
-  noren.renderOrder = 2;
+  mesh(sphereG(0.04), M('#E7B84E', { spec: 0.7 }), [-0.36, 1.05, 0.05], 1, [0, 0, 0], leaf);
+  // 문 위 천(노렌): 진짜 천처럼 매달려 흔들려요. 문짝이 열리면서 밀고, 문이 열릴 때 들어오는 바람에 펄럭여요
+  const noren = new Noren(wc('#FFFFFF', { map: tex(norenCanvas()), rim: 0, side: THREE.DoubleSide, transparent: true }), new THREE.Vector3(doorX, 1.95, -1.58), 1.0, 0.65, -1.64);
+  noren.meshes.forEach((m) => { m.userData.noBake = true; root.add(m); });
   mesh(cylG(0.015, 0.015, 1.1, 8), M('#8A5A3B'), [doorX, 2.28, -1.58], 1, [0, 0, PI / 2], root);
-  const bell = group(root, [doorX - 0.42, 2.25, -1.52]);
+  // 종은 천 왼쪽 끝 바깥에 달아요 (천이 펄럭이다 종에 걸리지 않게)
+  const bell = group(root, [doorX - 0.58, 2.25, -1.52]);
   mesh(cylG(0.004, 0.004, 0.12, 4), M('#5A3A28'), [0, -0.06, 0], 1, [0, 0, 0], bell);
   mesh(sphereG(0.05, 16, 12), M('#F4C842', { rim: 1.2, spec: 0.8 }), [0, -0.15, 0], [1, 1.1, 1], [0, 0, 0], bell);
-  let doorOpen = 0, doorTarget = 0, norenPush = 0;
+  let doorOpen = 0, doorTarget = 0;
+  // 천이 피해 가는 것들: 문 위 종 (손님 머리는 무대가 알려 줘요)
+  const bellBall: Ball = { c: new THREE.Vector3(doorX - 0.58, 2.1, -1.52), r: 0.06 };
+  const leafInfo = { hinge: new THREE.Vector3(), angle: 0, w: 0.91, h: 2.18, t: 0.045 };
 
   // 왼쪽 선반과 병들
   const shelf = group(root, [-1.85, 0, -1.6]);
@@ -185,9 +191,11 @@ export function makeShop() {
     pool.renderOrder = 2;
   }
 
-  // 벽시계 (진짜 시각)
-  const clockPos = new THREE.Vector3(0.95, 2.32, -1.709);
+  // 벽시계 (진짜 시각): 창문과 문 사이 벽
+  const clockPos = new THREE.Vector3(0.97, 2.0, -1.709);
+  const CLOCK_S = 0.8;
   const fbClock = group(root, [clockPos.x, clockPos.y, -1.73]);
+  fbClock.scale.setScalar(CLOCK_S);
   fbClock.userData.noBake = true;
   mesh(cylG(0.19, 0.19, 0.05, 32), M('#9A6232'), [0, 0, 0], 1, [PI / 2, 0, 0], fbClock);
   mesh(cylG(0.16, 0.16, 0.052, 32), M('#FFF8EC', { flat: 0.4 }), [0, 0, 0.002], 1, [PI / 2, 0, 0], fbClock);
@@ -206,11 +214,12 @@ export function makeShop() {
   let t = 0;
   const shop = {
     root, bell, flames, pot, lamps, leaf,
-    doorPos: new THREE.Vector3(doorX, 0, -1.25),
-    doorOut: new THREE.Vector3(doorX, 0, -2.2),
+    // 문짝이 오른쪽에 붙어 열려서, 드나드는 길은 문 가운데보다 살짝 왼쪽이에요
+    doorPos: new THREE.Vector3(doorX - 0.08, 0, -1.25),
+    doorOut: new THREE.Vector3(doorX - 0.08, 0, -2.2),
     seat: (i: number, n: number) => new THREE.Vector3(n === 1 ? 0 : (i ? 0.42 : -0.42), 0.56, -0.68),
-    openDoor(v: boolean) { doorTarget = v ? 1 : 0; if (v) norenPush = 1; },
-    update(dt: number) {
+    openDoor(v: boolean) { doorTarget = v ? 1 : 0; if (v) noren.puff(); },
+    update(dt: number, heads: Ball[] = []) {
       t += dt;
       cloudT.offset.x = (cloudT.offset.x + dt * 0.006) % 1;
       for (const b of birds) {
@@ -229,10 +238,11 @@ export function makeShop() {
       const mins = now.getMinutes() + now.getSeconds() / 60, hrs = (now.getHours() % 12) + mins / 60;
       clockHands.min.rotation.z = clockHands.baseM - (mins / 60) * PI * 2;
       clockHands.hour.rotation.z = clockHands.baseH - (hrs / 12) * PI * 2;
-      doorOpen += (doorTarget - doorOpen) * Math.min(1, dt * 4);
-      hinge.rotation.y = -1.35 * doorOpen;
-      norenPush = Math.max(0, norenPush - dt * 0.5);
-      (noren.material as THREE.ShaderMaterial).uniforms.uWave.value = 0.012 + norenPush * 0.05;
+      // 열 때는 조금 천천히 (위에 걸린 천이 밀리며 따라올 시간), 닫을 때는 원래대로
+      doorOpen += (doorTarget - doorOpen) * Math.min(1, dt * (doorTarget > doorOpen ? 3 : 4));
+      hinge.rotation.y = 1.5 * doorOpen;
+      leafInfo.hinge.copy(hinge.position); leafInfo.angle = hinge.rotation.y;
+      noren.update(dt, leafInfo, [bellBall, ...heads]);
       sun.update(dt);
     },
     // 무료 3D 모델이 오면 직접 그린 소품과 바꿔 끼워요
@@ -262,6 +272,7 @@ export function makeShop() {
         hide('clock');
         const o = m.scene;
         o.position.copy(clockPos);
+        o.scale.multiplyScalar(CLOCK_S);
         o.userData.noBake = true; // 유리 덮개가 시계 얼굴을 가린 것으로 계산돼서 굽지 않아요
         root.add(o);
         const hr = o.getObjectByName('clock-hand-hour'), mn = o.getObjectByName('clock-hand-minute');

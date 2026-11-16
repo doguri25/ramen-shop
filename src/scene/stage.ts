@@ -7,7 +7,7 @@ import { lighten } from '../paint/brush';
 import { heartCanvas, sparkleCanvas, steamCanvas, tex, woodCanvas } from '../paint/textures';
 import { wc, type WatercolorRenderer } from '../render/watercolor';
 import { addRipple, Bubbles } from './broth';
-import { Chibi, LEG, type Act, type Mood } from './chibi';
+import { Chibi, HR, LEG, type Act, type Mood } from './chibi';
 import { animateRamen, buildRamen, itemModel, makeBowl, makeCookChopsticks, makeLadle, makePot, makePotGripper, makeSpoon, makeTrivet, noodleBlock, POT_R, RAINBOW } from './food';
 import { makeShadow, wispTex } from './fx';
 import { disposeTree, M, Mu } from './geo';
@@ -198,7 +198,8 @@ export class Stage {
     await Promise.all(this.guests.map(async (ch, i) => {
       await wait(i * 0.45);
       await this.walkTo(ch, this.shop.doorPos.clone().add(V(0, 0, 0.1)));
-      if (i === this.guests.length - 1) setTimeout(() => this.shop.openDoor(false), 500);
+      // 마지막 손님이 문짝이 닫히는 자리를 다 지나간 뒤에 닫아요
+      if (i === this.guests.length - 1) setTimeout(() => this.shop.openDoor(false), 1100);
       const seat = this.shop.seat(i, specs.length);
       await this.walkTo(ch, V(seat.x, 0, seat.z - 0.32));
       await this.turnTo(ch, 0);
@@ -255,8 +256,9 @@ export class Stage {
       const p0 = ch.root.position.clone();
       await tween(0.4, (k) => { ch.root.position.y = lerp(p0.y, LEG, k) + Math.sin(k * PI) * 0.2; ch.root.position.z = lerp(p0.z, p0.z - 0.3, k); });
       ch.seated = false;
-      await this.walkTo(ch, this.shop.doorPos.clone().add(V(0, 0, 0.1)));
+      // 문은 안쪽으로 열려서, 손님이 문 앞에 서기 전에 미리 열어 둬요 (문짝이 손님을 뚫고 지나가지 않게)
       if (i === 0) { this.shop.openDoor(true); sfx.bell(); this.swingBell(); }
+      await this.walkTo(ch, this.shop.doorPos.clone().add(V(0, 0, 0.1)));
       await this.walkTo(ch, this.shop.doorOut.clone().add(V(0, 0, -0.2)));
     }));
     this.shop.openDoor(false);
@@ -612,7 +614,8 @@ export class Stage {
     stopBubble();
     const bm = this.brothMat(), bub = this.bubbles;
     tween(0.8, (k) => { if (bub) bub.on = 1 - k; if (bm) bm.uniforms.uHot.value = 1 - k; }, { ease: ease.outCubic });
-    await this.setView('serve', 0.7);
+    // 냄비째 낼 때는 그릇에 덜 일이 없으니 냄비만 비추다가 손님 쪽으로 가요
+    if (this.view !== 'pot') await this.setView('pot', 0.6);
     // 받침은 손님 앞 카운터에 미리 놓아요
     const seatX = n > 1 ? 0 : this.shop.seat(0, 1).x;
     // 냄비는 그릇보다 크고 높아서, 손님 쪽으로 붙이면 쉬는 손과 얼굴이 냄비 속으로 들어가요. 사장님 쪽으로 조금 당겨 놓아요
@@ -1265,13 +1268,27 @@ export class Stage {
     }
   }
 
+  // 손님 머리 위치 (문 위 천이 닿으면 밀려나요)
+  private heads: { c: THREE.Vector3; r: number }[] = [];
+  private headBalls() {
+    while (this.heads.length < this.guests.length) this.heads.push({ c: V(), r: 0 });
+    this.heads.length = this.guests.length;
+    this.guests.forEach((g, i) => {
+      const b = this.heads[i];
+      g.head.getWorldPosition(b.c);
+      this.shop.root.worldToLocal(b.c);
+      b.r = HR * g.root.scale.x * 1.05;
+    });
+    return this.heads;
+  }
+
   update(dt: number) {
     this.t += dt;
     if (Math.abs(this.shift - this.shiftTarget) > 0.5 || this.shift !== 0) {
       this.shift += (this.shiftTarget - this.shift) * Math.min(1, dt * 5);
       this.applyShift();
     }
-    this.shop.update(dt);
+    this.shop.update(dt, this.headBalls());
     const camW = this.cam.getWorldPosition(V());
     this.guests.forEach((g, i) => {
       if (!g.manual) g.look = !g.walking && g.seated && this.view !== 'eat' && this.view !== 'eat2' ? camW : null;
