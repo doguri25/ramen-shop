@@ -169,6 +169,13 @@ export default async function handler(req, res) {
   if (!col) return res.status(503).json({ error: 'no_db' });
 
   try {
+    if (d.op === 'roster') {
+      // 학년·반을 고르면, 이미 이름을 쓰고 들어온 번호를 알려 줘요 (로그인 화면에 색칠)
+      const grade = int(d.grade, 1, 6), cls = int(d.cls, 1, 20);
+      if (!grade || !cls) return res.status(400).json({ error: 'bad_class' });
+      const list = await col.find({ grade, cls }, { projection: { num: 1, name: 1, runs: 1, updatedAt: 1 } }).limit(200).toArray();
+      return res.status(200).json({ ok: true, rows: list.map((s) => ({ num: s.num, name: s.name, runs: s.runs?.length ?? 0, done: (s.runs ?? []).filter((r) => r.done).length, at: s.updatedAt ?? 0 })) });
+    }
     if (d.op === 'board') {
       const band = ['12', '34', '56'].includes(d.band) ? d.band : null;
       if (!band) return res.status(400).json({ error: 'bad_band' });

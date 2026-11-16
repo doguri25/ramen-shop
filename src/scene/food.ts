@@ -15,35 +15,72 @@ const AMOUNT_K: Record<Amount, number> = { '한 꼬집': 0.5, '한 숟가락': 1
 
 // ── 면 ───────────────────────────────
 const RAINBOW = ['#F2A7B8', '#F7D560', '#A8D08D', '#8EC5E8', '#B9A3DB', '#F5A65B'];
+// 익은 라면 더미: 가닥마다 제멋대로 휘어 가며 겹쳐 쌓여요
+// 라면 특유의 잔물결(꼬불꼬불)은 가닥 방향에 수직으로 주고, 가닥이 오르내려 국물 아래로 숨었다 나왔다 해요
 function noodleNest(style: string, color: string, r: number, seed = 5, dome = 0.12) {
   const g = new THREE.Group();
-  const rnd = mulberry32(seed);
-  const cfg: Record<string, { n: number; tr: number; wig: number; f: number }> = {
-    curly: { n: 11, tr: 0.034, wig: 0.08, f: 16 },
-    thick: { n: 7, tr: 0.06, wig: 0.03, f: 6 },
-    thin: { n: 16, tr: 0.02, wig: 0.03, f: 8 },
-    rainbow: { n: 11, tr: 0.036, wig: 0.07, f: 14 },
-    chewy: { n: 9, tr: 0.042, wig: 0.025, f: 5 },
-    long: { n: 6, tr: 0.034, wig: 0.012, f: 3 },
+  const rnd = mulberry32(seed * 7919 + 13);
+  // n 가닥 수, tr 굵기, len 길이, amp·wl 잔물결 크기와 간격, turn 휘는 정도 (모두 r 기준)
+  const cfg: Record<string, { n: number; tr: number; len: [number, number]; amp: number; wl: number; turn: number }> = {
+    curly: { n: 26, tr: 0.03, len: [0.9, 1.5], amp: 0.03, wl: 0.13, turn: 2.2 },
+    rainbow: { n: 26, tr: 0.032, len: [0.9, 1.5], amp: 0.028, wl: 0.13, turn: 2.2 },
+    thin: { n: 28, tr: 0.022, len: [1.0, 1.7], amp: 0.016, wl: 0.12, turn: 2.6 },
+    thick: { n: 15, tr: 0.052, len: [0.8, 1.3], amp: 0.012, wl: 0.42, turn: 1.6 },
+    chewy: { n: 17, tr: 0.04, len: [0.9, 1.4], amp: 0.01, wl: 0.5, turn: 1.4 },
+    long: { n: 12, tr: 0.032, len: [2.2, 3.2], amp: 0.008, wl: 0.6, turn: 1.1 },
   };
   const c = cfg[style] ?? cfg.curly;
+  const LIM = 0.86;
+  const ds = Math.min(0.03, c.wl / 6);
+  const rainbow = [...RAINBOW].sort(() => rnd() - 0.5);
+  let cx = 0, cz = 0, cn = 0;
   for (let k = 0; k < c.n; k++) {
+    // 가운데로 갈수록 많이 모이게 시작점을 골라요
+    const a0 = rnd() * PI * 2, d0 = Math.sqrt(rnd()) * 0.72;
+    let x = Math.cos(a0) * d0, z = Math.sin(a0) * d0;
+    let h = rnd() * PI * 2, turn = (rnd() - 0.5) * c.turn;
+    const L = c.len[0] + rnd() * (c.len[1] - c.len[0]);
+    const ph = rnd() * 6.28, ph2 = rnd() * 6.28, f2 = 2.2 + rnd() * 2.4;
+    const lift = (k / c.n) * 0.035; // 나중에 놓인 가닥이 조금 위에
     const pts: [number, number, number][] = [];
-    const ring = 0.25 + rnd() * 0.55, ph = rnd() * 6.28, steps = style === 'long' ? 60 : 36;
-    for (let i = 0; i <= steps; i++) {
-      const a = ph + (i / steps) * PI * 2 * (style === 'long' ? 2.2 : 1.05);
-      let rr = ring + Math.sin(a * c.f + k) * c.wig;
-      if (style === 'long') rr = 0.1 + (i / steps) * 0.75;
-      const x = Math.cos(a) * rr, z = Math.sin(a) * rr;
-      const d = Math.min(1, Math.hypot(x, z));
-      const y = (1 - d * d) * dome + Math.sin(a * c.f * 0.7 + k) * 0.012 + 0.005;
-      pts.push([x * r, y * r, z * r]);
+    for (let s = 0; s <= L; s += ds) {
+      // 휘는 정도가 조금씩 바뀌고, 테두리에 닿으면 안쪽으로 돌아요
+      turn += (rnd() - 0.5) * c.turn * 0.5 * ds * 6;
+      turn = Math.max(-c.turn * 1.4, Math.min(c.turn * 1.4, turn));
+      // 테두리 가까이 오면 모난 데 없이 둥글게 안쪽으로 휘어 돌아요
+      const d = Math.hypot(x, z);
+      if (d > LIM * 0.6) {
+        let diff = Math.atan2(-z, -x) - h; diff = Math.atan2(Math.sin(diff), Math.cos(diff));
+        const want = Math.sign(diff) * c.turn * 2.4;
+        turn += (want - turn) * Math.min(1, (d - LIM * 0.6) * 5) * Math.min(1, ds * 12);
+      }
+      h += turn * ds;
+      x += Math.cos(h) * ds; z += Math.sin(h) * ds;
+      const out = Math.hypot(x, z);
+      if (out > LIM) { x *= LIM / out; z *= LIM / out; }
+      const dd = Math.min(1, Math.hypot(x, z));
+      const wave = Math.sin((s / c.wl) * PI * 2 + ph);
+      const nx = -Math.sin(h), nz = Math.cos(h);
+      const px = x + nx * c.amp * wave, pz = z + nz * c.amp * wave;
+      // 더미 모양 + 잔물결의 위아래 + 크게 오르내림 (아래로 내려가면 국물 속에 숨어요)
+      const y = Math.pow(1 - dd * dd, 0.85) * dome + lift
+        + Math.cos((s / c.wl) * PI * 2 + ph) * c.amp * 0.45
+        + Math.sin(s * f2 + ph2) * 0.035 - 0.012
+        // 가닥 끝은 국물 속으로 들어가서 잘린 끝이 보이지 않아요
+        - 0.07 * (1 - Math.min(1, s / 0.16)) ** 2 - 0.07 * (1 - Math.min(1, (L - s) / 0.16)) ** 2;
+      pts.push([px * r, y * r, pz * r]);
+      cx += px; cz += pz; cn++;
     }
-    const col = style === 'rainbow' ? RAINBOW[k % RAINBOW.length] : mix(color, k % 2 ? '#ffffff' : darken(color, 0.3), 0.12 * rnd());
-    const m = new THREE.Mesh(tube(pts, c.tr * r, steps * 2), M(col, { rim: 0.7, alpha: style === 'chewy' ? 0.92 : 1, spec: 0.45 }));
+    if (pts.length < 4) continue;
+    const tone = (rnd() - 0.5) * 0.16;
+    const col = style === 'rainbow' ? rainbow[k % rainbow.length] : tone > 0 ? lighten(color, tone) : darken(color, -tone);
+    const seg = Math.min(220, Math.round(pts.length * 1.6));
+    const m = new THREE.Mesh(tube(pts, c.tr * r * (0.9 + rnd() * 0.2), seg), M(col, { rim: 0.6, alpha: style === 'chewy' ? 0.94 : 1, spec: 0.45 }));
     m.userData.ownGeo = true;
     g.add(m);
   }
+  // 더미가 한쪽으로 쏠리지 않게 가운데로 옮겨요
+  if (cn) for (const m of g.children as THREE.Mesh[]) m.geometry.translate((-cx / cn) * r * 0.85, 0, (-cz / cn) * r * 0.85);
   return g;
 }
 
@@ -237,7 +274,7 @@ export function buildRamen(p: Picks, r: number, seed = 7, topScale = r): THREE.G
     const a = -PI / 2 + (i - (tops.length - 1) / 2) * 1.25 + PI;
     const d = tops.length === 1 ? 0.3 : 0.48;
     const t = topping(it, topScale * 1.55, rnd);
-    t.position.set(Math.cos(a) * d * r, dome * r * (1 - d * d) * 0.9 + 0.02 * r, Math.sin(a) * d * r);
+    t.position.set(Math.cos(a) * d * r, dome * r * (1 - d * d) * 0.9 + (p.noodle ? 0.045 : 0.02) * r, Math.sin(a) * d * r); // 면 더미 위에 얹혀요
     t.rotation.y = -a + PI / 2;
     t.name = it.id;
     g.add(t);

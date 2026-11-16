@@ -11,6 +11,7 @@ export type Band = '12' | '34' | '56';
 export type By = 'total' | 'avg';
 export interface Row { rank: number; grade: number; cls: number; num: number; name: string; total: number; fives: number; bowls: number; avg: number; allBowls: number; me?: boolean }
 export interface Board { band: Band; by: By; rows: Row[]; count: number; me: (Row & { need: number; rank: number | null }) | null }
+export interface RosterRow { num: number; name: string; runs: number; done: number; at?: number }
 export interface SendResult { ok?: boolean; same?: boolean; error?: string; runNo?: number; status?: Status; rank?: number | null }
 
 export const bandOf = (grade: number): Band => (grade <= 2 ? '12' : grade <= 4 ? '34' : '56');
@@ -42,6 +43,12 @@ export const rank = {
   async status(w: Who): Promise<{ status: Status; rank: number | null } | null> {
     const r = await post<{ ok: boolean; status: Status; rank: number | null }>({ op: 'status', who: w }, 6000);
     return r?.ok ? { status: r.status, rank: r.rank } : null;
+  },
+
+  // 이 반에서 이미 이름을 쓰고 들어온 번호들
+  async roster(grade: number, cls: number): Promise<RosterRow[] | null> {
+    const r = await post<{ ok: boolean; rows: RosterRow[] }>({ op: 'roster', grade, cls }, 5000);
+    return r?.ok ? r.rows : null;
   },
 
   async board(band: Band, by: By, w?: Who | null): Promise<Board | null> {

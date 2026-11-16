@@ -2,6 +2,7 @@
 import { AVG_MIN_BOWLS, MAX_RUNS, MAX_STARS, ROUNDS } from '../config';
 import { sfx } from '../core/sound';
 import { confetti, h, iconBtn, ICON, toast } from '../ui/dom';
+import { icon } from './icons';
 import { BAND_NAME, bandOf, type Band, type Board, type Best, type By, type Who } from './rank';
 import './event.css';
 
@@ -10,7 +11,9 @@ const mount = <T extends HTMLElement>(el: T) => { root().appendChild(el); return
 const LAST = 'event-last-class';
 const NAME_RE = /^[가-힣a-zA-Z0-9]{1,8}$/;
 export const whoText = (w: Who) => `${w.grade}학년 ${w.cls}반 ${w.num}번 ${w.name}`;
-const medal = (n: number) => (n === 1 ? '🥇' : n === 2 ? '🥈' : n === 3 ? '🥉' : String(n));
+const medal = (n: number) => (n <= 3 ? h('span', { class: 'gm', html: icon('medal' + n, 30) }) : String(n));
+// 아이콘 + 글자 버튼 내용
+export const iconLabel = (name: string, text: string, size = 24) => [h('span', { class: 'gi-wrap', html: icon(name, size) }), text];
 
 // 숫자 버튼 줄
 function pad(n: number, cols: number, cur: number, set: (v: number) => void) {
@@ -24,41 +27,83 @@ function pad(n: number, cols: number, cur: number, set: (v: number) => void) {
 
 export const EV = {
   // ── 학년·반·번호·이름 ───────────────────────
-  login(): Promise<Who | 'rank' | null> {
+  login(roster?: (grade: number, cls: number) => Promise<Map<number, string> | null>): Promise<Who | 'rank' | null> {
     return new Promise((res) => {
       let last: Partial<Who> = {};
       try { last = JSON.parse(localStorage.getItem(LAST) || '{}'); } catch { /* 처음 */ }
-      let grade = last.grade ?? 0, cls = last.cls ?? 0, num = 0;
+      let grade = last.grade ?? 0, cls = last.cls ?? 0, num = 0, seq = 0;
+      let taken = new Map<number, string>();
       const wrap = h('div', { class: 'modal-wrap fade-in' });
       const name = h('input', { class: 'inp', maxLength: 8, placeholder: '이름 (예: 김민수)', style: 'flex:1;min-width:200px', autocomplete: 'off' }) as HTMLInputElement;
+      const legend = h('div', { class: 'ev-legend' });
+      // 번호 버튼: 이미 들어온 번호는 초록색으로 칠하고 이름을 작게 적어요
+      const nums = h('div', { class: 'numpad ev-nums', style: 'grid-template-columns:repeat(12,minmax(0,1fr))' });
+      const numBtns: HTMLButtonElement[] = [];
+      for (let i = 1; i <= 35; i++) {
+        const b = h('button', { onclick: () => {
+          sfx.tap(); num = i;
+          numBtns.forEach((x) => x.classList.toggle('on', x === b));
+          const nm = taken.get(i);
+          if (nm && (!name.value.trim() || name.dataset.auto === '1')) { name.value = nm; name.dataset.auto = '1'; }
+          else if (!nm && name.dataset.auto === '1') { name.value = ''; name.dataset.auto = ''; }
+          check();
+        } }, h('span', { class: 'n' }, String(i)), h('span', { class: 'who' })) as HTMLButtonElement;
+        numBtns.push(b); nums.appendChild(b);
+      }
+      const paint = () => numBtns.forEach((b, k) => {
+        const nm = taken.get(k + 1);
+        b.classList.toggle('taken', !!nm);
+        b.title = nm ? `${nm} (이미 들어왔어요)` : '';
+        (b.querySelector('.who') as HTMLElement).textContent = nm ?? '';
+      });
+      const loadRoster = async () => {
+        const my = ++seq;
+        // 고른 학년·반은 바로 기억해요 (랭킹을 먼저 봐도 우리 학년군이 먼저 나오게)
+        if (grade || cls) try { localStorage.setItem(LAST, JSON.stringify({ grade, cls })); } catch { /* 괜찮아요 */ }
+        taken = new Map(); paint(); legend.textContent = '';
+        if (!grade || !cls || !roster) return;
+        legend.textContent = '이 반에서 들어온 번호를 확인하는 중…';
+        const m = await roster(grade, cls);
+        if (my !== seq || !wrap.isConnected) return;
+        taken = m ?? new Map(); paint();
+        legend.innerHTML = '';
+        legend.append(h('i', { class: 'dot' }), m ? (taken.size ? `초록색 번호는 이미 이름을 쓰고 들어온 친구예요 (${taken.size}명). 내 번호를 누르면 이름이 저절로 들어가요.` : '아직 이 반에서 들어온 친구가 없어요.') : '랭킹 서버에 닿지 않아 들어온 번호를 보여 주지 못했어요.');
+      };
       const warn = h('div', { class: 'name-warn' });
       const ok = h('button', { class: 'btn big', disabled: true }, '도전 시작') as HTMLButtonElement;
+      // 지금까지 고른 것: 5학년 2반 3번 김민수
+      const summary = h('div', { class: 'ev-summary' });
+      const step = (n: number, label: string, cls: string, ...body: HTMLElement[]) =>
+        h('section', { class: `ev-step s-${cls}` }, h('div', { class: 'ev-step-h' }, h('b', null, String(n)), label), h('div', { class: 'ev-step-b' }, ...body));
       const check = () => {
         const n = name.value.replace(/\s+/g, '');
+        summary.innerHTML = '';
+        summary.append(...[[grade, '학년'], [cls, '반'], [num, '번']].map(([v, u]) => h('span', { class: v ? 'on' : '' }, v ? `${v}${u}` : `?${u}`)), h('span', { class: n ? 'on' : '' }, n || '이름'));
         warn.textContent = n && !NAME_RE.test(n) ? '이름은 한글·영어·숫자로 8글자까지 써 주세요.' : '';
         ok.disabled = !(grade && cls && num && NAME_RE.test(n));
       };
-      name.addEventListener('input', check);
+      name.addEventListener('input', () => { name.dataset.auto = ''; check(); });
       ok.addEventListener('click', () => {
         const n = name.value.replace(/\s+/g, '').normalize('NFC');
         if (ok.disabled) return;
         try { localStorage.setItem(LAST, JSON.stringify({ grade, cls })); } catch { /* 괜찮아요 */ }
-        sfx.pop(); wrap.remove(); res({ grade, cls, num, name: n });
+        seq++; sfx.pop(); wrap.remove(); res({ grade, cls, num, name: n });
       });
       wrap.append(h('div', { class: 'modal card pop-in ev-login' },
         h('div', { class: 'ev-head' },
           h('div', null, h('h2', null, '마음 요리사 도전!'), h('p', { class: 'sub' }, '학년, 반, 번호를 누르고 이름을 써요. 선생님이 알려 준 대로 정확히 써 주세요.')),
-          iconBtn(ICON.close, () => { sfx.back(); wrap.remove(); res(null); }, '닫기')),
-        h('div', { class: 'form-row' }, h('label', null, '학년'), pad(6, 6, grade, (v) => { grade = v; check(); })),
-        h('div', { class: 'form-row' }, h('label', null, '반'), pad(15, 15, cls, (v) => { cls = v; check(); })),
-        h('div', { class: 'form-row' }, h('label', null, '번호'), pad(35, 12, 0, (v) => { num = v; check(); })),
-        h('div', { class: 'form-row' }, h('label', null, '이름'), name),
-        warn,
-        h('div', { class: 'actions' },
-          h('button', { class: 'btn ghost', onclick: () => { sfx.tap(); wrap.remove(); res('rank'); } }, '🏆 랭킹 보기'),
+          iconBtn(ICON.close, () => { sfx.back(); seq++; wrap.remove(); res(null); }, '닫기')),
+        // 학년·반·번호·이름을 색이 다른 칸으로 나누고 순서 번호를 붙여, 어느 줄을 누르는지 헷갈리지 않게 해요
+        step(1, '학년', 'g', pad(6, 6, grade, (v) => { grade = v; check(); loadRoster(); })),
+        step(2, '반', 'c', pad(15, 15, cls, (v) => { cls = v; check(); loadRoster(); })),
+        step(3, '번호', 'n', nums, legend),
+        step(4, '이름', 'm', name, warn),
+        h('div', { class: 'actions ev-login-acts' }, summary,
+          h('button', { class: 'btn ghost', onclick: () => { sfx.tap(); seq++; wrap.remove(); res('rank'); } }, ...iconLabel('trophy', '랭킹 보기')),
           ok)));
       mount(wrap);
       check();
+      loadRoster();
     });
   },
 
@@ -81,7 +126,7 @@ export const EV = {
           : o.resume !== null ? `${o.resume}그릇까지 끓였어요. 남은 ${ROUNDS - o.resume}그릇을 끓여요.`
             : `손님 ${ROUNDS}명에게 라면을 끓여 별을 모아요. 한 그릇에 별은 ${MAX_STARS}개까지예요.${left ? ` 이번 판이 끝나도 ${left}번 더 도전할 수 있어요.` : ' 마지막 도전이에요!'}`),
         o.best ? h('div', { class: 'ev-best' }, h('span', null, '지금 최고 기록'), h('b', null, `★ ${o.best.total}`), h('span', { class: 'muted' }, `별 다섯 그릇 ${o.best.fives}개`)) : null,
-        o.offline ? h('div', { class: 'ev-off' }, '📡 랭킹 서버에 닿지 않아요. 기록은 태블릿에 모아 두었다가 인터넷이 되면 보내요.') : null,
+        o.offline ? h('div', { class: 'ev-off' }, ...iconLabel('offline', '랭킹 서버에 닿지 않아요. 기록은 태블릿에 모아 두었다가 인터넷이 되면 보내요.', 20)) : null,
         full ? null : h('div', { class: 'ev-rules' },
           h('div', null, h('b', null, '★'), ' 라면을 끓였어요'),
           h('div', null, h('b', null, '★★'), ' 손님 마음과 같은 묶음 재료 2가지'),
@@ -90,7 +135,7 @@ export const EV = {
           h('div', null, h('b', null, '★★★★★'), ' 라면 이름에 손님 마음 낱말까지 ❤️')),
         h('div', { class: 'actions' },
           h('button', { class: 'btn ghost small', onclick: () => go('back') }, '뒤로'),
-          h('button', { class: 'btn ghost small', onclick: () => go('rank') }, '🏆 랭킹'),
+          h('button', { class: 'btn ghost small', onclick: () => go('rank') }, ...iconLabel('trophy', '랭킹', 22)),
           full ? h('button', { class: 'btn', onclick: () => go('lib') }, '도감 보기')
             : h('button', { class: 'btn big pulse', onclick: () => go('start') }, o.resume !== null ? '이어서 하기' : '가게 문 열기'))));
       mount(wrap);
@@ -117,7 +162,7 @@ export const EV = {
       const drawTabs = () => {
         tabs.innerHTML = ''; kinds.innerHTML = '';
         (['12', '34', '56'] as Band[]).forEach((b) => tabs.append(h('button', { class: b === band ? 'on' : '', onclick: () => { sfx.tap(); band = b; drawTabs(); load(true); } }, BAND_NAME[b])));
-        ([['total', '⭐ 모은 별'], ['avg', '📊 평균 별']] as [By, string][]).forEach(([k, l]) => kinds.append(h('button', { class: k === by ? 'on' : '', onclick: () => { sfx.tap(); by = k; drawTabs(); load(true); } }, l)));
+        ([['total', 'star', '모은 별'], ['avg', 'chart', '평균 별']] as [By, string, string][]).forEach(([k, ic, l]) => kinds.append(h('button', { class: k === by ? 'on' : '', onclick: () => { sfx.tap(); by = k; drawTabs(); load(true); } }, ...iconLabel(ic, l, 20))));
       };
       const line = (r: { rank: number | null; grade: number; cls: number; num: number; name: string; total: number; fives: number; avg: number; allBowls: number }, me = false) =>
         h('div', { class: `ev-row ${me ? 'me' : ''} ${r.rank && r.rank <= 3 ? 'top' : ''}` },
@@ -137,7 +182,7 @@ export const EV = {
         if (!b) {
           if (!fresh && loadedAt) { loadedAt = Date.now() - 10000; return; } // 잠깐 끊긴 거면 보던 순위를 그대로 두고 10초 뒤 다시
           list.innerHTML = ''; mine.innerHTML = '';
-          list.append(h('div', { class: 'ev-empty' }, '📡 랭킹 서버에 닿지 않아요. 인터넷을 확인하고 다시 눌러 주세요.', h('div', null, h('button', { class: 'btn soft small', style: 'margin-top:12px', onclick: () => load(true) }, '다시 불러오기'))));
+          list.append(h('div', { class: 'ev-empty' }, h('div', { class: 'gi-big', html: icon('offline', 44) }), '랭킹 서버에 닿지 않아요. 인터넷을 확인하고 다시 눌러 주세요.', h('div', null, h('button', { class: 'btn soft small', style: 'margin-top:12px', onclick: () => load(true) }, ...iconLabel('refresh', '다시 불러오기', 20)))));
           if (o.result) myRank.textContent = '–';
           return;
         }
@@ -162,7 +207,7 @@ export const EV = {
       const head = r && o.who
         ? h('div', { class: 'ev-result card' },
           h('div', { class: 'ev-who' }, whoText(o.who)),
-          h('h3', null, `🎉 ${r.runNo}번째 판, ${ROUNDS}그릇을 다 끓였어요!`),
+          h('h3', null, h('span', { class: 'gi-wrap', html: icon('star', 26) }), ` ${r.runNo}번째 판, ${ROUNDS}그릇을 다 끓였어요!`),
           h('div', { class: 'ev-score' },
             h('div', null, h('span', null, '이번 판 별'), h('b', null, `★ ${r.total}`), h('i', null, `/ ${ROUNDS * MAX_STARS}`)),
             h('div', null, h('span', null, '별 다섯 그릇'), h('b', null, `${r.fives}`), h('i', null, `/ ${ROUNDS}`)),
@@ -172,8 +217,8 @@ export const EV = {
       const acts = o.actions?.length
         ? h('div', { class: 'ev-acts' }, o.actions.map((a) => h('button', { class: `btn ${a.kind === 'ghost' ? 'ghost small' : a.kind === 'soft' ? 'soft' : ''}`, onclick: () => { sfx.pop(); done(a.id); } }, a.label)))
         : null;
-      const header = h('header', null, h('h2', null, '🏆 마음 요리사 랭킹'), stamp, h('span', { class: 'grow' }),
-        h('button', { class: 'btn ghost small', onclick: () => { sfx.tap(); load(true); } }, '↻ 새로 고침'),
+      const header = h('header', null, h('h2', null, h('span', { class: 'gi-wrap', html: icon('trophy', 34) }), '마음 요리사 랭킹'), stamp, h('span', { class: 'grow' }),
+        h('button', { class: 'btn ghost small', onclick: () => { sfx.tap(); load(true); } }, ...iconLabel('refresh', '새로 고침', 20)),
         acts ? null : iconBtn(ICON.close, () => { sfx.back(); done('close'); }, '닫기'));
       for (const x of [header, head, tabs, kinds, list, mine, acts]) if (x) el.append(x);
       drawTabs();

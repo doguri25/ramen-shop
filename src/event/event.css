@@ -80,3 +80,61 @@
   .ev-tabs button { min-height: 44px; }
 }
 @media (max-width: 640px) { .ev-result .ev-score { grid-template-columns: repeat(3, 1fr); } }
+
+/* 그림 아이콘 */
+.gi { display: block; flex: 0 0 auto; }
+.gi-wrap { display: inline-flex; align-items: center; justify-content: center; line-height: 0; }
+.btn .gi-wrap, .chip .gi-wrap { margin-right: 2px; }
+.btn:not(.ghost):not(.soft) .gi-wrap { filter: drop-shadow(0 1px 0 rgba(255,255,255,.55)); }
+.ev-rank header h2 { display: inline-flex; align-items: center; gap: 8px; }
+.ev-rank .sel button { display: inline-flex; align-items: center; gap: 6px; }
+.ev-row .rk .gm { display: inline-flex; line-height: 0; }
+.ev-empty .gi-big { display: flex; justify-content: center; margin-bottom: 8px; }
+.ev-off { display: flex; align-items: center; gap: 8px; justify-content: center; }
+.ev-result h3 { display: inline-flex; align-items: center; gap: 4px; }
+.hud .chip.evstar { gap: 4px; }
+
+/* 로그인: 이미 들어온 번호 */
+.ev-nums button { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 0; min-height: 50px; line-height: 1.05; }
+.ev-nums button .n { font-size: 19px; }
+.ev-nums button .who { font-size: 11px; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding: 0 2px; }
+.ev-nums button .who:empty { display: none; }
+.ev-nums button.taken { background: #E3F4D9; border-color: #8DC26F; color: #2F6B1F; }
+.ev-nums button.taken.on { background: #4E9E3A; border-color: #4E9E3A; color: #fff; }
+.ev-legend { min-height: 22px; margin: -4px 0 4px 68px; font-size: 15px; color: var(--ink-2); display: flex; align-items: center; gap: 6px; }
+.ev-legend .dot { width: 14px; height: 14px; border-radius: 4px; background: #E3F4D9; border: 2px solid #8DC26F; flex: 0 0 auto; }
+@media (max-width: 760px) { .ev-legend { margin-left: 0; } }
+
+/* 로그인: 학년·반·번호·이름을 칸으로 나눠요 */
+.ev-login .ev-step { display: flex; align-items: flex-start; gap: 12px; margin: 10px 0; padding: 10px 12px; border-radius: 18px; border: 2px solid transparent; }
+.ev-login .ev-step-h { flex: 0 0 78px; display: flex; align-items: center; gap: 6px; padding-top: 9px; font-family: var(--head); font-size: 21px; }
+.ev-login .ev-step-h b { width: 26px; height: 26px; border-radius: 50%; display: grid; place-items: center; font-weight: normal; font-size: 16px; color: #fff; }
+.ev-login .ev-step-b { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+.ev-login .ev-step-b .numpad { width: 100%; }
+.ev-login .s-g { background: #FFF1E2; border-color: #F6D2AE; }
+.ev-login .s-g .ev-step-h { color: #B5530F; } .ev-login .s-g .ev-step-h b { background: #E07A2E; }
+.ev-login .s-c { background: #EEF0FB; border-color: #CBD0F0; }
+.ev-login .s-c .ev-step-h { color: #4A54A8; } .ev-login .s-c .ev-step-h b { background: #6F7BD6; }
+.ev-login .s-c .numpad button.on { background: #6F7BD6; border-color: #6F7BD6; }
+.ev-login .s-n { background: #FFFFFF; border-color: var(--line); }
+.ev-login .s-n .ev-step-h { color: #6B4A2E; } .ev-login .s-n .ev-step-h b { background: #A07A55; }
+.ev-login .s-n .numpad button.on:not(.taken) { background: #A07A55; border-color: #A07A55; }
+.ev-login .s-m { background: #FFF8DC; border-color: #F2DE9A; }
+.ev-login .s-m .ev-step-h { color: #8A6A0F; } .ev-login .s-m .ev-step-h b { background: #D9A81F; }
+.ev-login .ev-legend { margin: 2px 0 0; }
+.ev-login .name-warn { margin-top: 0; }
+.ev-login-acts { align-items: center; margin-top: 10px; }
+.ev-summary { flex: 1; display: flex; flex-wrap: wrap; gap: 6px; }
+.ev-summary span { padding: 6px 12px; border-radius: 999px; background: #F3E7D8; color: #B9A797; font-family: var(--head); font-size: 18px; }
+.ev-summary span.on { background: var(--accent-soft); color: var(--accent); }
+@media (max-height: 760px) {
+  .ev-login { padding: 18px 22px; }
+  .ev-login .ev-step { margin: 6px 0; padding: 6px 10px; }
+  .ev-login .numpad button { min-height: 40px; }
+  .ev-nums button { min-height: 44px; }
+}
+@media (max-width: 640px) {
+  .ev-login .ev-step { flex-direction: column; gap: 4px; }
+  .ev-login .ev-step-h { padding-top: 0; }
+}
+.ev-login .name-warn:empty { display: none; }

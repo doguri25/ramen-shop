@@ -413,12 +413,27 @@ export class App {
     await UI.title(() => this.openTeacher(), undefined, () => { this.showRanking(null); });
     unlockAudio();
     for (;;) {
-      const r = await EV.login();
+      const r = await EV.login((g, c) => this.roster(g, c));
       if (r === null) return; // 첫 화면으로
       if (r === 'rank') { await this.showRanking(null); continue; }
       if ((await this.student(r)) === 'back') continue; // 이름을 고쳐 쓰려고 뒤로
       return;
     }
+  }
+
+  // 이 반에서 이미 들어온 번호와 이름 (서버 기록 + 이 태블릿 기록). 서버에 닿지 않으면 이 태블릿 것만
+  private async roster(grade: number, cls: number): Promise<Map<number, string> | null> {
+    const [rows, owners] = await Promise.all([rank.roster(grade, cls), db.owners()]);
+    const m = new Map<number, { name: string; runs: number; at: number }>();
+    const put = (num: number, name: string, runs: number, at: number) => {
+      const cur = m.get(num);
+      // 같은 번호에 이름이 여럿이면 판을 더 많이 한 이름, 같으면 최근 이름
+      if (!cur || runs > cur.runs || (runs === cur.runs && at > cur.at)) m.set(num, { name, runs, at });
+    };
+    rows?.forEach((r) => put(r.num, r.name, r.runs, r.at ?? 0));
+    owners.filter((o) => o.ev && o.ev.grade === grade && o.ev.cls === cls).forEach((o) => put(o.number, o.name, 1, o.createdAt));
+    if (!rows && !m.size) return null;
+    return new Map([...m].map(([k, v]) => [k, v.name]));
   }
 
   private lastBand() {

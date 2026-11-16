@@ -1,5 +1,6 @@
 import { CREDIT, MAX_STARS, ROUNDS } from '../config';
 import { EVENT } from '../event/flag';
+import { icon } from '../event/icons';
 import { eulReul } from '../core/korean';
 import { sfx } from '../core/sound';
 import { FAMILY, FX } from '../data/effects';
@@ -80,8 +81,8 @@ export const UI = {
         h('span', { class: 'ai-feats' }, AI_USES.map((u) => h('span', { class: 'ai-chip' }, u.icon + ' ' + u.short))),
         h('span', { class: 'ai-more' }, '어떻게 쓰였나요? ›')) : null;
       const el = mount(h('div', { class: 'scr-title' }, logo,
-        h('button', { class: 'btn big pulse', onclick: () => { sfx.pop(); el.remove(); res(); } }, EVENT ? '도전하러 가기' : '가게 문 열기'), aiStrip,
-        onRank ? h('button', { class: 'btn ghost big title-rank', onclick: () => { sfx.tap(); onRank(); } }, '🏆 현재 랭킹 보기') : null,
+        h('button', { class: 'btn big pulse', onclick: () => { sfx.pop(); el.remove(); res(); } }, EVENT ? [h('span', { class: 'gi-wrap', html: icon('bowl', 34) }), '도전하러 가기'] : '가게 문 열기'), aiStrip,
+        onRank ? h('button', { class: 'btn ghost big title-rank', onclick: () => { sfx.tap(); onRank(); } }, h('span', { class: 'gi-wrap', html: icon('trophy', 34) }), '현재 랭킹 보기') : null,
         h('div', { class: 'credit' },
           h('span', { class: 'cr-item' }, h('span', { class: 'cr-ic' }, '🧑‍🏫'), h('span', { class: 'cr-k' }, '만든이'), h('b', null, CREDIT.name)),
           h('span', { class: 'cr-sep' }),
@@ -178,9 +179,9 @@ export const UI = {
     const el = h('div', { class: 'hud' },
       h('span', { class: 'chip owner-chip' }, o.label ?? `${o.owner.number}번 ${o.owner.name} 사장님`),
       o.round !== null ? h('span', { class: 'chip round' }, o.round === 0 ? '연습 손님' : `${o.round}번째 손님`) : null,
-      o.stars !== undefined ? h('span', { class: 'chip evstar' }, `★ ${o.stars}`) : null,
+      o.stars !== undefined ? h('span', { class: 'chip evstar' }, h('span', { class: 'gi-wrap', html: icon('star', 22) }), String(o.stars)) : null,
       h('span', { class: 'grow' }),
-      o.onRank ? h('button', { class: 'chip evrank', onclick: () => { sfx.tap(); o.onRank!(); } }, '🏆 랭킹') : null,
+      o.onRank ? h('button', { class: 'chip evrank', onclick: () => { sfx.tap(); o.onRank!(); } }, h('span', { class: 'gi-wrap', html: icon('trophy', 24) }), '랭킹') : null,
       h('button', { class: 'chip prog', onclick: () => { sfx.tap(); o.onLib(); } }, h('span', { html: ICON.book, style: 'width:24px;height:24px;display:inline-block' }), '도감',
         h('span', { class: 'bar' }, h('i', { style: `width:${pct}%` })), `${Math.min(o.count, ROUNDS)}/${ROUNDS}`),
       iconBtn(o.sound ? ICON.sound : ICON.mute, () => { o.onSound(); }, '소리', o.sound ? '' : 'off'),
