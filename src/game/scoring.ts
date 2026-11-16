@@ -27,14 +27,30 @@ export function score(c: Customer, picks: Picks): ScoreResult {
 }
 
 // 행사용 별 다섯 단계
-// ★ 라면을 끓였어요 · ★★ 마음 묶음 재료 2가지 · ★★★ 3가지 넘게
+// ★ 라면을 끓였어요 · ★★ 마음 묶음 재료 2가지 · ★★★ 3가지 이상
 // ★★★★ 꼭 필요한 마음 재료 + 더하면 좋은 마음 재료 (수업용 별 셋) · ★★★★★ 여기에 이름 하트까지
 export const fiveStars = (r: ScoreResult, heart: boolean) =>
   r.stars === 3 ? (heart ? 5 : 4) : r.stars === 2 ? (r.match >= 3 ? 3 : 2) : 1;
 
 // 이름에 손님 마음 낱말이 들어 있으면 하트 도장
-// 이름 틀에 늘 들어 있는 말('…친구라면', '마음이 …')은 빼고 봐요. 그래야 누구나 하트를 받지 않아요
+// 이름 틀에 늘 들어 있는 말('친구', '마음이 …')은 빼고 봐요. 그래야 누구나 하트를 받지 않아요
+const NEG = '슬픔|그리움|눈물|외로움|걱정|떨림|화|짜증|피곤함|서운함|미움';
+const POS = '기쁨|웃음|설렘';
+// '슬픔을 키워', '기쁨을 날려'처럼 뜻이 거꾸로인 이름은 하트를 주지 않아요
+const BACKWARD = [new RegExp(`(${NEG})(을|를)(키워|채워)`), new RegExp(`(${POS})(을|를)(날려|녹여|덜어|식혀)`)];
+// 한 글자 낱말('화', '힘', '잠')은 다른 낱말 속에 섞이기 쉬워서('대화', '손님') 낱말 맨 앞에 조사와 함께 있을 때만 봐요
+const ONE = /^(.)(을|를|이|가|은|는|도|)$/;
 export const hasHeart = (c: Customer, name: string) => {
-  const n = name.replace(/\s/g, '').replace(/친구라면/g, '').replace(/^마음이/, '');
-  return c.feelingWords.some((w) => n.includes(w.replace(/\s/g, '')));
+  const raw = name.replace(/\s/g, '');
+  if (BACKWARD.some((r) => r.test(raw))) return false;
+  const n = raw.replace(/친구/g, '').replace(/^마음이/, '');
+  const tokens = name.trim().split(/\s+/);
+  return c.feelingWords.some((w0) => {
+    const w = w0.replace(/\s/g, '');
+    if (!w || w === '친구') return false;
+    if (w.length === 1) return tokens.some((t) => { const m = t.match(ONE); return !!m && m[1] === w; });
+    // '따뜻해' → '따뜻한 라면'도 알아봐요
+    const stem = w.length >= 3 && /(해|워)$/.test(w) ? w.slice(0, -1) : w;
+    return n.includes(stem);
+  });
 };

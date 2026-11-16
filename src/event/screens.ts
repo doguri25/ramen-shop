@@ -128,7 +128,7 @@ export const EV = {
         full ? null : h('div', { class: 'ev-rules' },
           h('div', null, h('b', null, '★'), ' 라면을 끓였어요'),
           h('div', null, h('b', null, '★★'), ' 손님 마음과 같은 묶음 재료 2가지'),
-          h('div', null, h('b', null, '★★★'), ' 같은 묶음 재료 3가지 넘게'),
+          h('div', null, h('b', null, '★★★'), ' 같은 묶음 재료 3가지 이상'),
           h('div', null, h('b', null, '★★★★'), ' 꼭 필요한 마음 재료와 더하면 좋은 마음 재료까지'),
           h('div', null, h('b', null, '★★★★★'), ' 라면 이름에 손님 마음 낱말까지 ❤️')),
         h('div', { class: 'actions' },

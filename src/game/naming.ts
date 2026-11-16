@@ -38,12 +38,16 @@ export function wordPools(picks: Picks) {
   };
 }
 
-const normalize = (s: string) => s.toLowerCase().replace(/[\s\d~!@#$%^&*()_+\-=[\]{};:'",.<>/?\\|`·…]/g, '');
+// 한글·영어 글자만 남기고 비교해요 (공백·숫자·기호·이모지로 끼워 넣어도 걸러요)
+const normalize = (s: string) => s.toLowerCase().replace(/[^가-힣ㄱ-ㅎㅏ-ㅣa-z]/g, '');
 // 고운 말인데 나쁜 말이 섞여 보이는 경우 (먼저 지우고 봐요)
-const ALLOW = ['꺼지는', '꺼지지', '꺼지면', '꺼진', '기죽', '새끼손가락', '새끼고양이', '새끼강아지', '새끼오리', '새끼곰', '새끼돼지', '새끼새'];
-// 짧아서 두 낱말 사이에 우연히 생기기 쉬운 말은 낱말마다 따로 봐요 ('친구야 동글동글' → '야동' 아님)
-const SHORT = new Set(['야동', '야사', '년아', '놈아', '시바', '씨바']);
+const ALLOW = ['꺼지는', '꺼지지', '꺼지면', '꺼진', '기죽', '새끼손가락', '새끼고양이', '새끼강아지', '새끼오리', '새끼곰', '새끼돼지', '새끼새',
+  '다시발표', '다시발휘', '다시발돋움', '아저씨발', '시바견', '야사랑'];
+// 짧아서 두 낱말 사이에 우연히 생기기 쉬운 말은 낱말마다 따로 봐요
+// ('친구야 동글동글' → '야동', '개미 친구라면' → '미친', '할머니 미소' → '니미', '무지개 새싹' → '개새' 아님)
+const SHORT = new Set(['야동', '야사', '년아', '놈아', '시바', '씨바', '미친', '니미', '개새', '시벌', '씨벌', '쉬발', '씌발', '시팔', '씨팔', '개같', '개소리']);
 export function isBad(name: string) {
+  if (/(^|\D)18(\D|$)/.test(name)) return true; // 숫자로 쓰는 욕
   let n = normalize(name);
   for (const a of ALLOW) n = n.split(a).join('');
   const tokens = name.split(/\s+/).map((t) => { let x = normalize(t); for (const a of ALLOW) x = x.split(a).join(''); return x; });

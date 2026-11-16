@@ -10,7 +10,7 @@ const R = (r3: string | string[], r2: string | string[], r1: string | string[]) 
   2: Array.isArray(r2) ? r2 : [r2],
   1: Array.isArray(r1) ? r1 : [r1],
 });
-const SAFE_TELL = '괴롭힘을 겪거나 보면 혼자 참지 말고 선생님·부모님께 말해요. 117에 전화하거나 문자(#0117)해도 돼요.';
+const SAFE_TELL = '괴롭힘을 겪거나 보면 혼자 참지 말고 선생님·부모님께 말해요. 117에 전화하거나 문자(#0117)를 보내도 돼요.';
 const SAFE_CYBER = '단톡방에서 놀림이나 욕을 당하면 화면을 저장해 두고 선생님·부모님께 알려요. 117에서도 도와줘요.';
 
 const CUSTOMERS_56A: Customer[] = [
@@ -110,7 +110,7 @@ const CUSTOMERS_56A: Customer[] = [
   },
   {
     id: 'u_compare', name: '펭귄 민호', source: 'new',
-    chibi: { kind: 'penguin', fur: '#2E3440', fur2: '#F5F5F5', cloth: '#F2B33D' },
+    chibi: { kind: 'penguin', fur: '#2E3440', fur2: '#F5F5F5', mark: '#F5A33B', cloth: '#F2B33D' },
     greet: '저는 원래 공부 못하는 애예요.',
     story: [
       '엄마가 자꾸 [[사촌 형이랑 비교]]해요. 형은 늘 백 점이래요.',
@@ -256,7 +256,7 @@ const CUSTOMERS_56A: Customer[] = [
   },
   {
     id: 'u_secret', name: '병아리 나연', source: 'new',
-    chibi: { kind: 'chick', fur: '#F6D35B', fur2: '#FFF2B8', cloth: '#8CC56E' },
+    chibi: { kind: 'chick', fur: '#F6D35B', fur2: '#F59E3B', cloth: '#8CC56E' },
     greet: '제가 그렇게 큰 잘못을 한 걸까요?',
     story: [
       '친구가 저한테만 말해 준 [[비밀]]이 있었어요.',
@@ -264,7 +264,7 @@ const CUSTOMERS_56A: Customer[] = [
       '그 친구가 저랑 [[눈도 안 마주쳐요]].',
     ],
     needs: { effect: '사과', sub: 'courage' },
-    feelingWords: ['미안', '사과', '용기', '걱정', '떨림', '힘'],
+    feelingWords: ['미안', '사과', '용기', '걱정', '떨림', '힘', '따뜻해'],
     reactions: R(
       '고마워요. 변명하지 않고 진심으로 사과할 용기가 생겼어요. 다시는 비밀을 옮기지 않을게요.',
       '고마워요. 마음이 조금 덜 무거워요.',
@@ -325,6 +325,7 @@ const CUSTOMERS_56A: Customer[] = [
       '잘 먹었어요. 그런데 저는 쿵쾅대는 마음을 가라앉히는 게 먼저였어요.',
     ),
     prop: '편지', propModel: 'letterheart',
+    safetyNote: SAFE_TELL,
   },
   {
     id: 'u_petloss', name: '양 지호', source: 'new',
@@ -462,7 +463,7 @@ const CUSTOMERS_56A: Customer[] = [
       '친구니까 빌려줘야죠… 그런데 [[싫어요]].',
     ],
     needs: { effect: '마음 말하기', sub: 'courage' },
-    feelingWords: ['걱정', '용기', '말', '싫어', '힘', '든든해'],
+    feelingWords: ['걱정', '용기', '말', '싫어', '힘', '든든해', '시원해'],
     reactions: R(
       '고마워요! "이번엔 안 돼. 먼저 빌려 간 거 갚아 줘"라고 또박또박 말할래요.',
       '고마워요. 거절해도 된다는 생각이 들었어요.',
@@ -517,7 +518,7 @@ const CUSTOMERS_56A: Customer[] = [
       '저는 누구 말이 맞는지 [[아직 다 듣지도]] 못했어요.',
     ],
     needs: { effect: '귀 기울이기', sub: 'reconcile' },
-    feelingWords: ['걱정', '친구', '함께', '귀기울', '편안해', '차분'],
+    feelingWords: ['걱정', '친구', '함께', '귀기울', '편안해', '차분', '든든해'],
     reactions: R(
       '고마워요. 편을 고르기 전에 둘 이야기를 차분히 다 들어 볼래요. 그다음에 같이 이야기하자고 할게요.',
       '고마워요. 머리가 조금 맑아졌어요.',

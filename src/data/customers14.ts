@@ -128,7 +128,7 @@ export const CUSTOMERS_14: Customer[] = [
     greet: '혼자 있는 친구가 마음에 걸려요.',
     story: ['우리 반에 [[늘 혼자 앉아 있는]] 친구가 있어요.', '말을 걸고 싶은데 [[거절할까 봐]] 망설여져요.', '[[손을 내밀고 싶은]] 마음은 있어요.'],
     needs: { effect: '손 내밀기', sub: 'courage' },
-    feelingWords: ['걱정', '용기', '친구', '함께', '따뜻해', '손'],
+    feelingWords: ['걱정', '용기', '친구', '함께', '따뜻해', '손', '든든해'],
     reactions: R('고마워요! 내일은 그 친구에게 "같이 놀자" 하고 손을 내밀래요.', '고마워요. 조금 용기가 생겼어요.', '잘 먹었어요. 그런데 저는 먼저 손을 내밀 마음이 필요했어요.'),
     prop: '선물 상자', propModel: 'gift',
   },
@@ -356,7 +356,7 @@ export const CUSTOMERS_14: Customer[] = [
   },
   {
     id: 'k_threefriends', name: '단발머리 서아', source: 'new',
-    chibi: { kind: 'human', fur: '#F6D5B8', hair: '#5A3A28', style: 'curly', cloth: '#E79A9A' },
+    chibi: { kind: 'human', fur: '#F6D5B8', hair: '#5A3A28', style: 'bob', cloth: '#E79A9A' },
     greet: '단짝이 새 친구랑만 놀아요.',
     story: ['제 단짝이 요즘 [[새 친구랑만]] 놀아요.', '저는 [[둘 사이에 못 끼고]] 뒤에서 따라다녀요.', '[[셋이 같이]] 놀면 좋을 텐데요.'],
     needs: { effect: '친구 되기', sub: 'joy' },

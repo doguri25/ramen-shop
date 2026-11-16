@@ -717,6 +717,12 @@ export class Chibi {
         mesh(cylG(0.2, 0.24, 0.24, 20), M(hair), [0, 0.36, -0.02], [1, 1, 0.95], [0, 0, 0], h);
         mesh(sphereG(1), M('#8BC34A'), [0.0, 0.5, -0.02], [0.05, 0.03, 0.05], [0, 0, 0], h);
         break;
+      case 'bob':
+        // 단발머리: 정수리 + 귀밑까지 내려오는 옆·뒷머리 + 앞머리 (얼굴 쪽은 비워요)
+        mesh(shellG(HR + 0.012, PI * 1.5, PI * 2, 0, 1.3), M(hair, { side: THREE.DoubleSide }), [0, 0, 0], 1, [0, 0, 0], h);
+        mesh(shellG(HR + 0.022, PI * 1.5, PI * 2 - 2.0, 0.8, 1.25), M(hair, { side: THREE.DoubleSide }), [0, 0, 0], 1, [0, 0, 0], h);
+        mesh(sphereG(1), M(hair), [0, 0.215, 0.245], [0.2, 0.06, 0.075], [-0.55, 0, 0], h);
+        break;
       case 'curly':
         for (let i = 0; i < 16; i++) {
           const a = (i / 16) * PI * 2, b = 0.4 + (i % 3) * 0.35;
