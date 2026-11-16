@@ -459,7 +459,7 @@ export const UI = {
   },
 
   // ── 마음 쪽지 ─────────────────────────────
-  note(c: Customer, picks: Picks, r: ScoreResult, heartOn: boolean, canRetry: boolean, tutorial: boolean): Promise<'retry' | 'save' | 'skip'> {
+  note(c: Customer, picks: Picks, r: ScoreResult, heartOn: boolean, canRetry: boolean, tutorial: boolean, backward = false): Promise<'retry' | 'save' | 'skip'> {
     return new Promise((res) => {
       const fx = FX.get(c.needs.effect)!, fam = FAMILY.get(fx.family)!, sub = FAMILY.get(c.needs.sub)!;
       const wrap = h('div', { class: 'modal-wrap fade-in' });
@@ -488,7 +488,9 @@ export const UI = {
         h('div', { class: 'ings' }, pickedList(picks).map((ing) => h('span', { class: `ing ${r.glow.get(ing.id) ?? ''}` }, ing.effects.map(famDot).slice(0, 1), ing.name))),
         h('div', { class: 'legend' }, `노란 테두리는 꼭 필요한 마음(${fam.name})과 맞은 재료, 연한 테두리는 더하면 좋은 마음(${sub.name})과 맞은 재료예요.`),
         r.stars < 3 ? h('div', { class: 'heartline' }, r.stars === 1 ? `💡 ${fam.name} 묶음 재료를 더 넣어 보면 어떨까요? 특히 '${fx.name}' 마음이 담긴 재료를 찾아봐요.` : starHint(r, fx.name, fam.name, sub.name))
-          : EVENT && !heartOn ? h('div', { class: 'heartline' }, '💡 라면 이름에 손님 마음을 나타내는 낱말을 넣으면 별 다섯 개!') : null,
+          : EVENT && !heartOn && !backward ? h('div', { class: 'heartline' }, '💡 라면 이름에 손님 마음을 나타내는 낱말을 넣으면 별 다섯 개!') : null,
+        // 이름 뜻이 거꾸로라 하트를 못 받았으면 왜 그런지 알려 줘요
+        backward ? h('div', { class: 'heartline' }, '💡 이름의 뜻이 거꾸로라서 하트를 받지 못했어요. 줄여야 할 마음(슬픔·걱정…)은 날려 주고, 키워야 할 마음(기쁨·용기…)은 채워 주는 이름으로 지어 봐요.') : null,
         heartOn ? h('div', { class: 'heartline' }, '❤️ 라면 이름에 손님 마음 낱말이 들어 있어서 하트 도장을 받았어요!') : null,
         c.safetyNote ? h('div', { class: 'safety' }, '🙋 ', c.safetyNote) : null,
         tutorial ? h('div', { class: 'safety', style: 'background:#FFF6D6' }, '👴 ', TUTOR_STEP.note) : null,

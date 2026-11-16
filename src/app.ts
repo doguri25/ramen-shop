@@ -14,7 +14,7 @@ import { ING, INGREDIENTS } from './data/ingredients';
 import { TUTOR_INTRO } from './data/text';
 import type { Customer, Owner, Picks, RamenRecord, Step } from './data/types';
 import { catchUpOrder, customerForRound, makeOrder } from './game/schedule';
-import { fiveStars, hasHeart, score } from './game/scoring';
+import { fiveStars, hasHeart, isBackward, score } from './game/scoring';
 import { faceAtlas, paperCanvas, tex } from './paint/textures';
 import { LIGHT_W, QualityProbe, TIERS, WatercolorRenderer, type Tier, shared } from './render/watercolor';
 import { bakeLighting } from './render/bake';
@@ -346,7 +346,7 @@ export class App {
       await UI.reaction(c, shown, heart, (i, w) => say(i, w, lines), lines, r.stars);
       this.stage.talk(0, false);
       const canRetry = !tutorial && attempt === 0 && r.stars === 1;
-      const choice = await UI.note(c, picks, r, heart, canRetry, tutorial);
+      const choice = await UI.note(c, picks, r, heart, canRetry, tutorial, !heart && isBackward(name));
       this.serving = false;
       if (choice === 'retry') {
         attempt++;
