@@ -36,7 +36,7 @@ self.addEventListener('fetch', (e) => {
   if (url.origin !== self.location.origin) return; // 바깥 사이트(모델 CDN 등)는 그대로
   if (!url.pathname.startsWith(new URL(self.registration.scope).pathname)) return;
   // 수업용 범위 안의 행사용(/event/) 주소는 행사용 서비스 워커에 맡겨요
-  if (!self.registration.scope.endsWith('/event/') && url.pathname.includes('/event/')) return;
+  if (!self.registration.scope.endsWith('/event/') && /\/event(\/|$)/.test(url.pathname)) return;
   if (r.mode === 'navigate') {
     // 화면(index.html): 새것을 먼저 기다리되, 늦거나 오류면 저장본
     e.respondWith((async () => {

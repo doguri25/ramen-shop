@@ -147,7 +147,10 @@ export const UI = {
       const wrap = h('div', { class: 'modal-wrap fade-in' });
       const box = h('div', { class: 'modal card pop-in' });
       wrap.appendChild(box);
+      // 앞 화면 버튼을 두 번 톡톡 누르면 두 번째 손가락이 새로 뜬 이름 칸에 닿아요. 뜨고 0.4초는 누름을 받지 않아요
+      const hold = () => { box.style.pointerEvents = 'none'; setTimeout(() => { box.style.pointerEvents = ''; }, 400); };
       const showList = () => {
+        hold();
         box.innerHTML = '';
         box.append(
           h('h2', null, '오늘의 사장님은 누구인가요?'),
@@ -158,6 +161,7 @@ export const UI = {
             h('button', { class: 'owner add', onclick: () => { sfx.tap(); showForm(); } }, '＋ 새 사장님 등록')));
       };
       const showForm = () => {
+        hold();
         let num = 0;
         box.innerHTML = '';
         const name = h('input', { class: 'inp', maxLength: 8, placeholder: '이름', style: 'flex:1;min-width:200px' }) as HTMLInputElement;
@@ -729,7 +733,8 @@ export const UI = {
         o.owners.slice().sort((a, b) => (a.ev && b.ev ? a.ev.key.localeCompare(b.ev.key, 'ko', { numeric: true }) || a.ev.runNo - b.ev.runNo : a.number - b.number)).forEach((ow) => list.append(h('div', { class: 't-row' }, h('span', null, ow.ev ? `${ow.ev.grade}학년 ${ow.ev.cls}반 ${ow.number}번 ${ow.name} · ${ow.ev.runNo}판 · ${ow.round}그릇 · ★ ${ow.ev.total}` : `${ow.number}번 ${ow.name} · ${o.counts.get(ow.id) ?? 0}그릇`),
           h('button', { class: 'btn ghost small', onclick: async (e: Event) => {
             const b = e.currentTarget as HTMLButtonElement;
-            if (b.dataset.sure !== '1') { b.dataset.sure = '1'; b.textContent = '정말 지울까요?'; return; }
+            if (b.dataset.sure !== '1') { b.dataset.sure = '1'; b.dataset.at = String(performance.now()); b.textContent = '정말 지울까요?'; return; }
+            if (performance.now() - Number(b.dataset.at) < 500) return; // 빠른 두 번 누름으로 지워지지 않게
             await o.onDelete(ow);
             o.owners = o.owners.filter((x) => x.id !== ow.id);
             drawList();

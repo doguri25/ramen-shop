@@ -170,7 +170,7 @@ export class App {
       UI.clearAll();
       this.stage.setView('wide', 0);
       // 인터넷이 끊긴 것을 '선생님이 AI를 껐다'고 알리지 않게, 켜 두었는지만 넘기고 연결은 check가 알려 줘요
-      await UI.title(() => this.openTeacher(), ai.url ? { on: ai.enabled, check: () => ai.check() } : undefined);
+      await UI.title(() => this.openTeacher(), ai.url ? { get on() { return ai.enabled; }, check: () => ai.check() } : undefined);
       unlockAudio();
       await this.chooseOwner();
       if (!this.owner!.tutorialDone) {
@@ -664,6 +664,7 @@ export class App {
       ai: { on: this.teacher.ai !== false, url: this.teacher.aiUrl ?? '', defaultUrl: AI_URL },
       onCheck: (u) => ai.check(u),
       onSummary: async () => {
+        const owners = await db.owners(); // 이 화면에서 지운 사장님은 빼고 세요
         // 학생 이름은 빼고 숫자와 라면 이름만 모아요
         const all: RamenRecord[] = [];
         let done = 0;

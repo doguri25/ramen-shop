@@ -10,8 +10,8 @@ type Task = 'react' | 'reason' | 'kind' | 'summary';
 let base = AI_URL;
 let on = true;
 
-const endpoint = () => {
-  const b = base.trim().replace(/\/+$/, '');
+const endpoint = (u = base) => {
+  const b = u.trim().replace(/\/+$/, '');
   return /\/api\/solar$/.test(b) ? b : b + '/api/solar';
 };
 // [[단서]] 표시와 두 번째 손님 표시(@1)를 지워요
@@ -43,17 +43,16 @@ export const ai = {
 
   // 선생님 화면 연결 확인
   async check(url?: string): Promise<'ok' | 'nokey' | 'fail'> {
-    const save = base;
-    if (url !== undefined) base = url.trim() || AI_URL;
+    const b = url !== undefined ? url.trim() || AI_URL : base; // 함께 쓰는 base는 건드리지 않아요
     try {
-      if (!base) return 'fail';
+      if (!b) return 'fail';
       const ac = new AbortController();
       const tm = setTimeout(() => ac.abort(), 8000);
-      const r = await fetch(endpoint(), { signal: ac.signal }).finally(() => clearTimeout(tm));
+      const r = await fetch(endpoint(b), { signal: ac.signal }).finally(() => clearTimeout(tm));
       if (!r.ok) return 'fail'; // 서버 오류를 '키가 없어요'로 잘못 알리지 않게
       const j = await r.json();
       return j?.ready ? 'ok' : 'nokey';
-    } catch { return 'fail'; } finally { base = save; }
+    } catch { return 'fail'; }
   },
 
   // 1) 손님이 라면 이름이나 재료를 짚어서 하는 한마디

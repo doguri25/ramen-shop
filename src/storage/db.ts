@@ -22,7 +22,13 @@ export const db = {
   saveOwners: (o: Owner[]) => (ownersRead ? safe(set('owners', o), undefined) : (console.warn('[db] 목록을 못 읽어서 저장을 건너뛰어요'), Promise.resolve(undefined))),
   records: (ownerId: string) => safe(get<RamenRecord[]>('records:' + ownerId).then((v) => v ?? []), [] as RamenRecord[]),
   // 저장이 됐는지 알려 줘요 (공간이 모자라면 false)
-  saveRecords: (ownerId: string, r: RamenRecord[]) => safe(set('records:' + ownerId, r).then(() => true), false),
+  // 읽기가 한 번 실패해 빈 목록으로 시작했어도, 이미 저장된 그릇을 지우지 않게 합쳐서 저장해요
+  saveRecords: (ownerId: string, r: RamenRecord[]) => safe((async () => {
+    const cur = (await get<RamenRecord[]>('records:' + ownerId)) ?? [];
+    const mine = new Set(r.map((x) => x.id));
+    await set('records:' + ownerId, [...cur.filter((x) => !mine.has(x.id)), ...r]);
+    return true;
+  })(), false),
   photo: (key: string) => safe(get<Blob>('photo:' + key), undefined),
   savePhoto: (key: string, b: Blob) => safe(set('photo:' + key, b), undefined),
   delPhoto: (key: string) => safe(del('photo:' + key), undefined),

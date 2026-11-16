@@ -43,5 +43,6 @@ export function catchUpOrder(order: string[], round: number, all: Customer[], se
   const next = [...shuffle(unmet, rnd), ...shuffle(ids.filter((id) => !left.has(id)), rnd)];
   const prev = round > 0 ? savedAt.get(round - 1) ?? at(round - 1) : '';
   if (next.length > 1 && next[0] === prev) [next[0], next[1]] = [next[1], next[0]];
-  return [...Array.from({ length: round }, (_, r) => at(r)), ...next];
+  // 지난 판은 실제로 만난 손님만 남겨요 (예전 순서 밖에서 건너뛴 판은 누구였는지 모르니 비워 둬요)
+  return [...Array.from({ length: round }, (_, r) => (r < order.length ? order[r] : savedAt.get(r) ?? '')), ...next];
 }

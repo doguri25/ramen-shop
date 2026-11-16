@@ -43,7 +43,7 @@ export const clues = (lines: string[]) => [...new Set(lines.flatMap((l) => [...l
 
 export function longPress(el: HTMLElement, ms: number, fn: () => void) {
   let t: number | undefined;
-  const start = () => { t = window.setTimeout(fn, ms); };
+  const start = () => { window.clearTimeout(t); t = window.setTimeout(fn, ms); };
   const end = () => window.clearTimeout(t);
   el.addEventListener('pointerdown', start);
   ['pointerup', 'pointerleave', 'pointercancel'].forEach((e) => el.addEventListener(e, end));
