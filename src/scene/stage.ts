@@ -199,7 +199,7 @@ export class Stage {
       await wait(i * 0.45);
       await this.walkTo(ch, this.shop.doorPos.clone().add(V(0, 0, 0.1)));
       // 마지막 손님이 문짝이 닫히는 자리를 다 지나간 뒤에 닫아요
-      if (i === this.guests.length - 1) setTimeout(() => this.shop.openDoor(false), 1100);
+      if (i === this.guests.length - 1) wait(1.1).then(() => this.shop.openDoor(false)); // 게임 시간으로 (화면이 멈춰도 같이 멈춰요)
       const seat = this.shop.seat(i, specs.length);
       await this.walkTo(ch, V(seat.x, 0, seat.z - 0.32));
       await this.turnTo(ch, 0);
@@ -1039,10 +1039,31 @@ export class Stage {
       const lh = bowl.localToWorld(B.grips[0].clone().add(V(0, 0.01, 0)));
       ch.setHandWorld(0, lh, V(1, 0.1, 0));
     }
-    const placeTip = (tip: THREE.Vector3, aimW: THREE.Vector3, reach = 0.23) => {
+    // 젓가락 끝을 tip에 대요. 손이 어깨에서 너무 멀면(팔이 길게 늘어나 보이면) 손을 젓가락 줄을 따라 어깨 쪽으로 옮겨요.
+    //  - 손이 끝 쪽으로 가야 하면 젓가락 끝 가까이를 쥐어요 (젓가락이 손 뒤로 삐져나와요)
+    //  - 손이 뒤쪽으로 가야 하면 젓가락을 조금 길게 늘여요 (두 배까지)
+    // (숟가락도 같은 방법으로, 늘이는 건 1.4배까지)
+    const MAXR = 0.5 * sc;
+    const placeTip = (tip: THREE.Vector3, aimW: THREE.Vector3, reach = 0.23, tool: THREE.Object3D | null = ch.chop, maxExt = 2) => {
       const a = aimW.clone().normalize();
-      const hand = tip.clone().addScaledVector(a, -reach * sc);
-      ch.setHandWorld(1, hand, a);
+      const L0 = reach * sc;
+      let L = L0;
+      if (tool) {
+        const S = ch.toWorld(ch.arms[1].shoulder);
+        const d = tip.clone().sub(S);
+        if (d.clone().addScaledVector(a, -L0).length() > MAXR) {
+          const lo = L0 * 0.4, hi = L0 * maxExt;
+          const b = d.dot(a), disc = b * b - (d.lengthSq() - MAXR * MAXR);
+          if (disc >= 0) {
+            const r = Math.sqrt(disc), a0 = Math.max(lo, b - r), a1 = Math.min(hi, b + r);
+            L = a0 <= a1 ? Math.min(a1, Math.max(a0, L0)) : Math.min(hi, Math.max(lo, b));
+          } else L = Math.min(hi, Math.max(lo, b));
+        }
+        const s0 = Math.max(0.01, tool.scale.x);
+        if (L >= L0) { tool.scale.z = s0 * (L / L0); tool.position.z = 0; }
+        else { tool.scale.z = s0; tool.position.z = (L - L0) / sc; }
+      }
+      ch.setHandWorld(1, tip.clone().addScaledVector(a, -L), a);
     };
     // 냄비는 테두리가 입 높이에 가까워요. 고개를 조금 더 들고 젓가락을 눕혀야 손이 냄비 속으로 내려가지 않아요
     const DOWN = V(-0.12, -1, 0.25).normalize(), MOUTH = pot ? V(-0.15, 0.3, -0.94).normalize() : V(-0.15, 0.62, -0.77).normalize();
@@ -1096,8 +1117,13 @@ export class Stage {
     }
     // 건더기 하나 집어 먹기 (같이 먹는 냄비면 각자 다른 건더기)
     this.phase = 'topbite';
-    const topId = p?.toppings[B.shared ? gi : 0];
-    const top = topId ? food.getObjectByName(topId) : null;
+    // 같이 먹는 냄비는 저마다 자기 쪽에 가까운 건더기를 집어요 (짝꿍 얼굴 앞으로 팔을 뻗지 않게)
+    let top: THREE.Object3D | null = null;
+    if (B.shared) {
+      const sx = ch.root.position.x;
+      const cands = (p?.toppings ?? []).map((id) => food.getObjectByName(id)).filter((o): o is THREE.Object3D => !!o && o.visible);
+      top = cands.sort((x, y) => Math.abs(x.getWorldPosition(V()).x - sx) - Math.abs(y.getWorldPosition(V()).x - sx))[0] ?? null;
+    } else top = p?.toppings[0] ? food.getObjectByName(p.toppings[0]) ?? null : null;
     if (top && top.visible) {
       ch.lean = LEAN * 0.875; ch.look = view(); ch.headExtra.x = -0.05;
       const tp = top.getWorldPosition(V()).add(V(0, 0.02, 0));
@@ -1124,6 +1150,7 @@ export class Stage {
     // 국물 마시기
     this.phase = 'drink';
     ch.showChop(false);
+    ch.chop.scale.setScalar(1); ch.chop.position.set(0, 0, 0);
     if (B.kind === 'pot') await this.sipWithSpoon(ch, B, side, placeTip, color, onSlurp, R);
     else await this.drinkFrom(ch, B, onSlurp, R);
     food.children.forEach((c) => { if (c.name !== 'broth') c.visible = false; });
@@ -1183,7 +1210,7 @@ export class Stage {
   }
 
   // 뜨거운 냄비는 들지 않고 숟가락으로 떠 마셔요
-  private async sipWithSpoon(ch: Chibi, B: BowlInfo, side: number, placeTip: (tip: THREE.Vector3, aim: THREE.Vector3, reach?: number) => void, color: string, onSlurp?: () => void, R = 0) {
+  private async sipWithSpoon(ch: Chibi, B: BowlInfo, side: number, placeTip: (tip: THREE.Vector3, aim: THREE.Vector3, reach?: number, tool?: THREE.Object3D | null, maxExt?: number) => void, color: string, onSlurp?: () => void, R = 0) {
     const spoon = makeSpoon();
     ch.arms[1].hand.add(spoon);
     const sl = spoon.getObjectByName('liquid') as THREE.Mesh;
@@ -1196,7 +1223,7 @@ export class Stage {
       const s = B.food.localToWorld(V(side * 0.09 + (Math.random() - 0.5) * 0.03, (L ? L.level : 0) + 0.002, 0.04));
       const lean = 0.05 * Math.max(0.15, 1 - R * 4);
       ch.lean = lean; ch.look = s.clone().add(V(0, 0.1 + R * 1.2, 0)); ch.headExtra.x = -0.05;
-      placeTip(s, DOWN, 0.2);
+      placeTip(s, DOWN, 0.2, spoon, 1.4);
       await wait(0.45);
       sl.visible = true;
       this.splash(B, s, 0.25, '#FFFFFF');
@@ -1204,7 +1231,7 @@ export class Stage {
       ch.look = null;
       await tween(0.6, (k) => {
         const e = ease.inOutCubic(k);
-        placeTip(s.clone().lerp(ch.mouthWorld().add(V(0.02, -0.02, 0.06 + R)), e), DOWN.clone().lerp(MOUTH, e), 0.2);
+        placeTip(s.clone().lerp(ch.mouthWorld().add(V(0.02, -0.02, 0.06 + R)), e), DOWN.clone().lerp(MOUTH, e), 0.2, spoon, 1.4);
         ch.lean = lean * (1 - 0.875 * k); ch.headExtra.x = -0.05 - (0.22 + R * 0.6) * k;
       }, { ease: ease.linear });
       sfx.slurp();
@@ -1295,7 +1322,7 @@ export class Stage {
       this.shift += (this.shiftTarget - this.shift) * Math.min(1, dt * 5);
       this.applyShift();
     }
-    this.shop.update(dt, this.headBalls());
+    this.shop.update(dt, this.headBalls(), this.view !== 'pot' && this.view !== 'serve');
     const camW = this.cam.getWorldPosition(V());
     this.guests.forEach((g, i) => {
       if (!g.manual) g.look = !g.walking && g.seated && this.view !== 'eat' && this.view !== 'eat2' ? camW : null;

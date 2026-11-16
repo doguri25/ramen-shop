@@ -214,12 +214,12 @@ export function makeShop() {
   let t = 0;
   const shop = {
     root, bell, flames, pot, lamps, leaf,
-    // 문짝이 오른쪽에 붙어 열려서, 드나드는 길은 문 가운데보다 살짝 왼쪽이에요
-    doorPos: new THREE.Vector3(doorX - 0.08, 0, -1.25),
-    doorOut: new THREE.Vector3(doorX - 0.08, 0, -2.2),
+    // 드나드는 길은 문 가운데. 문짝은 활짝(100도쯤) 열려서 길을 비켜요
+    doorPos: new THREE.Vector3(doorX, 0, -1.25),
+    doorOut: new THREE.Vector3(doorX, 0, -2.2),
     seat: (i: number, n: number) => new THREE.Vector3(n === 1 ? 0 : (i ? 0.42 : -0.42), 0.56, -0.68),
     openDoor(v: boolean) { doorTarget = v ? 1 : 0; if (v) noren.puff(); },
-    update(dt: number, heads: Ball[] = []) {
+    update(dt: number, heads: Ball[] = [], cloth = true) {
       t += dt;
       cloudT.offset.x = (cloudT.offset.x + dt * 0.006) % 1;
       for (const b of birds) {
@@ -240,9 +240,10 @@ export function makeShop() {
       clockHands.hour.rotation.z = clockHands.baseH - (hrs / 12) * PI * 2;
       // 열 때는 조금 천천히 (위에 걸린 천이 밀리며 따라올 시간), 닫을 때는 원래대로
       doorOpen += (doorTarget - doorOpen) * Math.min(1, dt * (doorTarget > doorOpen ? 3 : 4));
-      hinge.rotation.y = 1.5 * doorOpen;
+      hinge.rotation.y = 1.75 * doorOpen;
       leafInfo.hinge.copy(hinge.position); leafInfo.angle = hinge.rotation.y;
-      noren.update(dt, leafInfo, [bellBall, ...heads]);
+      // 천은 보일 때와 문이 움직일 때만 흔들어요 (냄비만 보는 동안은 쉬어요)
+      if (cloth || doorTarget > 0 || doorOpen > 0.001) noren.update(dt, leafInfo, [bellBall, ...heads]);
       sun.update(dt);
     },
     // 무료 3D 모델이 오면 직접 그린 소품과 바꿔 끼워요

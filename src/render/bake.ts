@@ -213,6 +213,8 @@ export async function bakeLighting(root: THREE.Object3D, o: BakeOpts): Promise<{
   picked.sort((x, y) => (keys.get(x)! < keys.get(y)! ? -1 : keys.get(x)! > keys.get(y)! ? 1 : 0));
 
   // 2) 큰 면은 잘게 나눠야 그림자가 맺혀요 (벽·바닥 9cm, 나머지 13cm)
+  // 굽기가 실패하면 원래 모양으로 되돌릴 수 있게 바꾼 것을 적어 둬요
+  const swaps: [THREE.Mesh, THREE.BufferGeometry][] = [];
   for (const p of picked) {
     if (!p.recv) continue;
     await idle();
@@ -224,6 +226,7 @@ export async function bakeLighting(root: THREE.Object3D, o: BakeOpts): Promise<{
     const big = (g.boundingSphere?.radius ?? 0) * scale > 0.45;
     const ng = big ? tessellate(g, p.shell ? 0.1 : 0.12, scale) : g.clone();
     ng.userData.ownGeo = true;
+    swaps.push([p.mesh, g]);
     p.mesh.geometry = ng; // 나눠 쓰던 모양은 그대로 두고, 이 물체만 자기 모양을 가져요
   }
 
@@ -307,15 +310,22 @@ export async function bakeLighting(root: THREE.Object3D, o: BakeOpts): Promise<{
       ...rays,
       aoDist: 0.55,
     };
-    const raw = await new Promise<Float32Array>((res, rej) => {
-      const w = new Worker(new URL('./bake.worker.ts', import.meta.url), { type: 'module' });
-      w.onmessage = (e) => {
-        if (e.data.progress !== undefined) o.onProgress?.(e.data.progress);
-        if (e.data.done) { w.terminate(); res(e.data.done as Float32Array); }
-      };
-      w.onerror = (e) => { w.terminate(); rej(e); };
-      w.postMessage(job, [job.tris.buffer, job.albedo.buffer, job.shell.buffer, job.verts.buffer, job.norms.buffer]);
-    });
+    let raw: Float32Array;
+    try {
+      raw = await new Promise<Float32Array>((res, rej) => {
+        const w = new Worker(new URL('./bake.worker.ts', import.meta.url), { type: 'module' });
+        w.onmessage = (e) => {
+          if (e.data.progress !== undefined) o.onProgress?.(e.data.progress);
+          if (e.data.done) { w.terminate(); res(e.data.done as Float32Array); }
+        };
+        w.onerror = (e) => { w.terminate(); rej(e); };
+        w.postMessage(job, [job.tris.buffer, job.albedo.buffer, job.shell.buffer, job.verts.buffer, job.norms.buffer]);
+      });
+    } catch (e) {
+      // 일꾼이 못 떴으면(오래된 기기 등) 잘게 나눈 모양을 버리고 원래 모양으로 돌려놓아요 (정점이 세 배로 남지 않게)
+      for (const [m, g0] of swaps) { const ng = m.geometry; m.geometry = g0; ng.dispose(); }
+      throw e;
+    }
     out = await smooth(raw, recv);
     try {
       const q = new Uint8Array(out.length);

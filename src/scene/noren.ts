@@ -103,7 +103,7 @@ export class Noren {
       const az = sway + this.gust * (1.5 + Math.sin(this.t * 9 + x * 11) * 1.0);
       const ax = this.gust * Math.sin(this.t * 7 + y * 9 + x * 5) * 0.6;
       let vx = (x - Q[k]) * damp, vy = (y - Q[k + 1]) * damp, vz = (z - Q[k + 2]) * damp;
-      const v = Math.hypot(vx, vy, vz);
+      const v = Math.sqrt(vx * vx + vy * vy + vz * vz);
       if (v > vmax) { const f = vmax / v; vx *= f; vy *= f; vz *= f; }
       P[k] = x + vx + ax * h2;
       P[k + 1] = y + vy - 9.8 * h2;
@@ -119,7 +119,7 @@ export class Noren {
         if (pa && pb) continue;
         const ax = a * 3, bx = b * 3;
         const dx = P[bx] - P[ax], dy = P[bx + 1] - P[ax + 1], dz = P[bx + 2] - P[ax + 2];
-        const len = Math.hypot(dx, dy, dz) || 1e-6;
+        const len = Math.sqrt(dx * dx + dy * dy + dz * dz) || 1e-6;
         const f = ((len - rest) / len) * kk;
         const wa = pa ? 0 : pb ? 1 : 0.5, wb = pb ? 0 : pa ? 1 : 0.5;
         P[ax] += dx * f * wa; P[ax + 1] += dy * f * wa; P[ax + 2] += dz * f * wa;

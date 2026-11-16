@@ -67,6 +67,13 @@ export class App {
     setTts(this.settings.tts);
     const paper = tex(paperCanvas(512), true);
     this.wcr = new WatercolorRenderer(canvas, paper);
+    // 그래픽이 잠깐 끊기면 멈춰 두고, 다시 살아나면 새로 열어요. 6초가 지나도 안 살아나면(아이패드에서 흔해요) 그냥 새로 열어요
+    // 판 기록은 그릇마다 저장해 두어서 새로 열어도 이어서 할 수 있어요. 가게를 꾸미는 중에 끊겨도 잡도록 그리기 도구를 만들자마자 걸어 둬요
+    canvas.addEventListener('webglcontextlost', (e) => {
+      e.preventDefault(); this.ctxLost = true; this.running = false; toast('화면을 다시 그리는 중이에요…', 6000);
+      setTimeout(() => { if (this.ctxLost && !document.hidden) location.reload(); }, 6000);
+    });
+    canvas.addEventListener('webglcontextrestored', () => location.reload());
     shared.uPaper.value = paper;
     setFaceTexture(tex(faceAtlas()));
     const q = this.teacher.quality ?? 'auto';
@@ -86,13 +93,6 @@ export class App {
       this.thumbs.set(ing.id, this.stage.thumb(ing, 192).toDataURL('image/webp', 0.9));
       if (++i % 6 === 0) { setStatus(`재료를 그리는 중… ${i}/${INGREDIENTS.length}`); await new Promise((r) => setTimeout(r, 0)); }
     }
-    // 그래픽이 잠깐 끊기면 멈춰 두고, 다시 살아나면 새로 열어요. 6초가 지나도 안 살아나면(아이패드에서 흔해요) 그냥 새로 열어요
-    // 판 기록은 그릇마다 저장해 두어서 새로 열어도 이어서 할 수 있어요
-    canvas.addEventListener('webglcontextlost', (e) => {
-      e.preventDefault(); this.ctxLost = true; this.running = false; toast('화면을 다시 그리는 중이에요…', 6000);
-      setTimeout(() => { if (this.ctxLost && !document.hidden) location.reload(); }, 6000);
-    });
-    canvas.addEventListener('webglcontextrestored', () => location.reload());
     document.addEventListener('visibilitychange', () => {
       if (document.hidden) { this.running = false; suspendAudio(); window.speechSynthesis?.cancel(); }
       else if (this.ctxLost) location.reload();
