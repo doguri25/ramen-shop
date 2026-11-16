@@ -129,7 +129,7 @@ export class Chibi {
     mesh(sphereG(HR, 32, 24), M(fur, { noise: 1.4 }), [0, 0, 0], 1, [0, 0, 0], this.head);
 
     // 얼굴 (눈은 머리 앞쪽에 붙인 얇은 껍질에 그려요)
-    this.eyeTex = cellTex(true, s.kind === 'panda' ? '#2E2E2E' : s.kind === 'raccoon' ? (s.mark ?? '#4A403A') : '');
+    this.eyeTex = cellTex(true, s.kind === 'panda' ? '#2E2E2E' : s.kind === 'raccoon' || s.kind === 'meerkat' || s.kind === 'sloth' ? (s.mark ?? '#4A403A') : '');
     const faceMat = (t: THREE.Texture) => new THREE.MeshBasicMaterial({ map: t, transparent: true, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -4 });
     const eyeR = HR + 0.006 + (['penguin', 'owl', 'monkey'].includes(s.kind) ? 0.006 : 0);
     const eyes = mesh(shellG(eyeR, FRONT, 1.1, 1.35, 0.55), faceMat(this.eyeTex), [0, 0, 0], 1, [0, 0, 0], this.head);
@@ -154,10 +154,32 @@ export class Chibi {
       mouse: { r: 0.09, sx: 1.0, sy: 0.85, sz: 1.1, y: -0.08, z: 0.29 },
       squirrel: { r: 0.1, sx: 1.1, sy: 0.85, sz: 0.85, y: -0.09, z: 0.28 },
       koala: { r: 0.11, sx: 1.2, sy: 0.85, sz: 0.7, y: -0.1, z: 0.26 },
+      capybara: { r: 0.15, sx: 1.3, sy: 0.95, sz: 0.95, y: -0.07, z: 0.24 },
+      quokka: { r: 0.1, sx: 1.1, sy: 0.85, sz: 0.9, y: -0.09, z: 0.28 },
+      redpanda: { r: 0.1, sx: 1.1, sy: 0.85, sz: 0.95, y: -0.09, z: 0.28 },
+      fennec: { r: 0.095, sx: 1.0, sy: 0.85, sz: 1.15, y: -0.09, z: 0.29 },
+      cow: { r: 0.15, sx: 1.4, sy: 0.9, sz: 0.85, y: -0.11, z: 0.24 },
+      horse: { r: 0.14, sx: 1.1, sy: 0.9, sz: 1.15, y: -0.11, z: 0.25 },
+      zebra: { r: 0.14, sx: 1.1, sy: 0.9, sz: 1.15, y: -0.11, z: 0.25 },
+      unicorn: { r: 0.14, sx: 1.1, sy: 0.9, sz: 1.15, y: -0.11, z: 0.25 },
+      wolf: { r: 0.12, sx: 1.05, sy: 0.8, sz: 1.15, y: -0.09, z: 0.27 },
+      rhino: { r: 0.15, sx: 1.25, sy: 0.9, sz: 0.95, y: -0.1, z: 0.24 },
+      skunk: { r: 0.1, sx: 1.05, sy: 0.85, sz: 1.0, y: -0.09, z: 0.28 },
+      dino: { r: 0.14, sx: 1.25, sy: 0.85, sz: 0.95, y: -0.09, z: 0.25 },
+      dragon: { r: 0.13, sx: 1.2, sy: 0.85, sz: 1.05, y: -0.09, z: 0.26 },
+      meerkat: { r: 0.09, sx: 1.0, sy: 0.85, sz: 1.2, y: -0.08, z: 0.29 },
+      walrus: { r: 0.15, sx: 1.45, sy: 0.85, sz: 0.75, y: -0.1, z: 0.25 },
+      crocodile: { r: 0.12, sx: 1.25, sy: 0.62, sz: 1.9, y: -0.1, z: 0.3 },
+      cheetah: { r: 0.11, sx: 1.2, sy: 0.85, sz: 0.8, y: -0.09, z: 0.27 },
+      boar: { r: 0.12, sx: 1.15, sy: 0.9, sz: 1.05, y: -0.09, z: 0.27 },
+      moose: { r: 0.15, sx: 1.2, sy: 0.95, sz: 1.2, y: -0.11, z: 0.24 },
+      lynx: { r: 0.11, sx: 1.2, sy: 0.85, sz: 0.8, y: -0.09, z: 0.27 },
+      badger: { r: 0.11, sx: 1.05, sy: 0.8, sz: 1.1, y: -0.09, z: 0.28 },
+      yak: { r: 0.14, sx: 1.3, sy: 0.9, sz: 0.9, y: -0.1, z: 0.25 },
     };
     const sn = snoutKinds[s.kind];
-    const noseOnly: ChibiSpec['kind'][] = ['rabbit', 'cat', 'hamster', 'human', 'monkey', 'mole', 'pig', 'sheep', 'turtle', 'frog', 'panda'];
-    const beakKinds: ChibiSpec['kind'][] = ['duck', 'chick', 'penguin', 'owl'];
+    const noseOnly: ChibiSpec['kind'][] = ['rabbit', 'cat', 'hamster', 'human', 'monkey', 'mole', 'pig', 'sheep', 'turtle', 'frog', 'panda', 'seal', 'sloth', 'bee', 'axolotl', 'gorilla', 'shark', 'bat'];
+    const beakKinds: ChibiSpec['kind'][] = ['duck', 'chick', 'penguin', 'owl', 'parrot', 'sparrow', 'crow', 'peacock', 'rooster', 'eagle', 'pelican'];
 
     if (sn) {
       const snout = mesh(sphereG(sn.r, 20, 14), M(sn.col ?? fur2), [0, sn.y, sn.z], [sn.sx, sn.sy, sn.sz], [0, 0, 0], this.head);
@@ -170,7 +192,20 @@ export class Chibi {
     } else if (beakKinds.includes(s.kind)) {
       const bc = s.kind === 'duck' || s.kind === 'chick' ? fur2 : mark;
       if (s.kind === 'duck') this.beak = mesh(sphereG(1), M(bc), [0, -0.07, 0.33], [0.13, 0.05, 0.1], [0, 0, 0], this.head);
-      else this.beak = mesh(coneG(0.05, 0.1, 12), M(bc), [0, -0.06, 0.35], [1, 1, 0.8], [PI / 2 + 0.5, 0, 0], this.head);
+      else if (s.kind === 'pelican') {
+        // 길쭉한 부리와 아래 주머니 (말할 때 통째로 위아래로 움직여요)
+        const g = group(this.head, [0, -0.07, 0.33]);
+        mesh(sphereG(1), M(bc), [0, 0, 0.13], [0.065, 0.032, 0.2], [0.12, 0, 0], g);
+        mesh(sphereG(1), M(lighten(bc, 0.3)), [0, -0.045, 0.1], [0.055, 0.05, 0.15], [0.12, 0, 0], g);
+        this.beak = g;
+      } else if (s.kind === 'parrot' || s.kind === 'eagle') {
+        // 아래로 굽은 부리
+        const g = group(this.head, [0, -0.04, 0.32]);
+        mesh(coneG(0.065, 0.11, 14), M(bc), [0, 0, 0.04], [1, 1, 0.85], [PI / 2 + 0.35, 0, 0], g);
+        mesh(sphereG(1), M(bc), [0, -0.05, 0.08], [0.03, 0.04, 0.03], [0, 0, 0], g);
+        mesh(sphereG(1), M(darken(bc, 0.25)), [0, -0.035, 0.02], [0.045, 0.02, 0.04], [0, 0, 0], g);
+        this.beak = g;
+      } else this.beak = mesh(coneG(s.kind === 'sparrow' ? 0.035 : 0.05, s.kind === 'sparrow' ? 0.07 : 0.1, 12), M(bc), [0, -0.06, 0.35], [1, 1, 0.8], [PI / 2 + 0.5, 0, 0], this.head);
     } else if (noseOnly.includes(s.kind)) {
       const noseCol = s.kind === 'human' ? darken(fur, 0.08) : s.kind === 'rabbit' || s.kind === 'cat' || s.kind === 'hamster' ? '#E98BA3' : s.kind === 'mole' ? fur2 : INK;
       if (s.kind === 'pig') {
@@ -398,6 +433,253 @@ export class Chibi {
       case 'beaver':
         earRound(0.24, 0.16, 0.05);
         this.tail = mesh(sphereG(1), M(mark || darken(fur, 0.3)), [0, 0.08, -0.38], [0.16, 0.04, 0.22], [0.3, 0, 0], this.body);
+        break;
+      // ── 행사용으로 더한 생김새 ─────────────────────────
+      case 'capybara':
+        earRound(0.2, 0.2, 0.05);
+        // 머리 위에 귤 하나 (카피바라는 귤을 좋아해요)
+        mesh(sphereG(0.075, 16, 12), M('#F5A33B', { noise: 1.5 }), [0.04, 0.37, -0.02], [1, 0.9, 1], [0, 0, 0], h);
+        mesh(sphereG(1), M('#6FA34E'), [0.06, 0.445, -0.02], [0.035, 0.012, 0.02], [0, 0, 0.4], h);
+        break;
+      case 'quokka':
+        earRound(0.21, 0.23, 0.08);
+        for (const sd of [-1, 1]) mesh(sphereG(1), M(fur2), [sd * 0.17, -0.1, 0.24], [0.08, 0.07, 0.06], [0, 0, 0], h);
+        break;
+      case 'redpanda':
+        earTri(0.2, 0.2, 0.15, 0.1, 0.35, fur, '#FFFFFF');
+        for (const sd of [-1, 1]) {
+          mesh(sphereG(1), M('#FFFFFF'), [sd * 0.11, 0.15, 0.27], [0.05, 0.035, 0.03], [0, 0, 0], h);
+          mesh(sphereG(1), M(mark), [sd * 0.13, -0.06, 0.29], [0.02, 0.06, 0.02], [0, 0, sd * 0.3], h);
+        }
+        tailTube(fur, [[0, 0.1, -0.24], [0.15, 0.15, -0.4], [0.3, 0.32, -0.42], [0.32, 0.55, -0.34]], 0.08);
+        for (const [x, y, z] of [[0.15, 0.15, -0.4], [0.27, 0.27, -0.42], [0.32, 0.43, -0.39]]) mesh(torusG(0.08, 0.02, 6, 16), M(mark), [x, y, z], 1, [0.6, 0.6, 0], this.body);
+        break;
+      case 'fennec':
+        earTri(0.19, 0.17, 0.36, 0.14, 0.42, fur, fur2);
+        this.disc(fur2, 0.6, -0.14, 1.25);
+        tailTube(fur, [[0, 0.1, -0.24], [0.15, 0.12, -0.42], [0.3, 0.3, -0.42]], 0.08);
+        mesh(sphereG(0.08), M(mark), [0.3, 0.32, -0.42], 1, [0, 0, 0], this.body);
+        break;
+      case 'seal':
+        for (const sd of [-1, 1]) mesh(sphereG(1), M(fur2), [sd * 0.055, -0.09, 0.3], [0.065, 0.05, 0.05], [0, 0, 0], h);
+        mesh(sphereG(1), M(INK, { rim: 0.4 }), [0, -0.045, 0.33], [0.04, 0.028, 0.025], [0, 0, 0], h);
+        whiskers(-0.09, 0.32);
+        for (const [x, y] of [[-0.18, 0.22], [0.12, 0.27], [0.24, 0.12], [-0.25, 0.05]]) mesh(sphereG(1), M(mark), [x, y, Math.sqrt(Math.max(0, HR * HR - x * x - y * y)) - 0.01], [0.03, 0.03, 0.015], [0, 0, 0], h);
+        break;
+      case 'cow':
+        for (const sd of [-1, 1]) {
+          mesh(coneG(0.03, 0.1, 10), M('#F3E9D2'), [sd * 0.17, 0.3, -0.02], 1, [0, 0, sd * -0.6], h);
+          mesh(sphereG(1), M(fur), [sd * 0.33, 0.12, -0.02], [0.11, 0.045, 0.06], [0, 0, sd * -0.25], h);
+          mesh(sphereG(0.018), M(darken(fur2, 0.45)), [sd * 0.05, -0.08, 0.37], 1, [0, 0, 0], h);
+        }
+        this.shell(mark, FRONT + 0.6, 0.7, 0.35, 0.45);
+        this.shell(mark, FRONT + PI, 0.9, 0.2, 0.6);
+        break;
+      case 'horse': case 'zebra': case 'unicorn': {
+        earTri(0.14, 0.25, 0.14, 0.055, 0.12);
+        for (const sd of [-1, 1]) mesh(sphereG(0.018), M(darken(fur2, 0.45)), [sd * 0.05, -0.09, 0.4], 1, [0, 0, 0], h);
+        const maneCols = s.kind === 'unicorn' ? ['#F2A7B8', '#F7D560', '#A8D08D', '#8EC5E8', '#B9A3DB'] : [mark];
+        // 앞머리 한 줌 + 정수리에서 뒤로 이어지는 갈기
+        mesh(sphereG(1), M(maneCols[0], { noise: 2 }), [0.03, 0.3, 0.17], [0.07, 0.06, 0.05], [0.5, 0, 0.3], h);
+        for (let i = 0; i < 6; i++) {
+          const a = 0.25 + i * 0.36;
+          mesh(sphereG(1), M(maneCols[(i + 1) % maneCols.length], { noise: 2 }), [0, Math.cos(a) * 0.35, -Math.sin(a) * 0.35], [0.06, 0.09, 0.07], [-a, 0, 0], h);
+        }
+        if (s.kind === 'zebra') {
+          for (const th of [0.42, 0.72]) this.shell(mark, FRONT, 1.1, th, 0.07);
+          for (const sd of [-1, 1]) for (const th of [1.15, 1.5, 1.85]) this.shell(mark, FRONT + sd * 1.15, 0.45, th, 0.07);
+        }
+        if (s.kind === 'unicorn') {
+          const horn = group(h, [0, 0.3, 0.16]); horn.rotation.x = 0.45;
+          mesh(coneG(0.04, 0.2, 14), M('#F7D560', { spec: 0.6 }), [0, 0.1, 0], 1, [0, 0, 0], horn);
+          for (let i = 0; i < 3; i++) mesh(torusG(0.03 - i * 0.008, 0.006, 6, 14), M('#FFF4C8'), [0, 0.04 + i * 0.05, 0], 1, [PI / 2, 0, 0], horn);
+        }
+        tailTube(mark, [[0, 0.15, -0.25], [0.05, 0.1, -0.4], [0.1, -0.05, -0.45]], 0.05);
+        break;
+      }
+      case 'bee':
+        for (const sd of [-1, 1]) {
+          mesh(cylG(0.008, 0.008, 0.16, 6), M(INK), [sd * 0.08, 0.38, 0.05], 1, [0.3, 0, sd * -0.35], h);
+          mesh(sphereG(0.03), M(INK), [sd * 0.115, 0.46, 0.08], 1, [0, 0, 0], h);
+          // 날개 (등 뒤, 반투명)
+          mesh(sphereG(1), M('#EAF6FF', { alpha: 0.7, rim: 0.6 }), [sd * 0.2, 0.52, -0.24], [0.16, 0.09, 0.02], [0.3, sd * 0.4, sd * 0.5], this.body);
+        }
+        this.shell(mark, FRONT + PI, PI * 1.3, 0.35, 0.18);
+        this.shell(mark, FRONT + PI, PI * 1.5, 0.8, 0.2);
+        break;
+      case 'axolotl':
+        for (const sd of [-1, 1]) for (let i = 0; i < 3; i++) {
+          const g = group(h, [sd * 0.3, 0.12 - i * 0.1, -0.04]);
+          g.rotation.z = sd * (-0.9 + i * 0.45);
+          mesh(capsuleG(0.03, 0.12), M(mark), [0, 0.09, 0], 1, [0, 0, 0], g);
+          for (let k = 0; k < 3; k++) mesh(sphereG(0.022), M(lighten(mark, 0.2)), [sd * 0.025, 0.04 + k * 0.045, 0], 1, [0, 0, 0], g);
+        }
+        break;
+      case 'dino': case 'dragon':
+        for (let i = 0; i < 5; i++) {
+          const a = 0.2 + i * 0.42;
+          mesh(coneG(0.045 - i * 0.004, 0.11, 8), M(mark), [0, Math.cos(a) * 0.33, -Math.sin(a) * 0.33], 1, [-a, 0, 0], h);
+        }
+        for (const sd of [-1, 1]) mesh(sphereG(0.02), M(darken(fur2, 0.4)), [sd * 0.05, -0.05, 0.4], 1, [0, 0, 0], h);
+        tailTube(fur, [[0, 0.12, -0.22], [0.1, 0.08, -0.42], [0.25, 0.05, -0.55], [0.38, 0.1, -0.6]], 0.09);
+        if (s.kind === 'dragon') {
+          for (const sd of [-1, 1]) {
+            const g = tube([[sd * 0.12, 0.26, 0.02], [sd * 0.18, 0.4, -0.04], [sd * 0.17, 0.5, -0.14]], 0.028, 12);
+            const m = mesh(g, M('#F3E9D2'), [0, 0, 0], 1, [0, 0, 0], h); m.userData.ownGeo = true;
+            mesh(sphereG(1), M(mark, { alpha: 0.95 }), [sd * 0.25, 0.55, -0.25], [0.2, 0.12, 0.02], [0.2, sd * 0.5, sd * 0.6], this.body);
+          }
+        }
+        break;
+      case 'parrot':
+        for (let i = 0; i < 3; i++) mesh(capsuleG(0.035, 0.1), M(['#E3645A', '#F7D560', '#6FB3E0'][i]), [(i - 1) * 0.05, 0.38, -0.02 - i * 0.02], 1, [-0.4, 0, (i - 1) * 0.35], h);
+        for (const sd of [-1, 1]) mesh(sphereG(1), M(fur2), [sd * 0.15, -0.04, 0.27], [0.08, 0.07, 0.05], [0, 0, 0], h);
+        break;
+      case 'sparrow':
+        this.shell(mark, FRONT, PI * 2, 0, 0.75);
+        for (const sd of [-1, 1]) mesh(sphereG(1), M(fur2), [sd * 0.2, -0.05, 0.24], [0.08, 0.07, 0.05], [0, 0, 0], h);
+        mesh(sphereG(1), M(INK), [0, -0.17, 0.28], [0.06, 0.035, 0.03], [0, 0, 0], h);
+        break;
+      case 'bat':
+        earTri(0.2, 0.2, 0.26, 0.13, 0.5, fur, fur2);
+        mesh(sphereG(1), M(darken(fur, 0.2)), [0, -0.05, 0.33], [0.045, 0.03, 0.03], [0, 0, 0], h);
+        for (const sd of [-1, 1]) {
+          mesh(coneG(0.012, 0.03, 6), M('#FFFFFF'), [sd * 0.035, -0.135, 0.31], 1, [PI, 0, 0], h);
+          const w = group(this.body, [sd * 0.18, 0.52, -0.2]);
+          w.rotation.set(0.2, sd * 0.5, sd * 0.35);
+          for (let k = 0; k < 3; k++) mesh(sphereG(1), M(mark), [sd * (0.08 + k * 0.1), -k * 0.04, 0], [0.11, 0.15 - k * 0.02, 0.015], [0, 0, sd * 0.3], w);
+        }
+        break;
+      case 'wolf':
+        earTri(0.19, 0.22, 0.22, 0.1, 0.25, fur, fur2);
+        this.disc(fur2, 0.6, -0.15, 1.25);
+        tailTube(fur, [[0, 0.1, -0.24], [0.12, 0.1, -0.42], [0.25, 0.2, -0.5]], 0.1);
+        mesh(sphereG(0.1), M(fur2), [0.25, 0.2, -0.5], [1, 1, 1.2], [0, 0, 0], this.body);
+        break;
+      case 'rhino':
+        earTri(0.18, 0.24, 0.12, 0.06, 0.2);
+        mesh(coneG(0.075, 0.26, 14), M('#E8DCC8'), [0, 0.0, 0.42], 1, [0.35, 0, 0], h);
+        mesh(coneG(0.035, 0.1, 12), M('#E8DCC8'), [0, 0.1, 0.33], 1, [0.4, 0, 0], h);
+        break;
+      case 'sloth':
+        this.disc(fur2, 0.8, -0.02, 1.15);
+        earRound(0.27, 0.1, 0.05);
+        break;
+      case 'skunk':
+        earRound(0.2, 0.22, 0.07);
+        this.shell('#FFFFFF', FRONT, 0.3, 0.05, 1.0, 0.004);
+        tailTube(fur, [[0, 0.1, -0.24], [0.05, 0.3, -0.48], [0.02, 0.62, -0.46], [-0.06, 0.82, -0.3]], 0.13);
+        tailTube('#FFFFFF', [[0, 0.12, -0.3], [0.05, 0.32, -0.56], [0.02, 0.64, -0.55], [-0.07, 0.86, -0.38]], 0.045);
+        break;
+      case 'meerkat':
+        for (const sd of [-1, 1]) mesh(sphereG(1), M(darken(fur, 0.15)), [sd * 0.31, 0.04, 0], [0.05, 0.06, 0.04], [0, 0, 0], h);
+        tailTube(fur, [[0, 0.1, -0.24], [0.05, 0.05, -0.42], [0.1, 0.15, -0.55], [0.12, 0.35, -0.55]], 0.03);
+        break;
+      case 'walrus':
+        for (const sd of [-1, 1]) {
+          mesh(sphereG(1), M(fur2), [sd * 0.07, -0.1, 0.3], [0.09, 0.07, 0.07], [0, 0, 0], h);
+          mesh(coneG(0.025, 0.2, 10), M('#FFFDF5', { spec: 0.5 }), [sd * 0.06, -0.25, 0.3], 1, [PI + 0.15, 0, sd * 0.1], h);
+        }
+        for (let i = 0; i < 6; i++) mesh(sphereG(0.008), M(INK), [(i % 3 - 1) * 0.04 + (i < 3 ? -0.07 : 0.07), -0.09 - (i % 2) * 0.02, 0.37], 1, [0, 0, 0], h);
+        break;
+      case 'crocodile':
+        for (const sd of [-1, 1]) {
+          mesh(sphereG(0.07), M(fur), [sd * 0.1, 0.2, 0.24], 1, [0, 0, 0], h);
+          for (let i = 0; i < 4; i++) mesh(coneG(0.012, 0.03, 6), M('#FFFFFF'), [sd * 0.12, -0.14, 0.32 + i * 0.05], 1, [PI, 0, 0], h);
+          mesh(sphereG(0.015), M(darken(fur, 0.3)), [sd * 0.035, -0.04, 0.51], 1, [0, 0, 0], h);
+        }
+        for (let i = 0; i < 4; i++) mesh(coneG(0.035, 0.07, 6), M(mark), [0, 0.33 - i * 0.08, -0.08 - i * 0.08], 1, [-0.4 - i * 0.3, 0, 0], h);
+        tailTube(fur, [[0, 0.12, -0.22], [0.1, 0.05, -0.45], [0.25, 0.02, -0.6]], 0.07);
+        break;
+      case 'gorilla':
+        this.disc(fur2, 0.75, -0.06, 1.15);
+        mesh(sphereG(1), M(fur), [0, 0.13, 0.25], [0.24, 0.05, 0.09], [0, 0, 0], h);
+        for (const sd of [-1, 1]) mesh(sphereG(1), M(fur2), [sd * 0.34, 0.0, -0.02], [0.05, 0.07, 0.04], [0, 0, 0], h);
+        mesh(sphereG(1), M(fur), [0, 0.33, -0.05], [0.12, 0.08, 0.14], [0, 0, 0], h);
+        break;
+      case 'crow':
+        this.disc(fur2, 0.72, -0.04, 1.1);
+        for (let i = 0; i < 3; i++) mesh(capsuleG(0.025, 0.07), M(fur), [(i - 1) * 0.04, 0.37, -0.04], 1, [-0.6, 0, (i - 1) * 0.4], h);
+        break;
+      case 'peacock': {
+        for (let i = 0; i < 3; i++) {
+          mesh(cylG(0.006, 0.006, 0.12, 5), M(fur), [(i - 1) * 0.05, 0.4, -0.02], 1, [0, 0, (i - 1) * 0.35], h);
+          mesh(sphereG(0.025), M('#6FB3E0'), [(i - 1) * 0.09, 0.47, -0.02], 1, [0, 0, 0], h);
+        }
+        for (let i = 0; i < 9; i++) {
+          const a = -1.2 + i * 0.3;
+          const g = group(this.body, [Math.sin(a) * 0.42, 0.42 + Math.cos(a) * 0.42, -0.34]);
+          g.rotation.set(-0.25, 0, -a);
+          mesh(sphereG(1), M('#3E9C7A', { noise: 1.5 }), [0, 0, 0], [0.09, 0.2, 0.02], [0, 0, 0], g);
+          mesh(sphereG(1), M('#F2C14E'), [0, 0.1, 0.012], [0.05, 0.05, 0.01], [0, 0, 0], g);
+          mesh(sphereG(1), M('#2F5A8C'), [0, 0.1, 0.02], [0.028, 0.028, 0.01], [0, 0, 0], g);
+        }
+        break;
+      }
+      case 'shark':
+        mesh(coneG(0.1, 0.22, 3), M(fur), [0, 0.38, -0.08], [0.35, 1, 1.4], [-0.35, 0, 0], h);
+        this.disc(fur2, 0.7, -0.14, 1.3);
+        for (const sd of [-1, 1]) {
+          mesh(sphereG(1), M(fur), [sd * 0.36, -0.04, -0.02], [0.03, 0.1, 0.14], [0.6, 0, sd * 0.5], h);
+          for (let i = 0; i < 3; i++) mesh(boxG(0.006, 0.07, 0.012), M(darken(fur, 0.25)), [sd * 0.29, 0.02, 0.12 - i * 0.05], 1, [0, sd * 0.9, 0], h);
+        }
+        break;
+      case 'cheetah':
+        earRound(0.2, 0.25, 0.07);
+        this.disc(fur2, 0.6, -0.14, 1.25);
+        for (const sd of [-1, 1]) mesh(capsuleG(0.008, 0.1), M(INK), [sd * 0.13, -0.06, 0.3], 1, [0.3, 0, sd * -0.15], h);
+        for (const [x, y] of [[-0.15, 0.24], [0.05, 0.28], [0.2, 0.2], [-0.25, 0.08], [0.26, 0.04], [-0.05, 0.18], [0.14, 0.12]]) mesh(sphereG(1), M(mark), [x, y, Math.sqrt(Math.max(0, HR * HR - x * x - y * y)) - 0.005], [0.022, 0.022, 0.012], [0, 0, 0], h);
+        tailTube(fur, [[0, 0.1, -0.24], [0.15, 0.1, -0.42], [0.3, 0.25, -0.45], [0.32, 0.45, -0.38]], 0.035);
+        break;
+      case 'rooster':
+        for (let i = 0; i < 3; i++) mesh(sphereG(0.05 + (i === 1 ? 0.015 : 0)), M('#E3453A'), [0, 0.34 + (i === 1 ? 0.03 : 0), 0.06 - i * 0.08], 1, [0, 0, 0], h);
+        mesh(sphereG(1), M('#E3453A'), [0, -0.16, 0.32], [0.03, 0.06, 0.03], [0, 0, 0], h);
+        for (let i = 0; i < 5; i++) mesh(capsuleG(0.03, 0.2), M(i % 2 ? '#2F5A8C' : '#3E9C7A'), [0, 0.45, -0.3], 1, [-0.9 + i * 0.25, 0, 0], this.body);
+        break;
+      case 'boar':
+        earTri(0.18, 0.22, 0.14, 0.07, 0.4);
+        mesh(cylG(0.06, 0.065, 0.03, 16), M(fur2), [0, -0.09, 0.4], [1.1, 1, 0.9], [PI / 2, 0, 0], h);
+        for (const sd of [-1, 1]) {
+          mesh(sphereG(0.012), M(darken(fur2, 0.45)), [sd * 0.025, -0.09, 0.415], 1, [0, 0, 0], h);
+          mesh(coneG(0.018, 0.09, 8), M('#FFFDF5'), [sd * 0.1, -0.1, 0.34], 1, [0, 0, sd * -0.4], h);
+        }
+        for (let i = 0; i < 5; i++) mesh(coneG(0.03, 0.08, 6), M(mark), [0, 0.32 - i * 0.06, 0.05 - i * 0.08], 1, [-0.2 - i * 0.3, 0, 0], h);
+        break;
+      case 'moose':
+        earTri(0.25, 0.14, 0.13, 0.06, 0.9);
+        for (const sd of [-1, 1]) {
+          const g = group(h, [sd * 0.14, 0.3, -0.04]);
+          g.rotation.z = sd * -0.7;
+          mesh(cylG(0.02, 0.025, 0.1, 8), M('#C9A06A'), [0, 0.04, 0], 1, [0, 0, 0], g);
+          mesh(sphereG(1), M('#D9B47E', { noise: 1.5 }), [0, 0.15, 0], [0.13, 0.08, 0.02], [0, 0, 0], g);
+          for (let k = 0; k < 4; k++) mesh(coneG(0.018, 0.06, 6), M('#D9B47E'), [-0.1 + k * 0.065, 0.22, 0], 1, [0, 0, 0], g);
+        }
+        break;
+      case 'eagle':
+        for (const sd of [-1, 1]) mesh(sphereG(1), M(darken(fur, 0.15)), [sd * 0.1, 0.11, 0.28], [0.08, 0.025, 0.04], [0, 0, sd * -0.3], h);
+        break;
+      case 'lynx':
+        earTri(0.19, 0.2, 0.2, 0.1, 0.25, fur, fur2);
+        for (const sd of [-1, 1]) {
+          mesh(coneG(0.012, 0.09, 6), M(INK), [sd * 0.245, 0.43, 0], 1, [0, 0, sd * -0.25], h);
+          mesh(coneG(0.08, 0.16, 8), M(fur2), [sd * 0.3, -0.16, 0.05], [1, 1, 0.6], [0, 0, sd * 2.3], h);
+        }
+        this.disc(fur2, 0.6, -0.14, 1.25);
+        break;
+      case 'badger':
+        earRound(0.24, 0.18, 0.06, '#FFFFFF', '#FFFFFF');
+        for (const sd of [-1, 1]) this.shell(mark, FRONT + sd * 0.42, 0.3, 0.15, 1.15, 0.004);
+        this.shell('#FFFFFF', FRONT, 0.32, 0.05, 1.1, 0.005);
+        break;
+      case 'yak':
+        for (const sd of [-1, 1]) {
+          const g = tube([[sd * 0.2, 0.18, 0], [sd * 0.34, 0.24, 0.02], [sd * 0.4, 0.36, 0.06], [sd * 0.36, 0.44, 0.1]], 0.035, 16);
+          const m = mesh(g, M('#EDE3CF'), [0, 0, 0], 1, [0, 0, 0], h); m.userData.ownGeo = true;
+          mesh(sphereG(1), M(fur), [sd * 0.33, 0.06, 0], [0.1, 0.04, 0.05], [0, 0, sd * -0.3], h);
+        }
+        for (let i = 0; i < 9; i++) { const a = -0.9 + i * 0.22; mesh(sphereG(0.07), M(mark, { noise: 2 }), [Math.sin(a) * 0.25, 0.22 + Math.cos(a * 1.5) * 0.04, 0.2], [1, 1.3, 0.8], [0, 0, 0], h); }
+        break;
+      case 'pelican':
+        for (let i = 0; i < 3; i++) mesh(capsuleG(0.02, 0.06), M(fur2), [(i - 1) * 0.03, 0.36, -0.08], 1, [-0.9, 0, (i - 1) * 0.3], h);
         break;
       case 'human': this.buildHuman(); break;
     }

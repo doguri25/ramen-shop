@@ -28,7 +28,11 @@ export type Kind =
   | 'rabbit' | 'cat' | 'bear' | 'squirrel' | 'duck' | 'penguin' | 'fox' | 'panda' | 'raccoon' | 'dog'
   | 'owl' | 'turtle' | 'sheep' | 'hedgehog' | 'elephant' | 'hippo' | 'giraffe' | 'monkey' | 'pig'
   | 'hamster' | 'otter' | 'frog' | 'chick' | 'deer' | 'lion' | 'tiger' | 'koala' | 'kangaroo' | 'mole'
-  | 'alpaca' | 'goat' | 'mouse' | 'beaver' | 'human';
+  | 'alpaca' | 'goat' | 'mouse' | 'beaver' | 'human'
+  // 행사용으로 더한 생김새 36가지
+  | 'capybara' | 'quokka' | 'redpanda' | 'fennec' | 'seal' | 'cow' | 'horse' | 'zebra' | 'bee' | 'axolotl' | 'dino' | 'parrot'
+  | 'sparrow' | 'bat' | 'wolf' | 'rhino' | 'sloth' | 'skunk' | 'meerkat' | 'walrus' | 'crocodile' | 'gorilla' | 'unicorn' | 'crow'
+  | 'peacock' | 'shark' | 'dragon' | 'cheetah' | 'rooster' | 'boar' | 'moose' | 'eagle' | 'lynx' | 'badger' | 'yak' | 'pelican';
 
 export interface ChibiSpec {
   kind: Kind;
