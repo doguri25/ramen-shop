@@ -1,7 +1,7 @@
 import { AI_URL, MAX_RUNS, ROUNDS, TEACHER_PIN, TINKERBELL_URL } from './config';
 import { ai, classStats } from './ai/solar';
 import { eulReul } from './core/korean';
-import { hashStr, mulberry32, shuffle, uid } from './core/rng';
+import { hashStr, mulberry32, uid } from './core/rng';
 import { resumeAudio, setSound, setTts, sfx, speak, suspendAudio, ttsEnabled, unlockAudio, soundOn } from './core/sound';
 import { updateTweens, wait } from './core/tween';
 import { CUS, CUSTOMERS, TUTORIAL } from './data/customers';
@@ -13,7 +13,7 @@ import { EV, whoText } from './event/screens';
 import { ING, INGREDIENTS } from './data/ingredients';
 import { TUTOR_INTRO } from './data/text';
 import type { Customer, Owner, Picks, RamenRecord, Step } from './data/types';
-import { customerForRound, makeOrder } from './game/schedule';
+import { catchUpOrder, customerForRound, makeOrder } from './game/schedule';
 import { fiveStars, hasHeart, score } from './game/scoring';
 import { faceAtlas, paperCanvas, tex } from './paint/textures';
 import { LIGHT_W, QualityProbe, TIERS, WatercolorRenderer, type Tier, shared } from './render/watercolor';
@@ -197,7 +197,7 @@ export class App {
     const owners = await db.owners();
     const counts = await this.counts(owners);
     const r = await UI.owners(owners, counts);
-    if (r.owner) { this.owner = r.owner; this.fixOrder(this.owner); }
+    if (r.owner) { this.owner = r.owner; this.fixOrder(this.owner, await db.records(this.owner.id)); }
     else if (r.create) {
       const id = uid();
       const o: Owner = { id, number: r.create.number, name: r.create.name, round: 0, order: makeOrder(CUSTOMERS_72, hashStr(id) ^ Date.now()), tutorialDone: false, createdAt: Date.now() };
@@ -213,19 +213,19 @@ export class App {
   private listFor(o: Owner) { return EVENT && o.ev && o.ev.grade >= 5 ? CUSTOMERS_56 : CUSTOMERS_72; }
 
   // 손님 목록이 바뀐 뒤에도 예전 학생 기록이 멈추지 않게: 없어진 손님은 빼고 새 손님은 끼워 넣어요
-  private fixOrder(o: Owner) {
+  private fixOrder(o: Owner, recs: RamenRecord[] = []) {
     const list = this.listFor(o);
+    if (!o.ev) {
+      // 수업용: 아직 못 만난 손님(새 손님 포함)이 다음 손님부터 고르게 섞여서 와요. 몇 그릇을 끓였든 똑같아요
+      const next = catchUpOrder(o.order, o.round, list, hashStr(o.id), recs);
+      if (next) { o.order = next; this.saveOwner(o); }
+      return;
+    }
     const known = new Set(list.map((c) => c.id));
     const kept = o.order.filter((id) => known.has(id));
     const add = list.map((c) => c.id).filter((id) => !kept.includes(id));
     if (kept.length === o.order.length && !add.length) return;
-    if (o.ev || !add.length) { o.order = [...kept, ...add]; this.saveOwner(o); return; }
-    // 수업용: 아직 안 만난 손님 사이에 새 손님을 섞어서, 다음 손님부터 바로 만날 수 있게 해요
-    const met = kept.slice(0, Math.min(o.round, kept.length));
-    let rest = shuffle([...kept.slice(met.length), ...add], mulberry32(hashStr(o.id) ^ add.length));
-    const gap = o.round - met.length; // 한 바퀴를 넘게 돈 학생은 이번 자리부터 새 손님이 오게 돌려요
-    if (gap > 0) { const k = gap % rest.length; rest = [...rest.slice(rest.length - k), ...rest.slice(0, rest.length - k)]; }
-    o.order = [...met, ...rest];
+    o.order = [...kept, ...add];
     this.saveOwner(o);
   }
 
