@@ -78,7 +78,10 @@ export const UI = {
         h('span', { class: 'ai-more' }, '어떻게 쓰였나요? ›')) : null;
       const el = mount(h('div', { class: 'scr-title' }, logo,
         h('button', { class: 'btn big pulse', onclick: () => { sfx.pop(); el.remove(); res(); } }, '가게 문 열기'), aiStrip,
-        h('div', { class: 'credit' }, `만든이 ${CREDIT.name}`, h('span', { class: 'sep' }, '·'), `문의 ${CREDIT.contact}`)));
+        h('div', { class: 'credit' },
+          h('span', { class: 'cr-item' }, h('span', { class: 'cr-ic' }, '🧑‍🏫'), h('span', { class: 'cr-k' }, '만든이'), h('b', null, CREDIT.name)),
+          h('span', { class: 'cr-sep' }),
+          h('span', { class: 'cr-item' }, h('span', { class: 'cr-ic' }, '✉️'), h('span', { class: 'cr-k' }, '문의'), h('b', { class: 'cr-mail' }, CREDIT.contact)))));
     });
   },
 
