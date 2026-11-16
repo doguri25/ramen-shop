@@ -181,7 +181,12 @@ const tidyLine = (t, n) => {
   let s = t.replace(/\s*\n+\s*/g, ' ').trim();
   if (/^["“「『']/.test(s) && /["”」』']$/.test(s)) s = s.slice(1, -1).trim();
   if ((s.match(/["“”]/g) || []).length % 2) s = s.replace(/["“”]/g, '');
-  return s.slice(0, n);
+  // 여러 문장이 오면 앞에서부터 두 문장까지, n자 안에 들어가는 만큼만 (문장 중간에서 자르지 않아요)
+  const parts = s.match(/[^.!?。…]+[.!?。…]+["”']?|[^.!?。…]+$/g) || [s];
+  let out = '';
+  let k = 0;
+  for (const p of parts) { const next = (out + ' ' + p.trim()).trim(); if (out && (next.length > n || k >= 2)) break; out = next; k++; }
+  return out.length > n ? '' : out;
 };
 
 // ── 사용량 (서버가 잠깐 살아 있는 동안만 세는 대략값) ─────────
@@ -245,7 +250,7 @@ export default async function handler(req) {
       if (!v || typeof v.ok !== 'boolean') return json({ error: 'bad_reply' }, 502, h);
       return json({ ok: v.ok, why: tidyLine(String(v.why || ''), 60), think: r.think, effort: r.effort, model: job.model }, 200, h);
     }
-    const text = job.out === 'line' ? tidyLine(r.text, 90) : r.text.replace(/[*#`]/g, '').slice(0, 1500);
+    const text = job.out === 'line' ? tidyLine(r.text, 75) : r.text.replace(/[*#`]/g, '').slice(0, 1500);
     if (!text) { console.log('empty reply', d.task, JSON.stringify(r.why)); return json({ error: 'empty', why: r.why }, 502, h); }
     return json({ text, think: r.think, effort: r.effort, model: job.model }, 200, h);
   } catch (e) {
