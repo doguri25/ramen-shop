@@ -114,7 +114,9 @@ export async function saveRun(col, w, d) {
 export async function board(col, band, by, w) {
   const q = by === 'avg' ? { band, sumBowls: { $gte: AVG_MIN } } : { band, 'best.total': { $gt: 0 } };
   const sort = by === 'avg' ? { avg: -1, sumBowls: -1, updatedAt: 1 } : { 'best.total': -1, 'best.fives': -1, 'best.at': 1 };
-  const [list, count] = await Promise.all([col.find(q).sort(sort).limit(TOP).toArray(), col.countDocuments(q)]);
+  // 랭킹에 쓰는 칸만 가져와요 (판 기록 전체를 싣지 않아서 주고받는 양이 4분의 1쯤으로 줄어요)
+  const projection = { grade: 1, cls: 1, num: 1, name: 1, band: 1, best: 1, avg: 1, sumBowls: 1, updatedAt: 1 };
+  const [list, count] = await Promise.all([col.find(q, { projection }).sort(sort).limit(TOP).toArray(), col.countDocuments(q)]);
   const rows = list.map((s, i) => ({ rank: i + 1, ...row(s), me: !!w && s._id === w.key }));
   let me = null;
   if (w && w.band === band) {
