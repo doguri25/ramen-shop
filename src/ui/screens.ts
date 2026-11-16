@@ -17,11 +17,11 @@ const root = () => document.getElementById('ui')!;
 export interface AiInfo { on: boolean; check: () => Promise<'ok' | 'nokey' | 'fail'> }
 // 업스테이지 AI가 쓰이는 네 곳 (첫 화면 띠와 안내 창에 같이 써요)
 const AI_USES = [
-  { icon: '🍜', short: '손님 맞춤 한마디', title: '손님 맞춤 한마디', where: '손님이 라면을 다 먹은 뒤', model: 'Solar Mini 4',
+  { icon: '🍜', short: '손님 맞춤 한마디', title: '손님 맞춤 한마디', where: '손님이 라면을 다 먹은 뒤', model: 'Solar Pro 4',
     desc: '손님이 내가 지은 라면 이름이나 넣은 재료를 콕 집어서 한마디를 더 해 줘요. 같은 손님이라도 사장님마다 다른 말을 들어요.' },
-  { icon: '💡', short: '생각 도우미', title: '고른 까닭 생각 도우미', where: '레시피 카드 만들기', model: 'Solar Mini 4',
+  { icon: '💡', short: '생각 도우미', title: '고른 까닭 생각 도우미', where: '레시피 카드 만들기', model: 'Solar Pro 4',
     desc: '대표 라면을 고른 까닭을 쓸 때, 글을 대신 써 주지 않고 더 생각해 볼 수 있는 질문을 하나 건네요.' },
-  { icon: '🌱', short: '고운 말 검사', title: '고운 말 검사', where: '라면 이름 짓기', model: 'Solar Mini 4',
+  { icon: '🌱', short: '고운 말 검사', title: '고운 말 검사', where: '라면 이름 짓기', model: 'Solar Pro 4',
     desc: '직접 지은 라면 이름이 손님 마음을 다치게 하지 않는지 한 번 더 살피고, 고칠 점을 부드럽게 알려 줘요.' },
   { icon: '📊', short: '우리 반 요약', title: '우리 반 요약', where: '선생님 화면', model: 'Solar Pro 4',
     desc: '우리 반이 끓인 라면 기록(별, 하트 도장, 많이 맞힌 마음)을 숫자와 짧은 글로 정리해 수업 기록에 보탬이 돼요.' },
@@ -98,7 +98,7 @@ export const UI = {
         h('div', { class: 'ai-head' },
           h('span', { class: 'ai-badge' }, h('span', { class: 'spark' }, '✦'), 'Upstage Solar AI'),
           h('h2', null, '업스테이지 AI는 이렇게 쓰여요'),
-          h('p', { class: 'sub' }, '한국어를 잘하는 업스테이지의 Solar 모델이 네 군데에서 사장님과 선생님을 도와요.'),
+          h('p', { class: 'sub' }, '한국어를 잘하는 업스테이지의 Solar Pro 4 모델이 네 군데에서 사장님과 선생님을 도와요.'),
           state),
         h('div', { class: 'ai-grid' }, AI_USES.map((u) => h('div', { class: 'ai-card' },
           h('div', { class: 'ai-ic' }, u.icon),

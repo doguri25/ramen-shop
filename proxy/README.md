@@ -4,10 +4,11 @@
 
 - 주소: `https://ramen-ai.vercel.app/api/solar`
 - 하는 일 네 가지(질문 내용은 이 서버가 정해요)
-  - `react` 손님 맞춤 한마디 (Solar Mini 4)
-  - `reason` 고른 까닭 생각 도우미 질문 (Solar Mini 4)
-  - `kind` 직접 지은 라면 이름 고운 말 검사 (Solar Mini 4)
+  - `react` 손님 맞춤 한마디 (Solar Pro 4)
+  - `reason` 고른 까닭 생각 도우미 질문 (Solar Pro 4)
+  - `kind` 직접 지은 라면 이름 고운 말 검사 (Solar Pro 4)
   - `summary` 선생님용 학급 요약 (Solar Pro 4)
+- 2026년 11월 16일에 잰 기다리는 시간(Solar Pro 4, 다섯 번씩): 고운 말 검사 0.7~1.2초, 생각 도우미 0.6~1.1초, 손님 한마디 0.7~2.9초. 모두 빨라서 Mini로 되돌리지 않았어요.
 - 지켜 주는 것: 허락한 사이트(doguri25.github.io)에서만 부를 수 있음, 글 길이 제한, 같은 인터넷 주소에서 1분에 150번·하루 4000번 정도까지, 22초 넘으면 끊음
 
 ## 키 넣기 (한 번만)
@@ -27,4 +28,5 @@
 | `ALLOW_ORIGINS` | `https://doguri25.github.io` | 부를 수 있는 사이트(쉼표로 여러 개) |
 | `PER_MINUTE` | `150` | 같은 인터넷 주소에서 1분에 보낼 수 있는 횟수 |
 | `PER_DAY` | `4000` | 하루 전체 횟수(대략) |
-| `MODEL_FAST` / `MODEL_SMART` | `solar-mini4` / `solar-pro4` | 쓸 모델 |
+| `MODEL_SMART` | `solar-pro4` | 기본 모델 |
+| `MODEL_REACT` / `MODEL_REASON` / `MODEL_KIND` | `MODEL_SMART`와 같음 | 일마다 다른 모델을 쓰고 싶을 때 (예: `solar-mini4`) |
