@@ -11,6 +11,13 @@ const PER_DAY = Number(process.env.PER_DAY || 4000); // 하루 전체 횟수 (�
 
 const FAST = process.env.MODEL_FAST || 'solar-mini4';
 const SMART = process.env.MODEL_SMART || 'solar-pro4';
+// 일마다 쓰는 모델 (기본은 모두 Pro, 학생이 기다리는 자리가 너무 느리면 그 일만 Mini로)
+const MODEL = {
+  react: process.env.MODEL_REACT || SMART,
+  reason: process.env.MODEL_REASON || SMART,
+  kind: process.env.MODEL_KIND || SMART,
+  summary: SMART,
+};
 
 // ── 들어온 값 다듬기 ─────────────────────────────
 const str = (v, n) => (typeof v === 'string' ? v : '').replace(/[\u0000-\u001f<>`]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, n);
@@ -46,7 +53,7 @@ const TASKS = {
     }[stars];
     const said = str(d.said, 100);
     return {
-      model: FAST, max: 2500, temp: 0.8,
+      model: MODEL.react, max: 2500, temp: 0.8,
       system: [
         `너는 동네 라면 가게에 온 손님 "${name}"이야. 방금 학생 사장님이 끓여 준 라면을 다 먹었어.`,
         `네 고민: ${str(c.story, 300)}`,
@@ -67,7 +74,7 @@ const TASKS = {
     if (!ramen) return null;
     const reason = str(d.reason, 80);
     return {
-      model: FAST, max: 2500, temp: 0.7,
+      model: MODEL.reason, max: 2500, temp: 0.7,
       system: [
         '너는 초등학교 3학년 학생의 글쓰기를 돕는 다정한 선생님이야.',
         '학생은 자기가 끓인 친구라면을 대표 라면으로 고르고, 그 까닭을 "…때문이에요."로 끝나는 한 문장으로 쓰는 중이야.',
@@ -85,7 +92,7 @@ const TASKS = {
     const name = str(d.name, 30);
     if (!name) return null;
     return {
-      model: FAST, max: 2500, temp: 0,
+      model: MODEL.kind, max: 2500, temp: 0,
       system: [
         '너는 초등학교 3학년 교실 게임의 말 검사 도우미야. 학생이 지은 라면 이름을 손님에게 그대로 들려줘도 되는지 판단해.',
         '안 되는 경우: 욕설이나 비속어(초성·변형 포함), 놀림·비하·외모 평가, 성적인 말, 폭력·죽음, 특정 친구나 실제 사람을 놀리는 말, 유행하는 혐오 표현.',
@@ -114,7 +121,7 @@ const TASKS = {
       라면_이름_예: strs(s.names, 30, 30),
     };
     return {
-      model: SMART, max: 4000, temp: 0.4,
+      model: MODEL.summary, max: 4000, temp: 0.4,
       system: [
         '너는 초등학교 3학년 담임 선생님을 돕는 조수야. 마음 건강 수업 게임 「후루룩 친구라면 가게」 기록을 보고 선생님이 수업 결과를 정리할 때 참고할 요약을 써.',
         '손님마다 꼭 필요한 마음이 있고, 학생은 재료를 골라 라면을 끓인 뒤 이름을 지어 줘. 별 셋은 필요한 마음을 잘 맞힌 것, 하트 도장은 라면 이름에 손님 마음 낱말을 넣은 것이야.',
@@ -236,11 +243,11 @@ export default async function handler(req) {
       let v = null;
       try { v = JSON.parse(r.text); } catch { const m = r.text.match(/\{[\s\S]*\}/); if (m) try { v = JSON.parse(m[0]); } catch { /* 아래에서 처리 */ } }
       if (!v || typeof v.ok !== 'boolean') return json({ error: 'bad_reply' }, 502, h);
-      return json({ ok: v.ok, why: tidyLine(String(v.why || ''), 60), think: r.think, effort: r.effort }, 200, h);
+      return json({ ok: v.ok, why: tidyLine(String(v.why || ''), 60), think: r.think, effort: r.effort, model: job.model }, 200, h);
     }
     const text = job.out === 'line' ? tidyLine(r.text, 90) : r.text.replace(/[*#`]/g, '').slice(0, 1500);
     if (!text) { console.log('empty reply', d.task, JSON.stringify(r.why)); return json({ error: 'empty', why: r.why }, 502, h); }
-    return json({ text, think: r.think, effort: r.effort }, 200, h);
+    return json({ text, think: r.think, effort: r.effort, model: job.model }, 200, h);
   } catch (e) {
     return json({ error: e?.name === 'AbortError' ? 'timeout' : 'fail' }, 504, h);
   }
