@@ -149,8 +149,11 @@ async function solar(job, key) {
   }
   if (!r.ok) return { error: `upstage_${r.status}` };
   const j = await r.json();
-  const text = (j.choices?.[0]?.message?.content ?? '').trim();
-  return { text };
+  const ch = j.choices?.[0] ?? {};
+  const text = (ch.message?.content ?? '').trim();
+  // 빈 답일 때 원인을 볼 수 있게 (키나 글 내용은 넣지 않아요)
+  const why = text ? null : { finish: ch.finish_reason ?? null, usage: j.usage ?? null, fields: Object.keys(ch.message ?? {}) };
+  return { text, why };
 }
 
 // 대사 한 줄 다듬기: 줄을 이어 붙이고, 통째로 감싼 따옴표만 벗기고, 짝이 안 맞는 따옴표는 지워요
@@ -223,7 +226,7 @@ export default async function handler(req) {
       return json({ ok: v.ok, why: tidyLine(String(v.why || ''), 60) }, 200, h);
     }
     const text = job.out === 'line' ? tidyLine(r.text, 90) : r.text.replace(/[*#`]/g, '').slice(0, 1500);
-    if (!text) return json({ error: 'empty' }, 502, h);
+    if (!text) { console.log('empty reply', d.task, JSON.stringify(r.why)); return json({ error: 'empty', why: r.why }, 502, h); }
     return json({ text }, 200, h);
   } catch (e) {
     return json({ error: e?.name === 'AbortError' ? 'timeout' : 'fail' }, 504, h);
