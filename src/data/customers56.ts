@@ -1,6 +1,7 @@
 import type { Customer } from './types';
+import { CUSTOMERS_56B } from './customers56b';
 
-// 5~6학년용 손님 36명 (행사용)
+// 5~6학년용 손님 첫 묶음 36명 (행사용)
 // 학교폭력 상황(단톡방·따돌림·방관·놀림·갈등 중재)과 사춘기 마음(질투·비교·외모·진로·가족)을 섞었어요.
 // '겉말과 속마음'이 다른 손님은 첫마디가 괜찮다고 하지만, 이야기 속 단서를 읽어야 진짜 필요한 마음이 보여요.
 // [[단서]] 밑줄은 손님마다 무작위로 보이거나 숨어요.
@@ -12,7 +13,7 @@ const R = (r3: string | string[], r2: string | string[], r1: string | string[]) 
 const SAFE_TELL = '괴롭힘을 겪거나 보면 혼자 참지 말고 선생님·부모님께 말해요. 117에 전화하거나 문자(#0117)해도 돼요.';
 const SAFE_CYBER = '단톡방에서 놀림이나 욕을 당하면 화면을 저장해 두고 선생님·부모님께 알려요. 117에서도 도와줘요.';
 
-export const CUSTOMERS_56: Customer[] = [
+const CUSTOMERS_56A: Customer[] = [
   {
     id: 'u_dantok', name: '고양이 하린', source: 'new',
     chibi: { kind: 'cat', fur: '#E9D3B8', fur2: '#FFF7EE', cloth: '#8FA7D9' },
@@ -672,5 +673,7 @@ export const CUSTOMERS_56: Customer[] = [
   },
 ];
 
+// 5~6학년 손님 72명 (첫 묶음 36명 + 두 번째 묶음 36명)
+export const CUSTOMERS_56: Customer[] = [...CUSTOMERS_56A, ...CUSTOMERS_56B];
 // 손님 아이디 → 손님 (5~6학년)
 export const CUS_56 = new Map<string, Customer>(CUSTOMERS_56.map((c) => [c.id, c]));

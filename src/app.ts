@@ -6,6 +6,7 @@ import { resumeAudio, setSound, setTts, sfx, speak, suspendAudio, ttsEnabled, un
 import { updateTweens, wait } from './core/tween';
 import { CUS, CUSTOMERS, TUTORIAL } from './data/customers';
 import { CUS_56, CUSTOMERS_56 } from './data/customers56';
+import { CUS_14, CUSTOMERS_14 } from './data/customers14';
 import { EVENT } from './event/flag';
 import { bandOf, keyOf, rank, type Best, type SendResult, type Who } from './event/rank';
 import { EV, whoText } from './event/screens';
@@ -27,7 +28,9 @@ import { UI } from './ui/screens';
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 // 수업용 손님과 행사용 5~6학년 손님을 모두 찾을 수 있게
-const CUSX = new Map<string, Customer>([...CUS, ...CUS_56]);
+const CUSX = new Map<string, Customer>([...CUS, ...CUS_14, ...CUS_56]);
+// 행사용 1~4학년 손님 72명 (수업용 36명 + 새 손님 36명)
+const CUSTOMERS_EV14 = [...CUSTOMERS, ...CUSTOMERS_14];
 const whoOf = (o: Owner): Who => ({ grade: o.ev!.grade, cls: o.ev!.cls, num: o.number, name: o.name });
 const EMPTY: Picks = { broth: null, noodle: null, soup: null, toppings: [], finish: [] };
 const TUTOR_HINTS: Partial<Record<Step, string[]>> = {
@@ -191,7 +194,7 @@ export class App {
   }
 
   // 행사용 5~6학년은 5~6학년 손님을 만나요
-  private listFor(o: Owner) { return EVENT && o.ev && o.ev.grade >= 5 ? CUSTOMERS_56 : CUSTOMERS; }
+  private listFor(o: Owner) { return !EVENT || !o.ev ? CUSTOMERS : o.ev.grade >= 5 ? CUSTOMERS_56 : CUSTOMERS_EV14; }
 
   // 손님 목록이 바뀐 뒤에도 예전 학생 기록이 멈추지 않게: 없어진 손님은 빼고 새 손님은 뒤에 붙여요
   private fixOrder(o: Owner) {
