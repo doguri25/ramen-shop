@@ -520,3 +520,12 @@ body.cooking .prog .bar { display: none; }
 .memo .cl-lines { font-size: 16px; line-height: 1.5; max-height: 42vh; overflow: auto; }
 .memo .cl-lines p { margin: 4px 0; }
 .memo .cl-lines .muted { font-size: 14px; }
+
+/* 단계 칸: 누르는 버튼이 아니라 어디까지 왔는지 보여 주는 표시예요. 지나온 단계는 바꿀 수 없어요 */
+.tab.past:not(.on), .tab.later { cursor: default; }
+.tab.past:not(.done) { background: #EEE6DC; color: #A08C7C; }
+.tab.later { opacity: .7; }
+/* 휴대폰처럼 좁거나 낮은 화면: 이름 짓는 동안 이야기 메모가 낱말 카드를 가리지 않게 숨겨요 */
+@media (max-width: 760px), (max-height: 560px) {
+  body.naming .memo { display: none; }
+}

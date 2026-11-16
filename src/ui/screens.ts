@@ -78,7 +78,7 @@ function rankSec(r: { open: () => Promise<void>; hasKey: () => boolean; forget: 
 
 export const UI = {
   clear() { root().querySelectorAll(':scope > :not(.hud):not(.toast)').forEach((e) => e.remove()); },
-  clearAll() { root().innerHTML = ''; },
+  clearAll() { root().innerHTML = ''; document.body.classList.remove('naming'); },
 
   // ── 제목 ───────────────────────────────
   title(onTeacher: () => void, ai?: AiInfo): Promise<void> {
@@ -273,7 +273,7 @@ export const UI = {
         info.innerHTML = '';
         if (!ing) {
           const st = STEPS[step];
-          info.append(h('div', { class: 'row' }, h('span', { class: 'nm' }, `${st.name} 고르기`), st.min === 0 ? h('span', { class: 'opt' }, '안 넣어도 돼요') : null), h('div', { class: 'note' }, st.hint + ' 카드를 누르면 냄비에 쏙 들어가고, 한 번 더 누르면 빠져요.'));
+          info.append(h('div', { class: 'row' }, h('span', { class: 'nm' }, `${st.name} 고르기`), st.min === 0 ? h('span', { class: 'opt' }, '안 넣어도 돼요') : null), h('div', { class: 'note' }, st.hint + ' 카드를 누르면 냄비에 쏙 들어가고, 한 번 더 누르면 빠져요. 다음 단계로 넘어가면 다시 바꿀 수 없어요.'));
           return;
         }
         info.append(h('div', { class: 'row' }, h('span', { class: 'nm' }, ing.name), h('span', { class: 'fx' }, ing.effects.map(fxChip))), h('div', { class: 'note' }, ing.note, ing.tag ? h('span', { class: 'tag' }, ing.tag) : ''));
@@ -286,16 +286,21 @@ export const UI = {
         res(picks);
       };
 
+      // 재료 줄을 옆으로 밀어 둔 자리는 다시 그려도 그대로 둬요 (같은 단계일 때)
+      let shownStep = -1;
       const render = () => {
         const st = STEPS[step];
-        o.onStep?.(st.id);
+        const keepX = shownStep === step ? (panel.querySelector('.cards') as HTMLElement | null)?.scrollLeft ?? 0 : 0;
+        if (shownStep !== step) o.onStep?.(st.id);
+        shownStep = step;
         if (guide) { guide.innerHTML = ''; guide.append(h('div', { class: 't' }, '👴 백발 할아버지'), h('div', { class: 'x' }, TUTOR_STEP[st.id])); }
         panel.innerHTML = '';
+        // 단계 칸은 어디까지 왔는지 보여 주기만 해요. 냄비에 넣고 '다음'으로 넘어간 단계는 다시 바꿀 수 없어요
         const tabs = h('div', { class: 'tabs' }, STEPS.map((s, k) => {
           const n = s.max > 1 ? `${count(s.id)}/${s.max}` : '';
           const done = count(s.id) > 0;
-          return h('button', { class: `tab ${k === step ? 'on' : ''} ${done ? 'done' : ''}`, onclick: () => { sfx.tap(); step = k; showInfo(null); render(); } },
-            done ? '✓ ' : '', s.name, s.min === 0 && !done ? h('span', { class: 'n' }, '선택') : n ? h('span', { class: 'n' }, n) : null);
+          return h('span', { class: `tab ${k === step ? 'on' : ''} ${done ? 'done' : ''} ${k < step ? 'past' : k > step ? 'later' : ''}` },
+            k < step ? (done ? '✓ ' : '– ') : done ? '✓ ' : '', s.name, s.min === 0 && !done && k >= step ? h('span', { class: 'n' }, '선택') : n && k >= step ? h('span', { class: 'n' }, n) : null);
         }));
         const allOk = STEPS.every((s) => ok(s.id));
         const last = step === STEPS.length - 1;
@@ -307,6 +312,7 @@ export const UI = {
             if (busy && last) return; // 재료가 냄비에 들어가는 중에는 끝내지 않아요
             sfx.pop();
             if (!last) { step++; showInfo(null); render(); return; }
+            // 앞 단계는 '다음'을 눌러야 넘어오므로 빠진 단계가 없지만, 혹시 있으면 그 단계로 돌아가요
             const miss = STEPS.findIndex((s) => !ok(s.id));
             if (miss >= 0) { step = miss; showInfo(null); render(); toast(`${eulReul(STEPS[miss].name)} 아직 안 골랐어요`); return; }
             finish();
@@ -322,6 +328,9 @@ export const UI = {
           h('span', { class: 'lbl' }, ING.get(f.id)!.name),
           AMOUNTS.map((a) => h('button', { class: `amt ${f.amount === a ? 'on' : ''}`, onclick: () => { if (busy) return; sfx.tap(); f.amount = a as Amount; o.onRemove(JSON.parse(JSON.stringify(picks))); render(); } }, a))))) : null;
         panel.append(h('div', { class: 'cook-top' }, tabs, nextBtn), cards, amounts ?? '');
+        if (keepX) cards.scrollLeft = keepX;
+        // 지금 단계 칸이 보이게 단계 줄을 밀어 줘요 (좁은 화면)
+        (tabs.querySelector('.tab.on') as HTMLElement | null)?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
         document.documentElement.style.setProperty('--cookH', panel.offsetHeight + 'px');
       };
 
@@ -360,6 +369,8 @@ export const UI = {
       const pools = wordPools(picks);
       let tpl: Template = 'blow', a = '', b = '';
       const sheet = h('div', { class: 'name-sheet card slide-up' });
+      // 이름 짓는 동안: 휴대폰처럼 좁은 화면에서는 이야기 메모를 숨겨서 낱말 카드를 가리지 않게 해요
+      document.body.classList.add('naming');
       const input = h('input', { class: 'inp', maxLength: MAX_NAME, placeholder: '라면 이름' }) as HTMLInputElement;
       const cnt = h('span', { class: 'cnt' });
       const warn = h('div', { class: 'name-warn' });
@@ -382,7 +393,7 @@ export const UI = {
           }
           if (input.value.trim() !== v) { valid(); return; } // 살펴보는 사이에 고쳤으면 다시 눌러요
         }
-        sfx.pop(); sheet.remove(); res(v);
+        sfx.pop(); sheet.remove(); document.body.classList.remove('naming'); res(v);
       } }, OK_LABEL) as HTMLButtonElement;
       const valid = () => {
         const v = input.value.trim();
@@ -432,7 +443,9 @@ export const UI = {
     const extra = h('div', null, starRow, heartOn ? heart('stamp') : null);
     setTimeout(() => starRow.querySelectorAll('span').forEach((s, i) => { if (i < stars) setTimeout(() => { s.classList.add('on'); sfx.star(i); }, i * step); }), 200);
     if (heartOn) setTimeout(() => sfx.heart(), 200 + stars * step + 200);
-    if (tier === 3) setTimeout(() => { sfx.fanfare(); confetti(); }, 200 + stars * step);
+    // 행사용 별 다섯 개는 짧은 축하음, 그 밖에 가장 높은 단계는 원래 팡파르
+    if (MAX_STARS > 3 && stars === MAX_STARS) setTimeout(() => { sfx.cheer(); confetti(); }, 200 + stars * step);
+    else if (tier === 3) setTimeout(() => { sfx.fanfare(); confetti(); }, 200 + stars * step);
     else setTimeout(() => sfx.soft(), 200 + stars * step);
     return UI.dialog(c, lines ?? c.reactions[tier], { onLine, final: { label: '마음 쪽지 보기' }, extra }).then(() => {});
   },
@@ -473,7 +486,8 @@ export const UI = {
         tutorial ? h('div', { class: 'safety', style: 'background:#FFF6D6' }, '👴 ', TUTOR_STEP.note) : null,
         h('div', { class: 'actions' },
           canRetry ? h('button', { class: 'btn ghost', onclick: () => close('retry') }, '한 번 더 끓여 주기') : null,
-          tutorial ? null : skip,
+          // 행사용은 끓인 라면을 모두 도감에 담아요 (넣지 않기 없음)
+          tutorial || EVENT ? null : skip,
           h('button', { class: 'btn', onclick: () => close('save') }, tutorial ? '연습 끝! 가게 열기' : '도감에 담기')));
       wrap.appendChild(box);
       mount(wrap);

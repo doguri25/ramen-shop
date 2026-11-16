@@ -98,7 +98,8 @@ export class App {
       else if (this.ctxLost) location.reload();
       else { this.running = true; this.last = performance.now(); resumeAudio(); cancelAnimationFrame(this.raf); this.raf = requestAnimationFrame(this.loop); }
     });
-    window.addEventListener('pointerdown', () => unlockAudio(), { capture: true });
+    // 소리 켜기: 아이폰은 손을 뗄 때(touchend·click)만 허락해서 여러 손짓에 다 걸어 둬요
+    for (const ev of ['pointerdown', 'touchend', 'click', 'keydown']) window.addEventListener(ev, () => unlockAudio(), { capture: true, passive: true });
     this.last = performance.now();
     this.raf = requestAnimationFrame(this.loop);
     // 저장한 도감이 저장 공간이 모자랄 때 지워지지 않게 부탁해요

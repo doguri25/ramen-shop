@@ -7,7 +7,12 @@ let bubbleNode: { stop: () => void } | null = null;
 export function setSound(v: boolean) { on = v; if (!v) stopBubble(); if (master) master.gain.value = v ? 0.55 : 0; }
 export const soundOn = () => on;
 
+// 아이폰·아이패드 사파리는 손가락을 뗄 때(touchend·click)만 소리를 켜 줘요. 누르는 순간(pointerdown)은 안 돼요.
+// 그래서 여러 손짓에서 불러도 되게 만들었어요. 한 번 켜진 뒤에도 전화·다른 앱 때문에 멈추면('interrupted') 다시 켜요.
+let warmed = false;
 export function unlockAudio() {
+  // 무음 스위치를 켜 둔 아이폰에서도 효과음이 나게 (사파리 17부터): 이 게임 소리는 '재생'으로 다뤄요
+  try { const as = (navigator as any).audioSession; if (as && as.type !== 'playback') as.type = 'playback'; } catch { /* 없는 브라우저 */ }
   if (!ctx) {
     const AC = window.AudioContext || (window as any).webkitAudioContext;
     if (!AC) return;
@@ -16,10 +21,18 @@ export function unlockAudio() {
     master.gain.value = on ? 0.55 : 0;
     master.connect(ctx.destination);
   }
-  if (ctx.state === 'suspended') ctx.resume();
+  if (ctx.state !== 'running') ctx.resume().catch(() => { /* 다음 손짓에 다시 해요 */ });
+  // 소리 없는 아주 짧은 소리를 손짓 안에서 한 번 틀어 두면 iOS가 오디오를 확실히 깨워요
+  if (!warmed) {
+    try {
+      const b = ctx.createBuffer(1, 1, ctx.sampleRate), s = ctx.createBufferSource();
+      s.buffer = b; s.connect(ctx.destination); s.start(0);
+      warmed = true;
+    } catch { /* 다음 손짓에 다시 해요 */ }
+  }
 }
-export function suspendAudio() { ctx?.suspend(); }
-export function resumeAudio() { if (ctx && on) ctx.resume(); }
+export function suspendAudio() { ctx?.suspend().catch(() => { /* 괜찮아요 */ }); }
+export function resumeAudio() { if (ctx && on && ctx.state !== 'running') ctx.resume().catch(() => { /* 다음 손짓에 다시 켜요 */ }); }
 
 function tone(freq: number, dur: number, type: OscillatorType = 'sine', vol = 0.3, when = 0, slide = 0) {
   if (!ctx || !master || !on) return;
@@ -65,12 +78,22 @@ export const sfx = {
   plop() { tone(300, 0.18, 'sine', 0.35, 0, 0.45); noise(0.18, 0.12, 900, 0.02, 2); },
   pour() { noise(0.9, 0.18, 700, 0, 0.8, 'lowpass', 1.6); },
   sprinkle() { for (let i = 0; i < 6; i++) noise(0.05, 0.08, 4000 + i * 300, i * 0.05, 4); },
-  bell() { tone(1318, 1.2, 'sine', 0.22); tone(1760, 1.0, 'sine', 0.12, 0.02); tone(2637, 0.6, 'sine', 0.05, 0.03); },
+  // 문 위 작은 종: 딸랑딸랑 (문이 흔들리며 세 번 울려요)
+  bell() {
+    const hit = (w: number, v: number) => { tone(1568, 0.9, 'sine', 0.24 * v, w); tone(2349, 0.6, 'sine', 0.1 * v, w + 0.004); tone(3729, 0.35, 'sine', 0.05 * v, w + 0.008); };
+    hit(0, 1); hit(0.17, 0.75); hit(0.36, 0.45);
+  },
   door() { noise(0.25, 0.08, 400, 0, 1, 'lowpass'); },
   talk() { tone(500 + Math.random() * 260, 0.06, 'triangle', 0.06); },
   slurp() { noise(0.7, 0.2, 600, 0, 3, 'bandpass', 3.5); noise(0.5, 0.15, 900, 0.75, 3, 'bandpass', 3); },
   star(i: number) { const f = [784, 988, 1175, 1319, 1568][i] ?? 1568; tone(f, 0.5, 'triangle', 0.22); tone(f * 2, 0.3, 'sine', 0.06, 0.01); },
   fanfare() { [523, 659, 784, 1047].forEach((f, i) => tone(f, 0.35, 'triangle', 0.18, i * 0.11)); tone(1047, 0.8, 'sine', 0.14, 0.45); },
+  // 별 다섯 개: 짧게 '따라란!' 하고 반짝
+  cheer() {
+    [784, 988, 1175, 1568].forEach((f, i) => tone(f, 0.2, 'triangle', 0.2, i * 0.07));
+    [1568, 1976, 2349].forEach((f) => tone(f, 0.55, 'sine', 0.09, 0.3));
+    for (let i = 0; i < 5; i++) tone(2637 + i * 260, 0.1, 'sine', 0.045, 0.34 + i * 0.05);
+  },
   soft() { [392, 494, 587].forEach((f, i) => tone(f, 0.4, 'sine', 0.14, i * 0.12)); },
   heart() { tone(660, 0.12, 'sine', 0.2); tone(990, 0.25, 'sine', 0.18, 0.1); },
   whoosh() { noise(0.35, 0.1, 500, 0, 0.7, 'bandpass', 4); },
