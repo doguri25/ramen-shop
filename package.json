@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
+    "build:event": "vite build --mode event --outDir dist/event --emptyOutDir",
     "check": "tsc --noEmit"
   },
   "dependencies": {

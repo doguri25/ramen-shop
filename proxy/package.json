@@ -2,5 +2,8 @@
   "name": "ramen-ai",
   "private": true,
   "type": "module",
-  "description": "후루룩 친구라면 가게 ↔ 업스테이지 Solar 중계 서버"
+  "description": "후루룩 친구라면 가게 ↔ 업스테이지 Solar 중계 서버 + 행사 랭킹 서버",
+  "dependencies": {
+    "mongodb": "7.8.0"
+  }
 }

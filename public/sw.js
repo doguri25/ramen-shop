@@ -2,7 +2,9 @@
 // 빌드할 때 아래 두 값이 채워져요: 버전(파일이 바뀌면 바뀜)과 게임 파일 전체 목록.
 const V = '__SW_VERSION__';
 const FILES = self.__PRECACHE__ || [];
-const CACHE = 'ramen-' + V;
+// 범위(수업용 /ramen-shop/, 행사용 /ramen-shop/event/)마다 저장본 이름을 따로 써요
+const TAG = 'ramen-' + new URL(self.registration.scope).pathname + '-';
+const CACHE = TAG + V;
 const PAGE_WAIT = 3000; // 화면은 3초 기다려 보고, 늦으면 저장본을 먼저 보여 줘요
 
 self.addEventListener('install', (e) => {
@@ -13,7 +15,7 @@ self.addEventListener('install', (e) => {
 self.addEventListener('activate', (e) => {
   e.waitUntil(
     caches.keys()
-      .then((ks) => Promise.all(ks.filter((k) => k.startsWith('ramen-') && k !== CACHE).map((k) => caches.delete(k))))
+      .then((ks) => Promise.all(ks.filter((k) => (k.startsWith(TAG) || /^ramen-[0-9a-f]+$/.test(k)) && k !== CACHE).map((k) => caches.delete(k))))
       .then(() => self.clients.claim()),
   );
 });
@@ -31,6 +33,9 @@ self.addEventListener('fetch', (e) => {
   if (r.method !== 'GET') return;
   const url = new URL(r.url);
   if (url.origin !== self.location.origin) return; // 바깥 사이트(모델 CDN 등)는 그대로
+  if (!url.pathname.startsWith(new URL(self.registration.scope).pathname)) return;
+  // 수업용 범위 안의 행사용(/event/) 주소는 행사용 서비스 워커에 맡겨요
+  if (!self.registration.scope.endsWith('/event/') && url.pathname.includes('/event/')) return;
   if (r.mode === 'navigate') {
     // 화면(index.html): 새것을 먼저 기다리되, 늦거나 오류면 저장본
     e.respondWith((async () => {

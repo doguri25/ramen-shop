@@ -1,4 +1,5 @@
-import { CREDIT, ROUNDS } from '../config';
+import { CREDIT, MAX_STARS, ROUNDS } from '../config';
+import { EVENT } from '../event/flag';
 import { eulReul } from '../core/korean';
 import { sfx } from '../core/sound';
 import { FAMILY, FX } from '../data/effects';
@@ -26,11 +27,13 @@ const AI_USES = [
   { icon: '📊', short: '우리 반 요약', title: '우리 반 요약', where: '선생님 화면', model: 'Solar Pro 4',
     desc: '우리 반이 끓인 라면 기록(별, 하트 도장, 많이 맞힌 마음)을 숫자와 짧은 글로 정리해 수업 기록에 보탬이 돼요.' },
 ];
-// 별 두 개일 때: 무엇이 모자랐는지 콕 집어 알려 줘요
+// 별 두 개일 때: 무엇이 모자랐는지 콕 집어 알려 줘요 (행사용은 별 네 개가 그 자리)
+const GOAL = EVENT ? '별 네 개' : '별 세 개';
 const starHint = (r: ScoreResult, fxName: string, famName: string, subName: string) =>
-  !r.exact ? `💡 '${fxName}' 마음이 담긴 재료를 하나 넣어 보세요. 별 세 개에 가까워져요!`
-    : r.match < 3 ? `💡 ${famName} 묶음 재료를 ${3 - r.match}가지 더 넣으면 별 세 개!`
-      : `💡 ${subName} 묶음 재료를 함께 넣으면 별 세 개!`;
+  !r.exact ? `💡 '${fxName}' 마음이 담긴 재료를 하나 넣어 보세요. ${GOAL}에 가까워져요!`
+    : r.match < 3 ? `💡 ${famName} 묶음 재료를 ${3 - r.match}가지 더 넣으면 ${GOAL}!`
+      : `💡 ${subName} 묶음 재료를 함께 넣으면 ${GOAL}!`;
+export const starText = (n: number) => '★'.repeat(n) + '☆'.repeat(Math.max(0, MAX_STARS - n));
 const mount = <T extends HTMLElement>(el: T) => { root().appendChild(el); return el; };
 const heartImg = () => {
   const c = document.createElement('canvas'); c.width = c.height = 128;
@@ -64,12 +67,12 @@ export const UI = {
   clearAll() { root().innerHTML = ''; },
 
   // ── 제목 ───────────────────────────────
-  title(onTeacher: () => void, ai?: AiInfo): Promise<void> {
+  title(onTeacher: () => void, ai?: AiInfo, onRank?: () => void): Promise<void> {
     return new Promise((res) => {
       const logo = h('div', { class: 'logo pop-in' },
-        h('div', { class: 'l1' }, '마음을 채워 주는'),
+        h('div', { class: 'l1' }, EVENT ? '어깨동무 마음 요리사 도전' : '마음을 채워 주는'),
         h('div', { class: 'l2' }, '후루룩 친구라면 가게'),
-        h('div', { class: 'l3' }, '손님 이야기를 듣고, 꼭 맞는 라면을 끓여 주세요'));
+        h('div', { class: 'l3' }, EVENT ? '손님 마음을 헤아려 라면 한 그릇에 별 다섯 개를 받아 보세요' : '손님 이야기를 듣고, 꼭 맞는 라면을 끓여 주세요'));
       longPress(logo, 2000, () => { sfx.tap(); onTeacher(); });
       // 업스테이지 AI가 어디에 쓰였는지 첫 화면에서 바로 보여요 (누르면 자세히)
       const aiStrip = ai ? h('button', { class: 'ai-strip fade-in', onclick: () => { sfx.tap(); UI.aiInfo(ai); } },
@@ -77,7 +80,8 @@ export const UI = {
         h('span', { class: 'ai-feats' }, AI_USES.map((u) => h('span', { class: 'ai-chip' }, u.icon + ' ' + u.short))),
         h('span', { class: 'ai-more' }, '어떻게 쓰였나요? ›')) : null;
       const el = mount(h('div', { class: 'scr-title' }, logo,
-        h('button', { class: 'btn big pulse', onclick: () => { sfx.pop(); el.remove(); res(); } }, '가게 문 열기'), aiStrip,
+        h('button', { class: 'btn big pulse', onclick: () => { sfx.pop(); el.remove(); res(); } }, EVENT ? '도전하러 가기' : '가게 문 열기'), aiStrip,
+        onRank ? h('button', { class: 'btn soft small', style: 'margin-top:14px', onclick: () => { sfx.tap(); onRank(); } }, '🏆 랭킹 보기') : null,
         h('div', { class: 'credit' },
           h('span', { class: 'cr-item' }, h('span', { class: 'cr-ic' }, '🧑‍🏫'), h('span', { class: 'cr-k' }, '만든이'), h('b', null, CREDIT.name)),
           h('span', { class: 'cr-sep' }),
@@ -168,12 +172,13 @@ export const UI = {
   },
 
   // ── 상단 바 ───────────────────────────────
-  hud(o: { owner: Owner; count: number; round: number | null; sound: boolean; tts: boolean; onLib: () => void; onSound: () => void; onTts: () => void; onHome: () => void }) {
+  hud(o: { owner: Owner; count: number; round: number | null; sound: boolean; tts: boolean; label?: string; stars?: number; onLib: () => void; onSound: () => void; onTts: () => void; onHome: () => void }) {
     root().querySelector('.hud')?.remove();
     const pct = Math.min(100, (o.count / ROUNDS) * 100);
     const el = h('div', { class: 'hud' },
-      h('span', { class: 'chip owner-chip' }, `${o.owner.number}번 ${o.owner.name} 사장님`),
+      h('span', { class: 'chip owner-chip' }, o.label ?? `${o.owner.number}번 ${o.owner.name} 사장님`),
       o.round !== null ? h('span', { class: 'chip round' }, o.round === 0 ? '연습 손님' : `${o.round}번째 손님`) : null,
+      o.stars !== undefined ? h('span', { class: 'chip evstar' }, `★ ${o.stars}`) : null,
       h('span', { class: 'grow' }),
       h('button', { class: 'chip prog', onclick: () => { sfx.tap(); o.onLib(); } }, h('span', { html: ICON.book, style: 'width:24px;height:24px;display:inline-block' }), '도감',
         h('span', { class: 'bar' }, h('i', { style: `width:${pct}%` })), `${Math.min(o.count, ROUNDS)}/${ROUNDS}`),
@@ -227,8 +232,10 @@ export const UI = {
     const cl = clues(c.story);
     const el = h('div', { class: `memo card fade-in ${open ? 'open' : ''}` });
     const head = h('button', { class: 't', onclick: () => { sfx.tap(); el.classList.toggle('open'); } }, `📝 ${c.name}의 이야기`, h('span', { class: 'arrow' }, '▾'));
+    // 단서 밑줄이 없는 손님(행사용 5~6학년)은 이야기를 그대로 보여 줘요. 단서는 스스로 찾아요
     el.append(head, h('div', { class: 'body' },
-      h('div', { class: 'cl' }, cl.map((x) => h('span', null, x))),
+      cl.length ? h('div', { class: 'cl' }, cl.map((x) => h('span', null, x)))
+        : h('div', { class: 'cl-lines' }, h('div', { class: 'muted' }, '🔎 이 손님은 단서 밑줄이 없어요. 이야기에서 마음을 찾아봐요.'), c.story.map((l) => h('p', null, stripSpeaker(l)))),
       h('button', { class: 'btn soft small replay', onclick: () => { sfx.tap(); onReplay(); } }, '🔁 이야기 다시 듣기')));
     return mount(el);
   },
@@ -406,14 +413,15 @@ export const UI = {
   },
 
   // ── 손님 반응 ─────────────────────────────
-  reaction(c: Customer, stars: number, heartOn: boolean, onLine: (i: number, who: number) => void, lines?: string[]): Promise<void> {
-    const starRow = h('div', { class: 'stars' }, [0, 1, 2].map(() => h('span', null, '★')));
+  reaction(c: Customer, stars: number, heartOn: boolean, onLine: (i: number, who: number) => void, lines?: string[], tier: 1 | 2 | 3 = Math.min(3, stars) as 1 | 2 | 3): Promise<void> {
+    const step = MAX_STARS > 3 ? 300 : 380;
+    const starRow = h('div', { class: `stars ${MAX_STARS > 3 ? 'five' : ''}` }, Array.from({ length: MAX_STARS }, () => h('span', null, '★')));
     const extra = h('div', null, starRow, heartOn ? heart('stamp') : null);
-    setTimeout(() => starRow.querySelectorAll('span').forEach((s, i) => { if (i < stars) setTimeout(() => { s.classList.add('on'); sfx.star(i); }, i * 380); }), 200);
-    if (heartOn) setTimeout(() => sfx.heart(), 200 + stars * 380 + 200);
-    if (stars === 3) setTimeout(() => { sfx.fanfare(); confetti(); }, 200 + 3 * 380);
-    else setTimeout(() => sfx.soft(), 200 + stars * 380);
-    return UI.dialog(c, lines ?? c.reactions[stars as 1 | 2 | 3], { onLine, final: { label: '마음 쪽지 보기' }, extra }).then(() => {});
+    setTimeout(() => starRow.querySelectorAll('span').forEach((s, i) => { if (i < stars) setTimeout(() => { s.classList.add('on'); sfx.star(i); }, i * step); }), 200);
+    if (heartOn) setTimeout(() => sfx.heart(), 200 + stars * step + 200);
+    if (tier === 3) setTimeout(() => { sfx.fanfare(); confetti(); }, 200 + stars * step);
+    else setTimeout(() => sfx.soft(), 200 + stars * step);
+    return UI.dialog(c, lines ?? c.reactions[tier], { onLine, final: { label: '마음 쪽지 보기' }, extra }).then(() => {});
   },
 
   // ── 마음 쪽지 ─────────────────────────────
@@ -445,7 +453,8 @@ export const UI = {
         h('div', { class: 'sub' }, '더하면 좋은 마음: ', h('b', { style: `color:${sub.color}` }, `${sub.name} 묶음`)),
         h('div', { class: 'ings' }, pickedList(picks).map((ing) => h('span', { class: `ing ${r.glow.get(ing.id) ?? ''}` }, ing.effects.map(famDot).slice(0, 1), ing.name))),
         h('div', { class: 'legend' }, `노란 테두리는 꼭 필요한 마음(${fam.name})과 맞은 재료, 연한 테두리는 더하면 좋은 마음(${sub.name})과 맞은 재료예요.`),
-        r.stars < 3 ? h('div', { class: 'heartline' }, r.stars === 1 ? `💡 ${fam.name} 묶음 재료를 더 넣어 보면 어떨까요? 특히 '${fx.name}' 마음이 담긴 재료를 찾아봐요.` : starHint(r, fx.name, fam.name, sub.name)) : null,
+        r.stars < 3 ? h('div', { class: 'heartline' }, r.stars === 1 ? `💡 ${fam.name} 묶음 재료를 더 넣어 보면 어떨까요? 특히 '${fx.name}' 마음이 담긴 재료를 찾아봐요.` : starHint(r, fx.name, fam.name, sub.name))
+          : EVENT && !heartOn ? h('div', { class: 'heartline' }, '💡 라면 이름에 손님 마음을 나타내는 낱말을 넣으면 별 다섯 개!') : null,
         heartOn ? h('div', { class: 'heartline' }, '❤️ 라면 이름에 손님 마음 낱말이 들어 있어서 하트 도장을 받았어요!') : null,
         c.safetyNote ? h('div', { class: 'safety' }, '🙋 ', c.safetyNote) : null,
         tutorial ? h('div', { class: 'safety', style: 'background:#FFF6D6' }, '👴 ', TUTOR_STEP.note) : null,
@@ -458,13 +467,15 @@ export const UI = {
     });
   },
 
-  between(o: { count: number; justTen: boolean; skipped?: boolean }): Promise<'next' | 'lib' | 'switch'> {
+  between(o: { count: number; justTen: boolean; skipped?: boolean; ev?: { bowls: number; total: number; last: number } }): Promise<'next' | 'lib' | 'switch'> {
     return new Promise((res) => {
       const el = h('div', { class: 'between card slide-up' },
-        h('h3', null, o.justTen ? `🎉 ${ROUNDS}그릇을 다 끓였어요!` : o.skipped ? `이번 라면은 도감에 넣지 않았어요 (도감 ${o.count}그릇)` : `${o.count}그릇째 라면을 끓였어요`),
-        h('p', null, o.justTen ? '도감에서 대표 라면을 골라 레시피 카드를 만들고 띵커벨에 올려 보세요. 손님은 계속 받을 수 있어요.' : o.count >= ROUNDS ? '대표 라면 카드는 언제든 도감에서 만들 수 있어요.' : `${ROUNDS - o.count}그릇 더 끓이면 대표 라면 카드를 만들 수 있어요.`),
+        o.ev ? h('h3', null, `${o.ev.bowls}그릇째 · 이번 판 별 ★ ${o.ev.total}`)
+          : h('h3', null, o.justTen ? `🎉 ${ROUNDS}그릇을 다 끓였어요!` : o.skipped ? `이번 라면은 도감에 넣지 않았어요 (도감 ${o.count}그릇)` : `${o.count}그릇째 라면을 끓였어요`),
+        o.ev ? h('p', null, `방금 손님에게 별 ${o.ev.last}개를 받았어요. ${ROUNDS - o.ev.bowls}그릇 더 끓이면 이번 판이 끝나요.${o.skipped ? ' (이번 라면은 도감에 넣지 않았어요)' : ''}`)
+          : h('p', null, o.justTen ? '도감에서 대표 라면을 골라 레시피 카드를 만들고 띵커벨에 올려 보세요. 손님은 계속 받을 수 있어요.' : o.count >= ROUNDS ? '대표 라면 카드는 언제든 도감에서 만들 수 있어요.' : `${ROUNDS - o.count}그릇 더 끓이면 대표 라면 카드를 만들 수 있어요.`),
         h('div', { class: 'actions' },
-          h('button', { class: 'btn ghost small', onclick: () => { sfx.tap(); el.remove(); res('switch'); } }, '사장님 바꾸기'),
+          h('button', { class: 'btn ghost small', onclick: () => { sfx.tap(); el.remove(); res('switch'); } }, o.ev ? '잠깐 멈추기' : '사장님 바꾸기'),
           h('button', { class: `btn ${o.justTen ? 'pulse' : 'soft'}`, onclick: () => { sfx.tap(); el.remove(); res('lib'); } }, '도감 보기'),
           h('button', { class: 'btn', onclick: () => { sfx.pop(); el.remove(); res('next'); } }, '다음 손님 받기')));
       mount(el);
@@ -473,7 +484,7 @@ export const UI = {
   },
 
   // ── 도감 ───────────────────────────────
-  library(owner: Owner, recs: RamenRecord[], photo: (r: RamenRecord) => Promise<string>, customer: (id: string) => Customer | undefined): Promise<RamenRecord | null> {
+  library(owner: Owner, recs: RamenRecord[], photo: (r: RamenRecord) => Promise<string>, customer: (id: string) => Customer | undefined, title?: string, canPick?: boolean): Promise<RamenRecord | null> {
     return new Promise((res) => {
       let choosing = false, chosen: RamenRecord | null = null;
       const el = h('div', { class: 'lib fade-in' });
@@ -494,15 +505,16 @@ export const UI = {
         el.innerHTML = '';
         el.classList.toggle('choose', choosing);
         const n = recs.length;
+        const ready = canPick ?? n >= ROUNDS;
         const head = h('header', null,
-          h('h2', null, choosing ? '대표 라면을 하나 골라요' : `${owner.name} 사장님의 라면 도감`),
+          h('h2', null, choosing ? '대표 라면을 하나 골라요' : title ?? `${owner.name} 사장님의 라면 도감`),
           choosing
             ? [h('button', { class: 'btn ghost small', onclick: () => { sfx.back(); choosing = false; chosen = null; render(); } }, '취소'),
                h('button', { class: 'btn small', disabled: !chosen, onclick: () => { sfx.pop(); done(chosen); } }, '이 라면으로 카드 만들기')]
-            : [h('button', { class: `btn small ${n >= ROUNDS ? 'pulse' : ''}`, disabled: n < ROUNDS, onclick: () => { sfx.pop(); choosing = true; render(); } }, '대표 라면 고르기'),
+            : [h('button', { class: `btn small ${ready && n ? 'pulse' : ''}`, disabled: !ready || !n, onclick: () => { sfx.pop(); choosing = true; render(); } }, '대표 라면 고르기'),
                iconBtn(ICON.close, () => { sfx.back(); done(null); }, '닫기')]);
         const bar = h('div', { class: 'bar10' }, `${Math.min(n, ROUNDS)}/${ROUNDS}그릇`, h('span', { class: 'bar' }, h('i', { style: `width:${Math.min(100, (n / ROUNDS) * 100)}%` })),
-          h('span', { class: 'muted', style: 'font-size:17px' }, n >= ROUNDS ? (choosing ? '카드로 만들 라면을 눌러요' : `모두 ${n}그릇 · 대표 라면을 골라 띵커벨에 올려요`) : `${ROUNDS - n}그릇 더 끓이면 대표 라면을 고를 수 있어요`));
+          h('span', { class: 'muted', style: 'font-size:17px' }, ready ? (choosing ? '카드로 만들 라면을 눌러요' : `모두 ${n}그릇 · 대표 라면을 골라 띵커벨에 올려요`) : `${ROUNDS - n}그릇 더 끓이면 대표 라면을 고를 수 있어요`));
         const grid = h('div', { class: 'grid' });
         if (!sorted.length) grid.append(h('div', { class: 'empty-lib' }, '아직 끓인 라면이 없어요. 첫 손님을 맞이해 볼까요?'));
         for (const r of sorted) {
@@ -514,7 +526,7 @@ export const UI = {
             h('button', { class: `rcard ${chosen?.id === r.id ? 'pick' : ''}`, onclick: () => { sfx.tap(); if (choosing) { chosen = r; render(); } else detail(r, im); } },
               im, r.heart ? heart('hrt') : null,
               h('div', { class: 'nm' }, r.name),
-              h('div', { class: 'meta' }, h('span', null, c?.name ?? ''), h('span', { class: 'st' }, '★'.repeat(r.stars) + '☆'.repeat(3 - r.stars)))),
+              h('div', { class: 'meta' }, h('span', null, c?.name ?? ''), h('span', { class: 'st' }, starText(r.stars)))),
             choosing ? null : h('button', { class: 'rsave', 'aria-label': `${r.name} 사진 저장`, onclick: () => savePic(r, im) }, '📷 사진 저장')));
         }
         el.append(head, bar, grid);
@@ -526,7 +538,7 @@ export const UI = {
         wrap.append(h('div', { class: 'modal card pop-in' },
           h('div', { style: 'display:flex;gap:16px;align-items:center;flex-wrap:wrap' },
             h('img', { src, style: 'width:180px;height:180px;border-radius:18px' }),
-            h('div', { style: 'flex:1;min-width:220px' }, h('h2', null, r.name), h('div', { class: 'sub' }, `${c?.name ?? ''}에게 · ${'★'.repeat(r.stars)}${'☆'.repeat(3 - r.stars)}${r.heart ? ' · ❤️' : ''}`))),
+            h('div', { style: 'flex:1;min-width:220px' }, h('h2', null, r.name), h('div', { class: 'sub' }, `${c?.name ?? ''}에게 · ${starText(r.stars)}${r.heart ? ' · ❤️' : ''}`))),
           h('div', { class: 'steps' }, methodLines(r.picks).map((l, i) => h('div', null, h('b', null, `${i + 1}. `), l))),
           h('div', { class: 'actions' },
             h('button', { class: 'btn ghost', onclick: () => savePic(r, im) }, '📷 사진 저장'),
@@ -681,7 +693,7 @@ export const UI = {
       const drawList = () => {
         list.innerHTML = '';
         if (!o.owners.length) list.append(h('div', { class: 'muted' }, '등록된 사장님이 없어요.'));
-        o.owners.slice().sort((a, b) => a.number - b.number).forEach((ow) => list.append(h('div', { class: 't-row' }, h('span', null, `${ow.number}번 ${ow.name} · ${o.counts.get(ow.id) ?? 0}그릇`),
+        o.owners.slice().sort((a, b) => (a.ev && b.ev ? a.ev.key.localeCompare(b.ev.key, 'ko', { numeric: true }) || a.ev.runNo - b.ev.runNo : a.number - b.number)).forEach((ow) => list.append(h('div', { class: 't-row' }, h('span', null, ow.ev ? `${ow.ev.grade}학년 ${ow.ev.cls}반 ${ow.number}번 ${ow.name} · ${ow.ev.runNo}판 · ${ow.round}그릇 · ★ ${ow.ev.total}` : `${ow.number}번 ${ow.name} · ${o.counts.get(ow.id) ?? 0}그릇`),
           h('button', { class: 'btn ghost small', onclick: async (e: Event) => {
             const b = e.currentTarget as HTMLButtonElement;
             if (b.dataset.sure !== '1') { b.dataset.sure = '1'; b.textContent = '정말 지울까요?'; return; }
@@ -695,11 +707,11 @@ export const UI = {
         h('h2', null, '선생님 화면'),
         h('div', { class: 'sec' }, h('h3', null, '띵커벨 보드 주소'), url, h('div', { class: 'muted', style: 'margin-top:6px;font-size:15px' }, '비워 두면 config.ts에 적은 주소를 써요. 보드는 손님 참여와 이미지 올리기를 허용해 주세요.')),
         h('div', { class: 'sec' }, h('h3', null, '화질'), qsel),
-        h('div', { class: 'sec' }, h('h3', null, 'AI 도우미 (업스테이지)'),
+        EVENT ? null : h('div', { class: 'sec' }, h('h3', null, 'AI 도우미 (업스테이지)'),
           h('div', { class: 'muted', style: 'font-size:15px;margin-bottom:8px' }, '손님 맞춤 한마디, 고른 까닭 생각 도우미, 고운 말 검사에 써요. 학생 이름은 보내지 않아요. 인터넷이 없으면 저절로 원래대로 돌아가요.'),
           aiSel, h('div', { style: 'margin-top:8px' }, aiUrl),
           h('div', { class: 'actions', style: 'justify-content:flex-start;align-items:center;margin-top:8px' }, checkBtn, aiState)),
-        h('div', { class: 'sec' }, h('h3', null, '우리 반 요약'),
+        EVENT ? null : h('div', { class: 'sec' }, h('h3', null, '우리 반 요약'),
           h('div', { class: 'muted', style: 'font-size:15px;margin-bottom:8px' }, '이 태블릿에 있는 모든 사장님 기록을 모아 정리해요. 수업 결과를 쓸 때 참고해 주세요.'),
           sumBtn, sumBox),
         h('div', { class: 'sec' }, h('h3', null, '사장님 기록'), list),

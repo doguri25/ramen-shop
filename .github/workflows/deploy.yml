@@ -53,6 +53,8 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run build
+      # 행사용(어깨동무 마음 요리사 도전)은 /event/ 에 따로 만들어요
+      - run: npm run build:event
 
       - uses: actions/upload-pages-artifact@v3
         with:

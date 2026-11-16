@@ -1,15 +1,19 @@
-import { AI_URL, ROUNDS, TEACHER_PIN, TINKERBELL_URL } from './config';
+import { AI_URL, MAX_RUNS, ROUNDS, TEACHER_PIN, TINKERBELL_URL } from './config';
 import { ai, classStats } from './ai/solar';
 import { eulReul } from './core/korean';
-import { hashStr, uid } from './core/rng';
+import { hashStr, mulberry32, uid } from './core/rng';
 import { resumeAudio, setSound, setTts, sfx, speak, suspendAudio, ttsEnabled, unlockAudio, soundOn } from './core/sound';
 import { updateTweens, wait } from './core/tween';
 import { CUS, CUSTOMERS, TUTORIAL } from './data/customers';
+import { CUS_56, CUSTOMERS_56 } from './data/customers56';
+import { EVENT } from './event/flag';
+import { bandOf, keyOf, rank, type Best, type SendResult, type Who } from './event/rank';
+import { EV, whoText } from './event/screens';
 import { ING, INGREDIENTS } from './data/ingredients';
 import { TUTOR_INTRO } from './data/text';
 import type { Customer, Owner, Picks, RamenRecord, Step } from './data/types';
 import { customerForRound, makeOrder } from './game/schedule';
-import { hasHeart, score } from './game/scoring';
+import { fiveStars, hasHeart, score } from './game/scoring';
 import { faceAtlas, paperCanvas, tex } from './paint/textures';
 import { LIGHT_W, QualityProbe, TIERS, WatercolorRenderer, type Tier, shared } from './render/watercolor';
 import { bakeLighting } from './render/bake';
@@ -22,6 +26,9 @@ import { h, toast } from './ui/dom';
 import { UI } from './ui/screens';
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+// 수업용 손님과 행사용 5~6학년 손님을 모두 찾을 수 있게
+const CUSX = new Map<string, Customer>([...CUS, ...CUS_56]);
+const whoOf = (o: Owner): Who => ({ grade: o.ev!.grade, cls: o.ev!.cls, num: o.number, name: o.name });
 const EMPTY: Picks = { broth: null, noodle: null, soup: null, toppings: [], finish: [] };
 const TUTOR_HINTS: Partial<Record<Step, string[]>> = {
   broth: ['b_feast'], noodle: ['n_rainbow'], soup: ['s_party'], topping: ['t_corn', 't_quail', 't_dumpling'], finish: ['f_giggle'],
@@ -43,6 +50,8 @@ export class App {
   inRound = false;
   serving = false; // 내어 주고 반응·쪽지를 보는 동안
   timeScale = 1;
+  private lastShown = 0; // 행사용: 방금 받은 별
+  private sending: Promise<SendResult | null> | null = null;
 
   async boot(setStatus: (s: string) => void) {
     const canvas = document.getElementById('gl') as HTMLCanvasElement;
@@ -137,6 +146,7 @@ export class App {
   }
 
   private async session() {
+    if (EVENT) return this.eventSession();
     {
       UI.clearAll();
       this.stage.setView('wide', 0);
@@ -180,12 +190,24 @@ export class App {
     this.drawHud(null);
   }
 
+  // 행사용 5~6학년은 5~6학년 손님을 만나요
+  private listFor(o: Owner) { return EVENT && o.ev && o.ev.grade >= 5 ? CUSTOMERS_56 : CUSTOMERS; }
+
   // 손님 목록이 바뀐 뒤에도 예전 학생 기록이 멈추지 않게: 없어진 손님은 빼고 새 손님은 뒤에 붙여요
   private fixOrder(o: Owner) {
-    const known = new Set(CUSTOMERS.map((c) => c.id));
+    const list = this.listFor(o);
+    const known = new Set(list.map((c) => c.id));
     const kept = o.order.filter((id) => known.has(id));
-    const add = CUSTOMERS.map((c) => c.id).filter((id) => !kept.includes(id));
-    if (kept.length !== o.order.length || add.length) { o.order = [...kept, ...add]; this.saveOwner(); }
+    const add = list.map((c) => c.id).filter((id) => !kept.includes(id));
+    if (kept.length !== o.order.length || add.length) { o.order = [...kept, ...add]; this.saveOwner(o); }
+  }
+
+  // 행사용 5~6학년: 손님마다 단서 밑줄이 있기도 하고 없기도 해요 (학생마다 다르게)
+  private clueView(c: Customer): Customer {
+    const ev = this.owner?.ev;
+    if (!EVENT || !ev || ev.grade < 5 || c.source === 'tutorial') return c;
+    if (mulberry32(hashStr(ev.key + ':' + c.id))() < 0.5) return c;
+    return { ...c, story: c.story.map((l) => l.replace(/\[\[|\]\]/g, '')) };
   }
 
   private async counts(owners: Owner[]) {
@@ -194,17 +216,19 @@ export class App {
     return m;
   }
 
-  private async saveOwner() {
+  private async saveOwner(me: Owner = this.owner!) {
     const owners = await db.owners();
-    const i = owners.findIndex((o) => o.id === this.owner!.id);
-    if (i >= 0) owners[i] = this.owner!; else owners.push(this.owner!);
+    const i = owners.findIndex((o) => o.id === me.id);
+    if (i >= 0) owners[i] = me; else owners.push(me);
     await db.saveOwners(owners);
   }
 
   private drawHud(round: number | null) {
     if (!this.owner) return;
+    const ev = EVENT ? this.owner.ev : undefined;
     UI.hud({
-      owner: this.owner, count: this.records.length, round, sound: soundOn(), tts: ttsEnabled(),
+      owner: this.owner, count: ev ? this.owner.round : this.records.length, round, sound: soundOn(), tts: ttsEnabled(),
+      label: ev ? whoText(whoOf(this.owner)) : undefined, stars: ev ? ev.total : undefined,
       onLib: () => {
         // 라면을 내어 드리는 동안 열면 손님 반응·쪽지가 도감 위아래로 겹쳐요. 그때만 잠깐 막아요
         if (this.serving) { toast('손님이 라면을 다 드신 뒤에 도감을 볼 수 있어요'); return; }
@@ -241,7 +265,8 @@ export class App {
   // 도감에 담았으면 true
   private async round(tutorial: boolean): Promise<boolean> {
     const o = this.owner!;
-    const c: Customer = tutorial ? TUTORIAL : CUS.get(customerForRound(o.order, o.round, CUSTOMERS, hashStr(o.id)))!;
+    const c: Customer = tutorial ? TUTORIAL : CUSX.get(customerForRound(o.order, o.round, this.listFor(o), hashStr(o.id)))!;
+    const view = this.clueView(c); // 이야기·메모에 보여 줄 모습 (행사용 5~6학년은 밑줄이 없을 수도 있어요)
     this.inRound = true;
     this.drawHud(tutorial ? 0 : o.round + 1);
     this.stage.mood('neutral');
@@ -253,15 +278,15 @@ export class App {
     const say = this.say(c);
     this.stage.mood(this.moodFor(c));
     if (tutorial) await UI.dialog(c, TUTOR_INTRO, { onLine: (i, w) => say(i, w, TUTOR_INTRO) });
-    const story = c.story;
-    await UI.dialog(c, story, { onLine: (i, w) => say(i, w, story), final: { label: '라면 끓이러 가기!', replay: true } });
+    const story = view.story;
+    await UI.dialog(view, story, { onLine: (i, w) => say(i, w, story), final: { label: '라면 끓이러 가기!', replay: true } });
     this.stage.talk(0, false);
     let attempt = 0;
     let picks: Picks = JSON.parse(JSON.stringify(EMPTY));
     let rec: RamenRecord | null = null;
     let saved = false;
     for (;;) {
-      this.memo(c, say);
+      this.memo(view, say);
       await this.stage.setView('pot', 0.9);
       this.stage.showPaws(true);
       this.stage.restorePot(picks);
@@ -271,12 +296,13 @@ export class App {
       window.speechSynthesis?.cancel();
       this.stage.talk(0, false);
       this.stage.showPaws(false);
-      const name = await UI.naming(picks, c, tutorial, (n) => ai.kind(n));
+      const name = await UI.naming(picks, c, tutorial, EVENT ? undefined : (n) => ai.kind(n));
       document.querySelector('.memo')?.remove();
       const r = score(c, picks);
       const heart = hasHeart(c, name);
+      const shown = EVENT ? fiveStars(r, heart) : r.stars; // 보여 주고 기록하는 별
       // 내어 주고 먹는 동안 AI 손님 한마디를 미리 받아 둬요 (못 받으면 원래 대사만)
-      const aiLine = tutorial ? Promise.resolve(null) : ai.react(c, picks, name, r.stars);
+      const aiLine = tutorial || EVENT ? Promise.resolve(null) : ai.react(c, picks, name, r.stars);
       this.serving = true;
       const fast = UI.fastButton((on) => { this.timeScale = on ? 2.5 : 1; });
       await this.stage.serve(picks);
@@ -287,7 +313,7 @@ export class App {
       const extra = await Promise.race([aiLine, new Promise<null>((res) => setTimeout(() => res(null), 1500))]);
       const lines = [...c.reactions[r.stars]];
       if (extra) lines.splice(1, 0, extra);
-      await UI.reaction(c, r.stars, heart, (i, w) => say(i, w, lines), lines);
+      await UI.reaction(c, shown, heart, (i, w) => say(i, w, lines), lines, r.stars);
       this.stage.talk(0, false);
       const canRetry = !tutorial && attempt === 0 && r.stars === 1;
       const choice = await UI.note(c, picks, r, heart, canRetry, tutorial);
@@ -299,6 +325,13 @@ export class App {
         this.stage.clearBowls();
         continue;
       }
+      // 행사용: 내어 드린 라면의 별을 이번 판에 더해요 (도감에 넣지 않아도 별은 받아요)
+      if (!tutorial && o.ev) {
+        o.ev.total += shown;
+        if (shown === 5) o.ev.fives++;
+        if (o.round + 1 >= ROUNDS) o.ev.done = true;
+        this.lastShown = shown;
+      }
       if (!tutorial && choice === 'skip') {
         // 손님은 다음 차례로 넘어가지만, 기록과 사진은 남기지 않아요
         o.round++;
@@ -306,7 +339,7 @@ export class App {
         toast('이번 라면은 도감에 넣지 않았어요');
       } else if (!tutorial) {
         saved = true;
-        rec = { id: uid(), ownerId: o.id, round: o.round, customerId: c.id, picks, name, stars: r.stars, heart, photoKey: '', createdAt: Date.now() };
+        rec = { id: uid(), ownerId: o.id, round: o.round, customerId: c.id, picks, name, stars: shown, heart, photoKey: '', createdAt: Date.now() };
         rec.photoKey = rec.id;
         const photo = this.stage.photo(picks, 512);
         const blob = await new Promise<Blob | null>((res) => photo.toBlob(res, 'image/webp', 0.86));
@@ -318,6 +351,7 @@ export class App {
         sfx.camera();
         toast(ok ? `📖 '${name}'${eulReul(name).slice(-1)} 도감에 담았어요` : '⚠️ 태블릿에 저장하지 못했어요. 선생님께 알려 주세요');
       }
+      if (!tutorial && o.ev) this.sendRun(o);
       break;
     }
     this.drawHud(null);
@@ -366,6 +400,131 @@ export class App {
     return c.name;
   }
 
+  // ── 행사용(어깨동무 마음 요리사 도전) ─────────────────
+  // 첫 화면 → 학년·반·번호·이름 → 도전 안내 → 10그릇 → 판 끝 (다시 도전은 두 번까지)
+  private async eventSession() {
+    UI.clearAll();
+    this.stage.setView('wide', 0);
+    rank.flush(); // 지난번에 못 보낸 기록이 있으면 보내요
+    await UI.title(() => this.openTeacher(), undefined, () => { this.showRanking(null); });
+    unlockAudio();
+    for (;;) {
+      const r = await EV.login();
+      if (r === null) return; // 첫 화면으로
+      if (r === 'rank') { await this.showRanking(null); continue; }
+      if ((await this.student(r)) === 'back') continue; // 이름을 고쳐 쓰려고 뒤로
+      return;
+    }
+  }
+
+  private lastBand() {
+    try { const g = JSON.parse(localStorage.getItem('event-last-class') || '{}').grade; return bandOf(g || 3); } catch { return bandOf(3); }
+  }
+  private showRanking(w: Who | null) {
+    return EV.ranking({ band: w ? bandOf(w.grade) : this.lastBand(), who: w, load: (b, by) => rank.board(b, by, w) });
+  }
+
+  // 한 학생: 몇 번째 판인지 정하고, 끓이고, 끝나면 다시 도전할지 물어요
+  private async student(w: Who): Promise<'back' | 'home'> {
+    const key = keyOf(w);
+    for (;;) {
+      UI.hideHud(); // 앞 학생의 상단 바가 남지 않게
+      this.owner = null;
+      const busy = h('div', { class: 'toast' }, '기록을 확인하는 중…');
+      document.getElementById('ui')!.appendChild(busy);
+      const [owners, st] = await Promise.all([db.owners(), rank.status(w)]);
+      busy.remove();
+      let mine = owners.filter((o) => o.ev?.key === key).sort((a, b) => a.ev!.runNo - b.ev!.runNo);
+      // 만들기만 하고 한 그릇도 안 끓인 판은 지우고 새로 셈해요
+      for (const o of mine.filter((x) => !x.ev!.done && x.round === 0)) await db.deleteOwner(o.id);
+      mine = mine.filter((x) => x.ev!.done || x.round > 0);
+      const unfinished = mine.find((x) => !x.ev!.done) ?? null;
+      const best = st?.status.best ?? this.localBest(mine);
+      const runNo = unfinished ? unfinished.ev!.runNo : Math.max(st?.status.runs ?? 0, mine.length) + 1;
+      const pick = await EV.ready({ who: w, runNo, resume: unfinished ? unfinished.round : null, best, offline: !st });
+      if (pick === 'back') return 'back';
+      if (pick === 'rank') { await this.showRanking(w); continue; }
+      if (pick === 'lib') {
+        const last = mine[mine.length - 1];
+        if (!last) { toast('이 태블릿에는 이 학생의 도감이 없어요'); continue; }
+        this.owner = last; this.records = await db.records(last.id);
+        await this.openLibrary();
+        continue;
+      }
+      if (runNo > MAX_RUNS && !unfinished) continue;
+      const o = unfinished ?? this.newRun(w, runNo, mine.some((x) => x.tutorialDone));
+      if (!unfinished) { const all = await db.owners(); all.push(o); await db.saveOwners(all); }
+      this.owner = o;
+      this.fixOrder(o);
+      this.records = await db.records(o.id);
+      const end = await this.playRun(o);
+      if (end === 'stop') return 'home';
+      // 판 끝
+      const res = await Promise.race([this.sending ?? Promise.resolve(null), sleep(6000).then(() => null)]);
+      for (;;) {
+        const f = await EV.finish({ who: w, runNo: o.ev!.runNo, total: o.ev!.total, fives: o.ev!.fives, best, rank: res?.rank ?? null, offline: !res || !!res.error });
+        if (f === 'rank') { await this.showRanking(w); continue; }
+        if (f === 'lib') { await this.openLibrary(); continue; }
+        if (f === 'home') return 'home';
+        break; // 다시 도전
+      }
+    }
+  }
+
+  private localBest(runs: Owner[]): Best | null {
+    let b: Best | null = null;
+    for (const o of runs) {
+      const ev = o.ev!;
+      if (!b || ev.total > b.total || (ev.total === b.total && ev.fives > b.fives)) b = { total: ev.total, fives: ev.fives, bowls: o.round, runNo: ev.runNo, at: o.createdAt };
+    }
+    return b && b.total ? b : null;
+  }
+
+  // 새 판: 손님 순서는 학생마다 정해져 있고, 판마다 다음 10명을 만나요 (세 판 동안 같은 손님이 다시 오지 않게)
+  private newRun(w: Who, runNo: number, tutored: boolean): Owner {
+    const key = keyOf(w);
+    const id = uid();
+    const o: Owner = { id, number: w.num, name: w.name, round: 0, order: [], tutorialDone: tutored || runNo > 1, createdAt: Date.now(),
+      ev: { grade: w.grade, cls: w.cls, key, runNo, runId: id, total: 0, fives: 0, done: false } };
+    const base = makeOrder(this.listFor(o), hashStr(key));
+    const k = ((runNo - 1) * ROUNDS) % base.length;
+    o.order = [...base.slice(k), ...base.slice(0, k)];
+    return o;
+  }
+
+  // 10그릇을 끓여요. 중간에 멈추면 'stop' (다음에 이 태블릿에서 이어서 해요)
+  private async playRun(o: Owner): Promise<'done' | 'stop'> {
+    this.drawHud(null);
+    if (!o.tutorialDone) {
+      await this.round(true);
+      o.tutorialDone = true;
+      await this.saveOwner(o);
+    }
+    while (o.round < ROUNDS) {
+      const saved = await this.round(false);
+      if (o.round >= ROUNDS) break;
+      for (;;) {
+        const choice = await UI.between({ count: this.records.length, justTen: false, skipped: !saved, ev: { bowls: o.round, total: o.ev!.total, last: this.lastShown } });
+        if (choice === 'lib') { await this.openLibrary(); continue; }
+        if (choice === 'switch') { toast('다음에 이 태블릿에서 이름을 똑같이 쓰면 이어서 할 수 있어요', 3500); return 'stop'; }
+        break;
+      }
+    }
+    return 'done';
+  }
+
+  // 한 그릇 끓일 때마다 랭킹 서버에 이번 판 기록을 보내요
+  private sendRun(o: Owner) {
+    const ev = o.ev!;
+    const p = rank.submit(whoOf(o), { runId: ev.runId, runNo: ev.runNo, bowls: o.round, total: ev.total, fives: ev.fives, done: ev.done }).then((r) => {
+      if (r?.runNo && r.runNo !== ev.runNo) { ev.runNo = r.runNo; this.saveOwner(o); }
+      EV.sent(r);
+      return r;
+    });
+    this.sending = p;
+    return p;
+  }
+
   // ── 도감과 카드 ─────────────────────────
   private async photoUrl(r: RamenRecord) {
     let u = this.photoUrls.get(r.photoKey);
@@ -379,12 +538,14 @@ export class App {
 
   async openLibrary() {
     if (!this.owner) return;
-    const pick = await UI.library(this.owner, this.records, (r) => this.photoUrl(r), (id) => CUS.get(id));
+    const ev = EVENT ? this.owner.ev : undefined;
+    const pick = await UI.library(this.owner, this.records, (r) => this.photoUrl(r), (id) => CUSX.get(id),
+      ev ? `${this.owner.name}의 ${ev.runNo}번째 판 도감` : undefined, ev ? ev.done : undefined);
     if (!pick) return;
     const url = await this.photoUrl(pick);
     const img = new Image();
     await new Promise((res) => { img.onload = res; img.onerror = res; img.src = url; });
-    const cust = CUS.get(pick.customerId)!;
+    const cust = CUSX.get(pick.customerId)!;
     await UI.maker({ rec: pick, customer: cust, photo: img.naturalWidth ? img : null, author: this.owner.name, tinkerbell: this.teacher.tinkerbell || TINKERBELL_URL,
       hint: ai.ready ? (reason) => ai.reason(cust, pick, reason) : undefined });
   }
@@ -403,7 +564,7 @@ export class App {
         const all: RamenRecord[] = [];
         let done = 0;
         for (const ow of owners) { const rs = await db.records(ow.id); all.push(...rs); if (rs.length >= ROUNDS) done++; }
-        const st = classStats(owners.length, all, done, (r) => CUS.get(r.customerId)?.needs.effect);
+        const st = classStats(owners.length, all, done, (r) => CUSX.get(r.customerId)?.needs.effect);
         return { stats: st, text: all.length ? await ai.summary(st) : null };
       },
       onSave: (url, q, aiOn, aiUrl) => {

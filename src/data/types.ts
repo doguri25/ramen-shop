@@ -75,7 +75,7 @@ export interface RamenRecord {
   customerId: string;
   picks: Picks;
   name: string;
-  stars: 1 | 2 | 3;
+  stars: number;          // 수업용 1~3, 행사용 1~5
   heart: boolean;
   photoKey: string;
   createdAt: number;
@@ -89,4 +89,17 @@ export interface Owner {
   order: string[];        // 손님 순서 (학생마다 다름)
   tutorialDone: boolean;
   createdAt: number;
+  ev?: EventRun;          // 행사용 한 판 기록
+}
+
+// 행사용: 학생 한 명의 한 판 (10그릇)
+export interface EventRun {
+  grade: number;
+  cls: number;
+  key: string;            // 학년-반-번호-이름
+  runNo: number;          // 몇 번째 판 (1~3)
+  runId: string;
+  total: number;          // 이번 판에 모은 별
+  fives: number;          // 별 다섯 개 받은 그릇 수
+  done: boolean;          // 10그릇을 다 끓였는지
 }

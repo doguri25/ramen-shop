@@ -1,3 +1,4 @@
+import { MAX_STARS } from '../config';
 import { eulReul, gwaWa, listKo } from '../core/korean';
 import { FAMILY, FX } from '../data/effects';
 import { ING } from '../data/ingredients';
@@ -48,7 +49,7 @@ function label(g: CanvasRenderingContext2D, t: string, x: number, y: number) {
   g.font = `22px ${H}`; g.fillStyle = ACC; g.textAlign = 'left'; g.textBaseline = 'top'; g.fillText(t, x, y);
 }
 function starRow(g: CanvasRenderingContext2D, n: number, x: number, y: number, s = 30) {
-  for (let i = 0; i < 3; i++) {
+  for (let i = 0; i < MAX_STARS; i++) {
     const cx = x + i * (s + 6) + s / 2, cy = y + s / 2;
     g.beginPath();
     for (let k = 0; k < 10; k++) { const a = (k / 10) * Math.PI * 2 - Math.PI / 2, r = k % 2 ? s * 0.22 : s * 0.5; g.lineTo(cx + Math.cos(a) * r, cy + Math.sin(a) * r); }

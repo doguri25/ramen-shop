@@ -1,7 +1,14 @@
-import { del, get, set } from 'idb-keyval';
+import { createStore, del as d0, get as g0, set as s0 } from 'idb-keyval';
+import { EVENT } from '../event/flag';
 import type { Owner, RamenRecord } from '../data/types';
 
 export interface TeacherSettings { tinkerbell?: string; quality?: 'auto' | 'high' | 'mid' | 'low'; ai?: boolean; aiUrl?: string }
+
+// 행사용은 같은 주소(doguri25.github.io)라도 따로 저장해요. 수업용 사장님·도감과 섞이지 않게
+const store = EVENT ? createStore('ramen-event', 'kv') : undefined;
+const get = <T>(k: string) => g0<T>(k, store);
+const set = (k: string, v: unknown) => s0(k, v, store);
+const del = (k: string) => d0(k, store);
 
 const safe = async <T>(p: Promise<T>, fallback: T): Promise<T> => { try { return await p; } catch (e) { console.warn('[db]', e); return fallback; } };
 
@@ -26,9 +33,10 @@ export const db = {
 };
 
 export interface LocalSettings { sound: boolean; tts: boolean }
+const LS = EVENT ? 'event-settings' : 'settings';
 export const local = {
   get(): LocalSettings {
-    try { return { sound: true, tts: false, ...JSON.parse(localStorage.getItem('settings') || '{}') }; } catch { return { sound: true, tts: false }; }
+    try { return { sound: true, tts: false, ...JSON.parse(localStorage.getItem(LS) || '{}') }; } catch { return { sound: true, tts: false }; }
   },
-  set(s: LocalSettings) { try { localStorage.setItem('settings', JSON.stringify(s)); } catch { /* 저장 못 해도 괜찮아요 */ } },
+  set(s: LocalSettings) { try { localStorage.setItem(LS, JSON.stringify(s)); } catch { /* 저장 못 해도 괜찮아요 */ } },
 };

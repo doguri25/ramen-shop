@@ -69,7 +69,7 @@ export const sfx = {
   door() { noise(0.25, 0.08, 400, 0, 1, 'lowpass'); },
   talk() { tone(500 + Math.random() * 260, 0.06, 'triangle', 0.06); },
   slurp() { noise(0.7, 0.2, 600, 0, 3, 'bandpass', 3.5); noise(0.5, 0.15, 900, 0.75, 3, 'bandpass', 3); },
-  star(i: number) { const f = [784, 988, 1175][i] ?? 1175; tone(f, 0.5, 'triangle', 0.22); tone(f * 2, 0.3, 'sine', 0.06, 0.01); },
+  star(i: number) { const f = [784, 988, 1175, 1319, 1568][i] ?? 1568; tone(f, 0.5, 'triangle', 0.22); tone(f * 2, 0.3, 'sine', 0.06, 0.01); },
   fanfare() { [523, 659, 784, 1047].forEach((f, i) => tone(f, 0.35, 'triangle', 0.18, i * 0.11)); tone(1047, 0.8, 'sine', 0.14, 0.45); },
   soft() { [392, 494, 587].forEach((f, i) => tone(f, 0.4, 'sine', 0.14, i * 0.12)); },
   heart() { tone(660, 0.12, 'sine', 0.2); tone(990, 0.25, 'sine', 0.18, 0.1); },

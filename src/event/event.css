@@ -1,0 +1,60 @@
+/* 행사용(마음 요리사 도전) 화면 */
+.ev-login { width: min(820px, 100%); }
+.ev-head { display: flex; align-items: flex-start; gap: 12px; }
+.ev-head > div { flex: 1; }
+.ev-login .form-row label { min-width: 56px; }
+.ev-login .numpad { flex: 1; width: auto; }
+.ev-login .numpad button { min-height: 44px; font-size: 19px; }
+
+.ev-who { display: inline-block; padding: 6px 14px; border-radius: 999px; background: var(--accent-soft); color: var(--accent); font-family: var(--head); font-size: 18px; margin-bottom: 10px; }
+.ev-ready, .ev-finish { width: min(640px, 100%); text-align: center; }
+.ev-ready .sub { margin-top: 8px; }
+.ev-runs { display: flex; justify-content: center; gap: 8px; margin: 6px 0 2px; }
+.ev-runs span { min-width: 64px; padding: 6px 10px; border-radius: 999px; background: #F3E7D8; color: var(--ink-2); font-family: var(--head); font-size: 17px; }
+.ev-runs span.used { background: #E6D6C2; color: #A08F80; text-decoration: line-through; }
+.ev-runs span.now { background: var(--accent); color: #fff; }
+.ev-best { display: inline-flex; align-items: baseline; gap: 10px; padding: 8px 16px; border-radius: 16px; background: #FFF6D6; font-size: 17px; margin-bottom: 10px; }
+.ev-best b { font-family: var(--head); font-size: 26px; color: #B7860B; }
+.ev-off { margin: 4px 0 10px; padding: 8px 12px; border-radius: 12px; background: #FDECEA; color: #8E3B2E; font-size: 16px; }
+.ev-rules { display: grid; gap: 4px; margin: 6px auto 0; max-width: 470px; padding: 12px 16px; border-radius: 16px; background: #fff; border: 2px solid var(--line); text-align: left; font-size: 16px; }
+.ev-rules b { display: inline-block; min-width: 92px; color: var(--gold); letter-spacing: -1px; }
+.ev-ready .actions { justify-content: center; }
+
+.ev-score { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin: 16px 0 10px; }
+.ev-score > div { padding: 12px 8px; border-radius: 18px; background: #fff; border: 2px solid var(--line); display: flex; flex-direction: column; align-items: center; gap: 2px; }
+.ev-score span { font-size: 15px; color: var(--ink-2); }
+.ev-score b { font-family: var(--head); font-weight: normal; font-size: 34px; color: var(--accent); }
+.ev-score > div:first-child b { color: #B7860B; }
+.ev-score i { font-style: normal; font-size: 14px; color: var(--ink-2); }
+
+/* 랭킹 */
+.ev-rank { position: absolute; inset: 0; z-index: 11; background: #F6EBDD; display: flex; flex-direction: column; padding: 0 0 12px; }
+.ev-rank header { display: flex; align-items: center; gap: 12px; padding: 14px 16px 6px; }
+.ev-rank header h2 { margin: 0; font-family: var(--head); font-weight: normal; font-size: 30px; color: var(--accent); }
+.ev-rank .grow { flex: 1; }
+.ev-tabs { display: flex; gap: 8px; padding: 4px 16px 8px; }
+.ev-tabs button { flex: 1; max-width: 220px; min-height: 52px; border-radius: 16px; background: #fff; border: 2px solid var(--line); font-family: var(--head); font-size: 21px; color: var(--ink-2); }
+.ev-tabs button.on { background: var(--accent); border-color: var(--accent); color: #fff; }
+.ev-rank > .sel { padding: 0 16px 8px; }
+.ev-list { flex: 1; overflow: auto; padding: 4px 16px; display: flex; flex-direction: column; gap: 6px; }
+.ev-row { display: grid; grid-template-columns: 56px 1fr auto auto; align-items: center; gap: 12px; min-height: 54px; padding: 6px 16px; border-radius: 16px; background: #fff; box-shadow: var(--shadow-s); }
+.ev-row.top { background: #FFF8E1; }
+.ev-row.me { outline: 3px solid var(--accent-2); }
+.ev-row .rk { font-family: var(--head); font-size: 24px; text-align: center; color: var(--ink-2); }
+.ev-row .nm { font-family: var(--head); font-size: 22px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ev-row .nm i { font-style: normal; font-size: 16px; color: var(--ink-2); }
+.ev-row .sc { font-family: var(--head); font-weight: normal; font-size: 24px; color: #B7860B; }
+.ev-row .ex { font-size: 15px; color: var(--ink-2); min-width: 104px; text-align: right; }
+.ev-mine { padding: 6px 16px 0; display: flex; flex-direction: column; gap: 6px; }
+.ev-hint { font-size: 15px; }
+.ev-empty { padding: 40px 12px; text-align: center; font-size: 19px; color: var(--ink-2); }
+
+/* 상단 바: 이번 판 별 */
+.hud .chip.evstar { color: #B7860B; }
+
+@media (max-width: 640px) {
+  .ev-score { grid-template-columns: 1fr; }
+  .ev-row { grid-template-columns: 44px 1fr auto; }
+  .ev-row .ex { display: none; }
+  .ev-tabs button { font-size: 18px; min-height: 46px; }
+}

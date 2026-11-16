@@ -514,3 +514,9 @@ body.cooking .prog .bar { display: none; }
 }
 /* 좁은 세로 화면: 두 줄로 */
 @media (max-width: 480px) and (min-height: 521px) { .credit { border-radius: 18px; padding: 8px 14px; } .credit .cr-sep { display: none; } }
+/* 행사용 별 다섯 칸 */
+.stars.five span { font-size: 42px; }
+@media (max-height: 720px) { .stars.five span { font-size: 32px; } }
+.memo .cl-lines { font-size: 16px; line-height: 1.5; max-height: 42vh; overflow: auto; }
+.memo .cl-lines p { margin: 4px 0; }
+.memo .cl-lines .muted { font-size: 14px; }

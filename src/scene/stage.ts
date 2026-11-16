@@ -18,6 +18,7 @@ import { makeShop, makeSteam } from './shop';
 
 const PI = Math.PI;
 const V = (x = 0, y = 0, z = 0) => new THREE.Vector3(x, y, z);
+const POT_SPOT_Z = -0.02, POT_SPOT_Z2 = -0.1; // 냄비째 내어 줄 때 냄비 자리: 혼자 온 손님, 두 손님 (그릇은 -0.24)
 type View = 'guest' | 'pot' | 'door' | 'wide' | 'serve' | 'eat' | 'eat2';
 const VIEWS: Record<View, { pos: [number, number, number]; look: [number, number, number]; focus: number; range: number; dof: number }> = {
   guest: { pos: [0, 1.6, 1.6], look: [0, 1.32, -0.8], focus: 2.25, range: 1.1, dof: 0.6 },
@@ -614,7 +615,9 @@ export class Stage {
     await this.setView('serve', 0.7);
     // 받침은 손님 앞 카운터에 미리 놓아요
     const seatX = n > 1 ? 0 : this.shop.seat(0, 1).x;
-    const spot = V(seatX, 1.035, -0.22);
+    // 냄비는 그릇보다 크고 높아서, 손님 쪽으로 붙이면 쉬는 손과 얼굴이 냄비 속으로 들어가요. 사장님 쪽으로 조금 당겨 놓아요
+    // (두 손님이 같이 먹는 냄비는 두 사람 사이라 덜 당겨요. 너무 멀면 팔이 길게 늘어나요)
+    const spot = V(seatX, 1.035, n > 1 ? POT_SPOT_Z2 : POT_SPOT_Z);
     const trivet = makeTrivet(0.2);
     trivet.position.copy(spot);
     this.scene.add(trivet);
@@ -1002,6 +1005,10 @@ export class Stage {
     const sc = ch.root.scale.x;
     const side = B.shared ? (gi === 0 ? -1 : 1) : 0;
     const surf = () => food.localToWorld(V(side * 0.07, Math.max(B.box.level(), B.box.mound() * 0.6) + 0.004, 0));
+    // 냄비는 높고 커서 그릇처럼 숙여 내려다보면 얼굴이 냄비 속으로 들어가요. 몸은 조금만 숙이고, 냄비 위쪽을 바라봐요
+    const pot = B.kind === 'pot';
+    const LEAN = pot ? 0.05 : 0.16;
+    const view = () => (pot ? surf().add(V(0, 0.1, 0)) : surf());
     const noodles = food.getObjectByName('noodles');
     const p = this.served;
     const color = this.liquidColor(B.liquid);
@@ -1012,8 +1019,17 @@ export class Stage {
     ch.chop.scale.setScalar(0.01);
     tween(0.3, (k) => ch.chop.scale.setScalar(Math.max(0.01, k)), { ease: ease.outBack });
     // 왼손은 그릇 옆을 살짝 잡아요. 뜨거운 냄비는 만지지 않고 카운터에 얹어 둬요
-    if (B.kind === 'pot') ch.setHand(0, V(-0.32, 0.5, 0.46), V(0.4, 0, 1));
-    else {
+    if (pot) {
+      // 쉬는 손은 냄비 옆 카운터에 얹어요. 같이 먹는 냄비라 손이 냄비 쪽에 있으면, 손끝까지 냄비 밖에 오도록 밀어 두고 손끝도 바깥을 향해요
+      const want = ch.toWorld(V(-0.32, 0.5, 0.46));
+      const c = bowl.position, out = V(want.x - c.x, 0, want.z - c.z);
+      const minR = POT_R + 0.16;
+      if (out.length() >= minR) ch.setHand(0, V(-0.32, 0.5, 0.46), V(0.4, 0, 1));
+      else {
+        const dir = out.lengthSq() > 1e-6 ? out.normalize() : V(-1, 0, 0);
+        ch.setHandWorld(0, V(c.x, want.y, c.z).addScaledVector(dir, minR), dir.clone().add(V(0, -0.2, 0)));
+      }
+    } else {
       const lh = bowl.localToWorld(B.grips[0].clone().add(V(0, 0.01, 0)));
       ch.setHandWorld(0, lh, V(1, 0.1, 0));
     }
@@ -1022,12 +1038,14 @@ export class Stage {
       const hand = tip.clone().addScaledVector(a, -reach * sc);
       ch.setHandWorld(1, hand, a);
     };
-    const DOWN = V(-0.12, -1, 0.25).normalize(), MOUTH = V(-0.15, 0.62, -0.77).normalize();
+    // 냄비는 테두리가 입 높이에 가까워요. 고개를 조금 더 들고 젓가락을 눕혀야 손이 냄비 속으로 내려가지 않아요
+    const DOWN = V(-0.12, -1, 0.25).normalize(), MOUTH = pot ? V(-0.15, 0.3, -0.94).normalize() : V(-0.15, 0.62, -0.77).normalize();
+    const UP = pot ? 0.22 : 0.08;
     const bites = noodles ? (B.shared ? 2 : 3) : 1;
     for (let b = 0; b < bites; b++) {
-      ch.lean = 0.16;
+      ch.lean = LEAN;
       ch.headExtra.x = -0.05;
-      ch.look = surf();
+      ch.look = view();
       const dipTip = surf().add(V((Math.random() - 0.5) * 0.05, -0.006, (Math.random() - 0.5) * 0.04));
       placeTip(dipTip, DOWN);
       await wait(0.5);
@@ -1048,8 +1066,8 @@ export class Stage {
         const e = ease.inOutCubic(k);
         const mouth = ch.mouthWorld();
         placeTip(dipTip.clone().lerp(mouth.clone().add(V(0.02, -0.03, 0.07)), e), DOWN.clone().lerp(MOUTH, e));
-        ch.headExtra.x = -0.05 - 0.08 * k;
-        ch.lean = 0.16 - 0.14 * k;
+        ch.headExtra.x = -0.05 - UP * k;
+        ch.lean = LEAN * (1 - 0.875 * k);
         bundle.hold(ch.chopTipWorld());
         if (k > 0.5 && ++tick % 6 === 0) { const en = bundle.ends(); this.drip(en[(Math.random() * en.length) | 0], color); }
       }, { ease: ease.linear });
@@ -1075,7 +1093,7 @@ export class Stage {
     const topId = p?.toppings[B.shared ? gi : 0];
     const top = topId ? food.getObjectByName(topId) : null;
     if (top && top.visible) {
-      ch.lean = 0.14; ch.look = surf(); ch.headExtra.x = -0.05;
+      ch.lean = LEAN * 0.875; ch.look = view(); ch.headExtra.x = -0.05;
       const tp = top.getWorldPosition(V()).add(V(0, 0.02, 0));
       placeTip(tp, DOWN);
       await wait(0.5);
@@ -1087,8 +1105,8 @@ export class Stage {
         const mouth = ch.mouthWorld();
         placeTip(tp.clone().lerp(mouth.clone().add(V(0.02, -0.02, 0.06)), e), DOWN.clone().lerp(MOUTH, e));
         top.position.copy(ch.chopTipWorld()).add(V(0, -0.012, 0));
-        ch.lean = 0.14 - 0.12 * k;
-        ch.headExtra.x = -0.05 - 0.08 * k;
+        ch.lean = LEAN * 0.875 * (1 - 0.857 * k);
+        ch.headExtra.x = -0.05 - UP * k;
       }, { ease: ease.linear });
       sfx.pop();
       top.removeFromParent(); disposeTree(top);
@@ -1159,10 +1177,10 @@ export class Stage {
     spoon.scale.setScalar(0.01);
     await tween(0.25, (k) => spoon.scale.setScalar(Math.max(0.01, k)), { ease: ease.outBack });
     const L = B.liquid;
-    const DOWN = V(-0.1, -1, 0.3).normalize(), MOUTH = V(-0.15, 0.55, -0.8).normalize();
+    const DOWN = V(-0.1, -1, 0.3).normalize(), MOUTH = V(-0.15, 0.3, -0.94).normalize();
     for (let i = 0; i < 2; i++) {
       const s = B.food.localToWorld(V(side * 0.09 + (Math.random() - 0.5) * 0.03, (L ? L.level : 0) + 0.002, 0.04));
-      ch.lean = 0.16; ch.look = s; ch.headExtra.x = -0.05;
+      ch.lean = 0.05; ch.look = s.clone().add(V(0, 0.1, 0)); ch.headExtra.x = -0.05;
       placeTip(s, DOWN, 0.2);
       await wait(0.45);
       sl.visible = true;
@@ -1172,7 +1190,7 @@ export class Stage {
       await tween(0.6, (k) => {
         const e = ease.inOutCubic(k);
         placeTip(s.clone().lerp(ch.mouthWorld().add(V(0.02, -0.02, 0.06)), e), DOWN.clone().lerp(MOUTH, e), 0.2);
-        ch.lean = 0.16 - 0.14 * k; ch.headExtra.x = -0.05 - 0.1 * k;
+        ch.lean = 0.05 * (1 - 0.875 * k); ch.headExtra.x = -0.05 - 0.22 * k;
       }, { ease: ease.linear });
       sfx.slurp();
       onSlurp?.();

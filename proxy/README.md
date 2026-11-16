@@ -30,3 +30,31 @@
 | `PER_DAY` | `4000` | 하루 전체 횟수(대략) |
 | `MODEL_SMART` | `solar-pro4` | 기본 모델 |
 | `MODEL_REACT` / `MODEL_REASON` / `MODEL_KIND` | `MODEL_SMART`와 같음 | 일마다 다른 모델을 쓰고 싶을 때 (예: `solar-mini4`) |
+
+## 행사 랭킹 서버 (어깨동무 마음 요리사 도전)
+
+행사용 게임(`https://doguri25.github.io/ramen-shop/event/`)의 랭킹을 MongoDB Atlas에 모아요.
+
+- 주소: `https://ramen-ai.vercel.app/api/rank` (열어 보면 `"ready":true`면 DB와 연결된 거예요)
+- 학생 한 명(학년-반-번호-이름)이 문서 하나예요. 판(10그릇)은 세 번까지만 받아요(첫 판 + 다시 도전 2번).
+- 한 그릇 끓일 때마다 그 판의 별 합계를 보내요. 같은 판 기록은 늘어나기만 하고, 한 그릇에 별 다섯 개를 넘거나 10그릇을 넘는 기록은 받지 않아요.
+- 랭킹은 1~2학년, 3~4학년, 5~6학년으로 나눠요.
+  - 모은 별: 세 판 가운데 가장 잘한 판의 별 (같으면 별 다섯 그릇이 많은 학생, 그것도 같으면 먼저 낸 학생)
+  - 평균 별: 끓인 모든 그릇의 별 평균, 10그릇을 넘게 끓인 학생만
+- 학생 이름은 주소창에 싣지 않도록 모두 POST로 받아요. 연결 문자열은 돌려주지 않아요.
+
+### DB 연결하기 (한 번만)
+
+1. MongoDB Atlas에서 무료(M0) 클러스터를 만들고, Database Access에서 이 서버만 쓸 사용자를 하나 만들어요(Read and write to any database).
+2. Network Access에 `0.0.0.0/0`을 넣어요. 버셀 함수는 부를 때마다 인터넷 주소가 바뀌어서 주소 하나만 허락할 수 없어요.
+3. Atlas의 Connect → Drivers에서 연결 문자열(`mongodb+srv://…`)을 복사해 비밀번호 자리를 채워요.
+4. vercel.com → `ramen-ai` → Settings → Environment Variables에 Key `MONGODB_URI`, Value에 연결 문자열을 넣어요(Production).
+5. Deployments 탭에서 맨 위 배포의 ⋯ → Redeploy
+
+| 이름 | 기본값 | 뜻 |
+| --- | --- | --- |
+| `MONGODB_URI` | (없음) | MongoDB Atlas 연결 문자열 |
+| `MONGODB_DB` | `ramen_event` | 데이터베이스 이름 |
+| `RANK_PER_MINUTE` | `600` | 같은 인터넷 주소(한 학교)에서 1분에 보낼 수 있는 랭킹 요청 수 |
+
+행사가 끝나면 Atlas에서 `ramen_event` 데이터베이스의 `students` 컬렉션을 내려받아 상품 대상자를 정하고, 그다음 지우면 돼요.
