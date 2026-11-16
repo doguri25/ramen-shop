@@ -122,7 +122,6 @@ export const EV = {
         h('span', { class: full || used.includes(i + 1) || (i + 1 < o.runNo && !o.resume) ? 'used' : i + 1 === o.runNo ? 'now' : '' }, `${i + 1}판`)));
       wrap.append(h('div', { class: 'modal card pop-in ev-ready' },
         h('div', { class: 'ev-who' }, whoText(o.who)),
-        h('p', { class: 'ev-check' }, '학년·반·번호·이름이 맞나요? 틀렸으면 ‘뒤로’를 눌러 고쳐요.'),
         full ? h('h2', null, '세 판을 모두 도전했어요!')
           : o.resume !== null ? h('h2', null, `${o.runNo}번째 판을 이어서 해요`)
             : h('h2', null, o.runNo === 1 ? '첫 번째 도전이에요' : `${o.runNo}번째 도전이에요`),
