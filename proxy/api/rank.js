@@ -2,6 +2,8 @@
 // - MongoDB Atlas 연결 문자열은 Vercel 환경 변수 MONGODB_URI 에만 둬요. 게임 코드에는 없어요.
 // - 학생 한 명(학년-반-번호-이름)이 한 문서예요. 판(10그릇)은 세 번까지 기록해요.
 // - 학생 이름은 주소창(쿼리)에 싣지 않도록 모든 요청을 POST 로 받아요.
+// - 랭킹(개인·반)은 선생님만 봐요. 버셀 환경 변수 RANK_ADMIN_KEY 와 같은 암호를 보내야 돌려줘요.
+import { createHash, timingSafeEqual } from 'node:crypto';
 import { MongoClient } from 'mongodb';
 
 const ORIGINS = (process.env.ALLOW_ORIGINS || 'https://doguri25.github.io').split(',').map((s) => s.trim()).filter(Boolean);
@@ -11,6 +13,7 @@ const ROUNDS = 10;
 const AVG_MIN = 10;
 const PER_MIN = Number(process.env.RANK_PER_MINUTE || 600); // 한 학교(같은 인터넷 주소)에서 1분에 보낼 수 있는 횟수
 const TOP = 50;
+const CLASS_AVG_MIN = 30; // 반 평균 별 랭킹에 오르는 반 전체 그릇 수 (한두 명만 한 반이 앞서지 않게)
 
 // ── 연결 (함수가 살아 있는 동안 다시 써요) ───────────────
 let clientP = null;
@@ -48,19 +51,6 @@ const runId = (v) => (typeof v === 'string' && /^[a-z0-9]{6,24}$/i.test(v) ? v :
 const row = (s) => ({ grade: s.grade, cls: s.cls, num: s.num, name: s.name, total: s.best?.total ?? 0, fives: s.best?.fives ?? 0, bowls: s.best?.bowls ?? 0, avg: s.avg ?? 0, allBowls: s.sumBowls ?? 0 });
 const status = (s) => ({ runs: s?.runs?.length ?? 0, best: s?.best ?? null, sumStars: s?.sumStars ?? 0, sumBowls: s?.sumBowls ?? 0, avg: s?.avg ?? 0, list: (s?.runs ?? []).map((r) => ({ runNo: r.runNo, bowls: r.bowls, total: r.total, fives: r.fives, done: r.done })) });
 const better = (a, b) => (a.total !== b.total ? a.total > b.total : a.fives !== b.fives ? a.fives > b.fives : a.at < b.at);
-
-export async function rankOf(col, s, by) {
-  if (!s) return null;
-  if (by === 'avg') {
-    if ((s.sumBowls ?? 0) < AVG_MIN) return null;
-    const n = await col.countDocuments({ band: s.band, sumBowls: { $gte: AVG_MIN }, $or: [{ avg: { $gt: s.avg } }, { avg: s.avg, sumBowls: { $gt: s.sumBowls } }, { avg: s.avg, sumBowls: s.sumBowls, updatedAt: { $lt: s.updatedAt } }] });
-    return n + 1;
-  }
-  const b = s.best;
-  if (!b || !b.total) return null;
-  const n = await col.countDocuments({ band: s.band, $or: [{ 'best.total': { $gt: b.total } }, { 'best.total': b.total, 'best.fives': { $gt: b.fives } }, { 'best.total': b.total, 'best.fives': b.fives, 'best.at': { $lt: b.at } }] });
-  return n + 1;
-}
 
 // 한 그릇 끓일 때마다 판 기록을 올려요 (같은 판은 늘어나기만 해요)
 export async function saveRun(col, w, d) {
@@ -105,25 +95,62 @@ export async function saveRun(col, w, d) {
       if (e?.code === 11000) continue; // 같은 학생이 동시에 처음 등록됐어요
       throw e;
     }
-    const me = { ...doc, _id: w.key };
-    return { ok: true, runNo: r.runNo, status: status(me), rank: await rankOf(col, me, 'total') };
+    return { ok: true, runNo: r.runNo, status: status({ ...doc, _id: w.key }) };
   }
   return { error: 'busy' };
 }
 
-export async function board(col, band, by, w) {
+export async function board(col, band, by) {
   const q = by === 'avg' ? { band, sumBowls: { $gte: AVG_MIN } } : { band, 'best.total': { $gt: 0 } };
   const sort = by === 'avg' ? { avg: -1, sumBowls: -1, updatedAt: 1 } : { 'best.total': -1, 'best.fives': -1, 'best.at': 1 };
   // 랭킹에 쓰는 칸만 가져와요 (판 기록 전체를 싣지 않아서 주고받는 양이 4분의 1쯤으로 줄어요)
   const projection = { grade: 1, cls: 1, num: 1, name: 1, band: 1, best: 1, avg: 1, sumBowls: 1, updatedAt: 1 };
   const [list, count] = await Promise.all([col.find(q, { projection }).sort(sort).limit(TOP).toArray(), col.countDocuments(q)]);
-  const rows = list.map((s, i) => ({ rank: i + 1, ...row(s), me: !!w && s._id === w.key }));
-  let me = null;
-  if (w && w.band === band) {
-    const s = await col.findOne({ _id: w.key });
-    if (s) me = { ...row(s), rank: await rankOf(col, s, by), need: by === 'avg' ? Math.max(0, AVG_MIN - (s.sumBowls ?? 0)) : 0 };
+  return { ok: true, band, by, rows: list.map((s, i) => ({ rank: i + 1, ...row(s) })), count };
+}
+
+// 반 랭킹 (전교 한꺼번에)
+// - 모은 별: 반 친구들이 저마다 가장 잘한 판의 별을 모두 더해요
+// - 평균 별: 반 친구들이 끓인 모든 그릇의 별 평균 (반 전체 30그릇부터)
+export async function classes(col, by) {
+  const projection = { grade: 1, cls: 1, best: 1, sumStars: 1, sumBowls: 1 };
+  const list = await col.find({}, { projection }).toArray();
+  const m = new Map();
+  for (const s of list) {
+    const k = s.grade * 100 + s.cls;
+    const c = m.get(k) ?? { grade: s.grade, cls: s.cls, students: 0, total: 0, fives: 0, stars: 0, bowls: 0 };
+    c.students++;
+    c.total += s.best?.total ?? 0;
+    c.fives += s.best?.fives ?? 0;
+    c.stars += s.sumStars ?? 0;
+    c.bowls += s.sumBowls ?? 0;
+    m.set(k, c);
   }
-  return { ok: true, band, by, rows, count, me };
+  const all = [...m.values()].map((c) => ({ ...c, avg: c.bowls ? Math.round((c.stars / c.bowls) * 100) / 100 : 0 }));
+  const byClass = (a, b) => a.grade - b.grade || a.cls - b.cls;
+  const rows = by === 'avg'
+    ? all.filter((c) => c.bowls >= CLASS_AVG_MIN).sort((a, b) => b.avg - a.avg || b.bowls - a.bowls || byClass(a, b))
+    : all.filter((c) => c.total > 0).sort((a, b) => b.total - a.total || b.fives - a.fives || byClass(a, b));
+  return { ok: true, by, rows: rows.map((c, i) => ({ rank: i + 1, grade: c.grade, cls: c.cls, students: c.students, total: c.total, fives: c.fives, avg: c.avg, bowls: c.bowls })), count: all.length, min: CLASS_AVG_MIN };
+}
+
+// 선생님 암호 확인 (글자 수가 달라도 걸리는 시간이 같게 해시로 견줘요)
+const sha = (v) => createHash('sha256').update(String(v)).digest();
+export function keyOk(given, real = process.env.RANK_ADMIN_KEY || '') {
+  if (!real || typeof given !== 'string' || !given) return false;
+  return timingSafeEqual(sha(given), sha(real));
+}
+// 암호를 여러 번 틀리면 잠깐 막아요 (한 인터넷 주소에서 10분에 10번)
+const misses = new Map();
+function tooMany(ip) {
+  const w = Math.floor(Date.now() / 600000);
+  return (misses.get(ip + ':' + w) ?? 0) >= 10;
+}
+function miss(ip) {
+  const w = Math.floor(Date.now() / 600000);
+  const k = ip + ':' + w;
+  misses.set(k, (misses.get(k) ?? 0) + 1);
+  if (misses.size > 2000) for (const key of misses.keys()) if (!key.endsWith(':' + w)) misses.delete(key);
 }
 
 // ── 지켜 주는 것 ─────────────────────────────────
@@ -155,7 +182,7 @@ export default async function handler(req, res) {
   if (req.method === 'GET') {
     let db = false;
     try { const col = await students(); if (col) { await col.estimatedDocumentCount(); db = true; } } catch (e) { console.warn('db', e?.message); }
-    return res.status(200).json({ ok: true, ready: db, hasUri: !!process.env.MONGODB_URI });
+    return res.status(200).json({ ok: true, ready: db, hasUri: !!process.env.MONGODB_URI, hasKey: !!process.env.RANK_ADMIN_KEY });
   }
   if (req.method !== 'POST') return res.status(405).json({ error: 'method' });
   if (origin && !ok) return res.status(403).json({ error: 'origin' });
@@ -165,6 +192,13 @@ export default async function handler(req, res) {
   let d = req.body;
   if (typeof d === 'string') { if (d.length > 4000) return res.status(413).json({ error: 'too_big' }); try { d = JSON.parse(d); } catch { return res.status(400).json({ error: 'bad_json' }); } }
   if (!d || typeof d !== 'object') return res.status(400).json({ error: 'bad_json' });
+
+  // 랭킹은 선생님만: 서버에 암호가 없으면 아무에게도 보여 주지 않아요 (DB에 닿기 전에 먼저 확인해요)
+  if (d.op === 'board' || d.op === 'classes') {
+    if (!process.env.RANK_ADMIN_KEY) return res.status(403).json({ error: 'no_admin_key' });
+    if (tooMany(ip)) return res.status(429).json({ error: 'too_many' });
+    if (!keyOk(d.key)) { miss(ip); return res.status(401).json({ error: 'bad_key' }); }
+  }
 
   let col;
   try { col = await students(); } catch (e) { console.warn('connect', e?.message); return res.status(503).json({ error: 'no_db' }); }
@@ -178,16 +212,18 @@ export default async function handler(req, res) {
       const list = await col.find({ grade, cls }, { projection: { num: 1, name: 1, runs: 1, updatedAt: 1 } }).limit(200).toArray();
       return res.status(200).json({ ok: true, rows: list.map((s) => ({ num: s.num, name: s.name, runs: s.runs?.length ?? 0, done: (s.runs ?? []).filter((r) => r.done).length, at: s.updatedAt ?? 0 })) });
     }
-    if (d.op === 'board') {
+    if (d.op === 'board' || d.op === 'classes') {
+      const by = d.by === 'avg' ? 'avg' : 'total';
+      if (d.op === 'classes') return res.status(200).json(await classes(col, by));
       const band = ['12', '34', '56'].includes(d.band) ? d.band : null;
       if (!band) return res.status(400).json({ error: 'bad_band' });
-      return res.status(200).json(await board(col, band, d.by === 'avg' ? 'avg' : 'total', d.who ? who(d.who) : null));
+      return res.status(200).json(await board(col, band, by));
     }
     const w = who(d.who);
     if (!w) return res.status(400).json({ error: 'bad_who' });
     if (d.op === 'status') {
       const s = await col.findOne({ _id: w.key });
-      return res.status(200).json({ ok: true, status: status(s), rank: await rankOf(col, s, 'total') });
+      return res.status(200).json({ ok: true, status: status(s) });
     }
     if (d.op === 'run') {
       const r = await saveRun(col, w, d.run);

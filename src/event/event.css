@@ -39,13 +39,13 @@
 .ev-list { flex: 1; overflow: auto; padding: 4px 16px; display: flex; flex-direction: column; gap: 6px; }
 .ev-row { display: grid; grid-template-columns: 56px 1fr auto auto; align-items: center; gap: 12px; min-height: 54px; padding: 6px 16px; border-radius: 16px; background: #fff; box-shadow: var(--shadow-s); }
 .ev-row.top { background: #FFF8E1; }
-.ev-row.me { outline: 3px solid var(--accent-2); }
 .ev-row .rk { font-family: var(--head); font-size: 24px; text-align: center; color: var(--ink-2); }
 .ev-row .nm { font-family: var(--head); font-size: 22px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ev-row .nm i { font-style: normal; font-size: 16px; color: var(--ink-2); }
 .ev-row .sc { font-family: var(--head); font-weight: normal; font-size: 24px; color: #B7860B; }
 .ev-row .ex { font-size: 15px; color: var(--ink-2); min-width: 104px; text-align: right; }
 .ev-mine { padding: 6px 16px 0; display: flex; flex-direction: column; gap: 6px; }
+.ev-rank .ev-tabs[hidden] { display: none; }
 .ev-hint { font-size: 15px; }
 .ev-empty { padding: 40px 12px; text-align: center; font-size: 19px; color: var(--ink-2); }
 
@@ -59,27 +59,22 @@
   .ev-tabs button { font-size: 18px; min-height: 46px; }
 }
 
-/* 판 끝: 내 결과 + 지금 랭킹 */
+/* 선생님 랭킹 */
 .ev-rank header .ev-stamp { font-size: 14px; color: var(--ink-2); }
-.ev-result { margin: 0 16px 8px; padding: 14px 18px; text-align: center; }
-.ev-result h3 { margin: 4px 0 0; font-family: var(--head); font-weight: normal; font-size: 26px; color: var(--accent); }
-.ev-result .ev-score { margin: 10px 0 6px; }
-.ev-result .ev-score b { font-size: 30px; }
-.ev-result .sub { margin: 0; font-size: 16px; color: var(--ink-2); }
-.ev-row .nm em { margin-left: 8px; padding: 2px 8px; border-radius: 999px; background: var(--accent-2); color: #fff; font-style: normal; font-size: 14px; vertical-align: 2px; }
-.ev-acts { display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; padding: 10px 16px 0; }
-.ev-rank.with-result .ev-list { min-height: 120px; }
-.hud .chip.evrank { color: var(--accent); }
-.scr-title .title-rank { margin-top: 14px; }
-@media (max-height: 720px) {
-  .ev-result { padding: 10px 14px; }
-  .ev-result h3 { font-size: 21px; }
-  .ev-result .ev-score { margin: 6px 0 4px; gap: 8px; }
-  .ev-result .ev-score > div { padding: 6px 8px; }
-  .ev-result .ev-score b { font-size: 24px; }
-  .ev-tabs button { min-height: 44px; }
-}
-@media (max-width: 640px) { .ev-result .ev-score { grid-template-columns: repeat(3, 1fr); } }
+.ev-rank header .ev-only { padding: 4px 10px; border-radius: 999px; background: #FDECEA; color: #8E3B2E; font-size: 14px; white-space: nowrap; }
+.ev-modes { padding-top: 0; }
+.ev-modes button { max-width: 260px; display: inline-flex; align-items: center; justify-content: center; gap: 6px; background: #FFF6D6; border-color: #F2DE9A; color: #8A6A0F; }
+.ev-modes button.on { background: #D9A81F; border-color: #D9A81F; color: #fff; }
+@media (max-height: 720px) { .ev-tabs button { min-height: 44px; } }
+
+/* 판 끝: 내 결과 (학생) */
+.ev-finish .ev-fin-h { display: inline-flex; align-items: center; gap: 4px; }
+.ev-finish .ev-score { margin: 12px 0 8px; }
+.ev-finish .ev-score b { font-size: 30px; }
+.ev-myruns span.empty { background: #F7EFE4; color: #C4B4A4; }
+.ev-finish .sub { margin: 6px 0 2px; }
+.ev-finish .actions { justify-content: center; flex-wrap: wrap; }
+@media (max-width: 640px) { .ev-finish .ev-score { grid-template-columns: repeat(3, 1fr); } .ev-finish .ev-score b { font-size: 24px; } }
 
 /* 그림 아이콘 */
 .gi { display: block; flex: 0 0 auto; }
@@ -91,7 +86,6 @@
 .ev-row .rk .gm { display: inline-flex; line-height: 0; }
 .ev-empty .gi-big { display: flex; justify-content: center; margin-bottom: 8px; }
 .ev-off { display: flex; align-items: center; gap: 8px; justify-content: center; }
-.ev-result h3 { display: inline-flex; align-items: center; gap: 4px; }
 .hud .chip.evstar { gap: 4px; }
 
 /* 로그인: 이미 들어온 번호 */

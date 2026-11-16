@@ -63,12 +63,25 @@ const speakerIdx = (l: string) => (l.startsWith('@1 ') ? 1 : 0);
 
 export interface Thumbs { get(id: string): string | undefined }
 
+// 선생님 화면의 랭킹 칸 (행사용). 랭킹을 보는 동안 선생님 화면은 잠깐 숨겨요
+function rankSec(r: { open: () => Promise<void>; hasKey: () => boolean; forget: () => void }, wrap: () => HTMLElement) {
+  const state = h('span', { class: 'muted', style: 'font-size:15px' });
+  const forget = h('button', { class: 'btn ghost small', onclick: () => { r.forget(); draw(); toast('이 기기에서 랭킹 암호를 지웠어요'); } }, '기억한 암호 지우기');
+  const draw = () => { const on = r.hasKey(); state.textContent = on ? '이 기기는 랭킹 암호를 기억하고 있어요.' : '처음 열 때 랭킹 암호를 물어봐요.'; forget.hidden = !on; };
+  draw();
+  return h('div', { class: 'sec' }, h('h3', null, '랭킹 (선생님만 봐요)'),
+    h('div', { class: 'muted', style: 'font-size:15px;margin-bottom:8px' }, '학생 화면에는 랭킹이 나오지 않아요. 개인 랭킹(학년군별)과 반 랭킹(전교)을 여기서 봐요.'),
+    h('div', { class: 'actions', style: 'justify-content:flex-start;align-items:center;flex-wrap:wrap' },
+      h('button', { class: 'btn', onclick: async () => { sfx.pop(); const w = wrap(); w.style.display = 'none'; try { await r.open(); } finally { w.style.display = ''; draw(); } } }, h('span', { class: 'gi-wrap', html: icon('trophy', 26) }), '랭킹 보기'),
+      forget, state));
+}
+
 export const UI = {
   clear() { root().querySelectorAll(':scope > :not(.hud):not(.toast)').forEach((e) => e.remove()); },
   clearAll() { root().innerHTML = ''; },
 
   // ── 제목 ───────────────────────────────
-  title(onTeacher: () => void, ai?: AiInfo, onRank?: () => void): Promise<void> {
+  title(onTeacher: () => void, ai?: AiInfo): Promise<void> {
     return new Promise((res) => {
       const logo = h('div', { class: 'logo pop-in' },
         h('div', { class: 'l1' }, EVENT ? '어깨동무 마음 요리사 도전' : '마음을 채워 주는'),
@@ -82,7 +95,6 @@ export const UI = {
         h('span', { class: 'ai-more' }, '어떻게 쓰였나요? ›')) : null;
       const el = mount(h('div', { class: 'scr-title' }, logo,
         h('button', { class: 'btn big pulse', onclick: () => { sfx.pop(); el.remove(); res(); } }, h('span', { class: 'gi-wrap', html: icon('bowl', 34) }), EVENT ? '도전하러 가기' : '가게 문 열기'), aiStrip,
-        onRank ? h('button', { class: 'btn ghost big title-rank', onclick: () => { sfx.tap(); onRank(); } }, h('span', { class: 'gi-wrap', html: icon('trophy', 34) }), '현재 랭킹 보기') : null,
         h('div', { class: 'credit' },
           h('span', { class: 'cr-item' }, h('span', { class: 'cr-ic' }, '🧑‍🏫'), h('span', { class: 'cr-k' }, '만든이'), h('b', null, CREDIT.name)),
           h('span', { class: 'cr-sep' }),
@@ -173,7 +185,7 @@ export const UI = {
   },
 
   // ── 상단 바 ───────────────────────────────
-  hud(o: { owner: Owner; count: number; round: number | null; sound: boolean; tts: boolean; label?: string; stars?: number; onRank?: () => void; onLib: () => void; onSound: () => void; onTts: () => void; onHome: () => void }) {
+  hud(o: { owner: Owner; count: number; round: number | null; sound: boolean; tts: boolean; label?: string; stars?: number; onLib: () => void; onSound: () => void; onTts: () => void; onHome: () => void }) {
     root().querySelector('.hud')?.remove();
     const pct = Math.min(100, (o.count / ROUNDS) * 100);
     const el = h('div', { class: 'hud' },
@@ -181,7 +193,6 @@ export const UI = {
       o.round !== null ? h('span', { class: 'chip round' }, o.round === 0 ? '연습 손님' : `${o.round}번째 손님`) : null,
       o.stars !== undefined ? h('span', { class: 'chip evstar' }, h('span', { class: 'gi-wrap', html: icon('star', 22) }), String(o.stars)) : null,
       h('span', { class: 'grow' }),
-      o.onRank ? h('button', { class: 'chip evrank', onclick: () => { sfx.tap(); o.onRank!(); } }, h('span', { class: 'gi-wrap', html: icon('trophy', 24) }), '랭킹') : null,
       h('button', { class: 'chip prog', onclick: () => { sfx.tap(); o.onLib(); } }, h('span', { html: ICON.book, style: 'width:24px;height:24px;display:inline-block' }), '도감',
         h('span', { class: 'bar' }, h('i', { style: `width:${pct}%` })), `${Math.min(o.count, ROUNDS)}/${ROUNDS}`),
       iconBtn(o.sound ? ICON.sound : ICON.mute, () => { o.onSound(); }, '소리', o.sound ? '' : 'off'),
@@ -649,6 +660,8 @@ export const UI = {
     onCheck: (url: string) => Promise<'ok' | 'nokey' | 'fail'>;
     onSummary: () => Promise<{ stats: ClassStats; text: string | null }>;
     onSave: (url: string, q: string, aiOn: boolean, aiUrl: string) => void; onDelete: (o: Owner) => Promise<void>;
+    // 행사용: 선생님만 보는 랭킹
+    rank?: { open: () => Promise<void>; hasKey: () => boolean; forget: () => void };
   }): Promise<void> {
     return new Promise((res) => {
       // AI 도우미 (업스테이지 Solar)
@@ -716,6 +729,7 @@ export const UI = {
         EVENT ? null : h('div', { class: 'sec' }, h('h3', null, '우리 반 요약'),
           h('div', { class: 'muted', style: 'font-size:15px;margin-bottom:8px' }, '이 태블릿에 있는 모든 사장님 기록을 모아 정리해요. 수업 결과를 쓸 때 참고해 주세요.'),
           sumBtn, sumBox),
+        o.rank ? rankSec(o.rank, () => wrap) : null,
         h('div', { class: 'sec' }, h('h3', null, '사장님 기록'), list),
         h('div', { class: 'actions' }, h('button', { class: 'btn', onclick: () => { o.onSave(url.value.trim(), q, aiOn, aiUrl.value.trim()); sfx.pop(); wrap.remove(); res(); } }, '저장하고 닫기'))));
       mount(wrap);

@@ -240,10 +240,6 @@ export class App {
     UI.hud({
       owner: this.owner, count: ev ? this.owner.round : this.records.length, round, sound: soundOn(), tts: ttsEnabled(),
       label: ev ? whoText(whoOf(this.owner)) : undefined, stars: ev ? ev.total : undefined,
-      onRank: ev ? () => {
-        if (this.serving) { toast('손님이 라면을 다 드신 뒤에 랭킹을 볼 수 있어요'); return; }
-        this.showRanking(whoOf(this.owner!));
-      } : undefined,
       onLib: () => {
         // 라면을 내어 드리는 동안 열면 손님 반응·쪽지가 도감 위아래로 겹쳐요. 그때만 잠깐 막아요
         if (this.serving) { toast('손님이 라면을 다 드신 뒤에 도감을 볼 수 있어요'); return; }
@@ -421,12 +417,11 @@ export class App {
     UI.clearAll();
     this.stage.setView('wide', 0);
     rank.flush(); // 지난번에 못 보낸 기록이 있으면 보내요
-    await UI.title(() => this.openTeacher(), undefined, () => { this.showRanking(null); });
+    await UI.title(() => this.openTeacher(), undefined);
     unlockAudio();
     for (;;) {
       const r = await EV.login((g, c) => this.roster(g, c));
       if (r === null) return; // 첫 화면으로
-      if (r === 'rank') { await this.showRanking(null); continue; }
       if ((await this.student(r)) === 'back') continue; // 이름을 고쳐 쓰려고 뒤로
       return;
     }
@@ -450,8 +445,30 @@ export class App {
   private lastBand() {
     try { const g = JSON.parse(localStorage.getItem('event-last-class') || '{}').grade; return bandOf(g || 3); } catch { return bandOf(3); }
   }
-  private showRanking(w: Who | null) {
-    return EV.ranking({ band: w ? bandOf(w.grade) : this.lastBand(), who: w, load: (b, by) => rank.board(b, by, w) });
+  // 선생님만 보는 랭킹: 암호는 이 기기에 기억해 두고, 틀리면 다시 물어요
+  private async teacherRanking() {
+    let key = rank.savedKey();
+    let msg: string | undefined;
+    for (;;) {
+      if (!key) {
+        const k = await EV.askKey(msg);
+        if (!k) return;
+        // 맞는 암호인지 먼저 확인하고 기억해요
+        const busy = h('div', { class: 'toast' }, '암호를 확인하는 중…');
+        document.getElementById('ui')!.appendChild(busy);
+        const t = await rank.classes('total', k);
+        busy.remove();
+        if (t === 'bad_key') { msg = '랭킹 암호가 맞지 않아요.'; continue; }
+        if (t === 'too_many') { toast('암호를 여러 번 틀려서 10분 동안 막혔어요', 4000); return; }
+        if (t === 'no_admin_key') { toast('서버에 랭킹 암호가 아직 없어요. 버셀에 RANK_ADMIN_KEY를 넣고 다시 배포해 주세요', 5000); return; }
+        if (t === 'offline') { toast('랭킹 서버에 닿지 않아요. 인터넷을 확인해 주세요'); return; }
+        key = k; rank.saveKey(k);
+      }
+      const k = key;
+      const r = await EV.ranking({ band: this.lastBand(), people: (b, by) => rank.board(b, by, k), classes: (by) => rank.classes(by, k) });
+      if (r !== 'rekey') return;
+      rank.saveKey(''); key = ''; msg = '랭킹 암호가 맞지 않아요.';
+    }
   }
 
   // 한 학생: 몇 번째 판인지 정하고, 끓이고, 끝나면 다시 도전할지 물어요
@@ -473,7 +490,6 @@ export class App {
       const runNo = unfinished ? unfinished.ev!.runNo : Math.max(st?.status.runs ?? 0, mine.length) + 1;
       const pick = await EV.ready({ who: w, runNo, resume: unfinished ? unfinished.round : null, best, offline: !st });
       if (pick === 'back') return 'back';
-      if (pick === 'rank') { await this.showRanking(w); continue; }
       if (pick === 'lib') {
         const last = mine[mine.length - 1];
         if (!last) { toast('이 태블릿에는 이 학생의 도감이 없어요'); continue; }
@@ -489,16 +505,21 @@ export class App {
       this.records = await db.records(o.id);
       const end = await this.playRun(o);
       if (end === 'stop') return 'home';
-      // 판 끝: 마지막 그릇 기록이 서버에 닿은 뒤(늦어도 6초) 내 결과와 지금 랭킹을 함께 보여 줘요
-      await Promise.race([this.sending ?? Promise.resolve(null), sleep(6000)]);
+      // 판 끝: 마지막 그릇 기록을 보내 두고(늦어도 6초) 내 결과만 보여 줘요. 랭킹은 선생님 화면에서만 봐요
+      const sent = await Promise.race([this.sending ?? Promise.resolve(null), sleep(6000).then(() => null)]);
       const ev = o.ev!;
       const isBest = !best || ev.total >= best.total;
+      // 지금까지 판 기록: 서버 기록 + 이 태블릿 기록 + 방금 끝낸 판
+      const runs = new Map<number, number>();
+      (sent?.status?.list ?? st?.status.list ?? []).forEach((x) => runs.set(x.runNo, x.total));
+      mine.forEach((x) => { if (!runs.has(x.ev!.runNo)) runs.set(x.ev!.runNo, x.ev!.total); });
+      runs.set(ev.runNo, ev.total);
       let cheer = true;
       for (;;) {
         const left = MAX_RUNS - ev.runNo;
-        const f = await EV.ranking({
-          band: bandOf(w.grade), who: w, load: (b, by) => rank.board(b, by, w),
-          result: { runNo: ev.runNo, total: ev.total, fives: ev.fives, isBest, bestTotal: best?.total ?? null, cheer },
+        const f = await EV.result({
+          who: w, runNo: ev.runNo, total: ev.total, fives: ev.fives, isBest, best: best ? { total: best.total, runNo: best.runNo } : null,
+          runs: [...runs].map(([runNo, total]) => ({ runNo, total })), cheer,
           actions: [
             { id: 'home', label: '처음으로', kind: 'ghost' },
             { id: 'lib', label: '도감·대표 라면 카드', kind: 'soft' },
@@ -617,6 +638,7 @@ export class App {
         toast('저장했어요');
       },
       onDelete: async (ow) => { await db.deleteOwner(ow.id); toast(`${ow.name} 사장님 기록을 지웠어요`); },
+      rank: EVENT ? { open: () => this.teacherRanking(), hasKey: () => !!rank.savedKey(), forget: () => rank.saveKey('') } : undefined,
     });
   }
 }
