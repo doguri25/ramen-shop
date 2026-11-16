@@ -18,6 +18,8 @@ import { makeShop, makeSteam } from './shop';
 
 const PI = Math.PI;
 const V = (x = 0, y = 0, z = 0) => new THREE.Vector3(x, y, z);
+// 이만큼(세상 길이) 넘게 튀어나온 주둥이·부리·코는 고개를 숙여 먹어요 (펠리컨·악어·코끼리)
+const LONG_SNOUT = 0.12;
 const POT_SPOT_Z = -0.02, POT_SPOT_Z2 = -0.1; // 냄비째 내어 줄 때 냄비 자리: 혼자 온 손님, 두 손님 (그릇은 -0.24)
 type View = 'guest' | 'pot' | 'door' | 'wide' | 'serve' | 'eat' | 'eat2';
 const VIEWS: Record<View, { pos: [number, number, number]; look: [number, number, number]; focus: number; range: number; dof: number }> = {
@@ -1021,9 +1023,13 @@ export class Stage {
     ch.manual = true;
     ch.talking = false;
     ch.look = view();
-    ch.showChop(true);
-    ch.chop.scale.setScalar(0.01);
-    tween(0.3, (k) => ch.chop.scale.setScalar(Math.max(0.01, k)), { ease: ease.outBack });
+    // 주둥이가 아주 긴 손님(펠리컨·악어·코끼리)은 젓가락·그릇을 들지 않고 고개를 숙여 먹어요
+    const longSnout = R >= LONG_SNOUT;
+    if (!longSnout) {
+      ch.showChop(true);
+      ch.chop.scale.setScalar(0.01);
+      tween(0.3, (k) => ch.chop.scale.setScalar(Math.max(0.01, k)), { ease: ease.outBack });
+    }
     // 왼손은 그릇 옆을 살짝 잡아요. 뜨거운 냄비는 만지지 않고 카운터에 얹어 둬요
     if (pot) {
       // 쉬는 손은 냄비 옆 카운터에 얹어요. 같이 먹는 냄비라 손이 냄비 쪽에 있으면, 손끝까지 냄비 밖에 오도록 밀어 두고 손끝도 바깥을 향해요
@@ -1039,6 +1045,15 @@ export class Stage {
       const lh = bowl.localToWorld(B.grips[0].clone().add(V(0, 0.01, 0)));
       ch.setHandWorld(0, lh, V(1, 0.1, 0));
     }
+    // 건더기 하나 고르기: 같이 먹는 냄비는 저마다 자기 쪽에 가까운 건더기 (짝꿍 얼굴 앞으로 팔을 뻗지 않게)
+    const pickTop = (): THREE.Object3D | null => {
+      if (!B.shared) return p?.toppings[0] ? food.getObjectByName(p.toppings[0]) ?? null : null;
+      const sx = ch.root.position.x;
+      const cands = (p?.toppings ?? []).map((id) => food.getObjectByName(id)).filter((o): o is THREE.Object3D => !!o && o.visible);
+      return cands.sort((x, y) => Math.abs(x.getWorldPosition(V()).x - sx) - Math.abs(y.getWorldPosition(V()).x - sx))[0] ?? null;
+    };
+    if (longSnout) await this.eatHeadDown(ch, B, surf, pickTop, onSlurp);
+    else {
     // 젓가락 끝을 tip에 대요. 손이 어깨에서 너무 멀면(팔이 길게 늘어나 보이면) 손을 젓가락 줄을 따라 어깨 쪽으로 옮겨요.
     //  - 손이 끝 쪽으로 가야 하면 젓가락 끝 가까이를 쥐어요 (젓가락이 손 뒤로 삐져나와요)
     //  - 손이 뒤쪽으로 가야 하면 젓가락을 조금 길게 늘여요 (두 배까지)
@@ -1117,13 +1132,7 @@ export class Stage {
     }
     // 건더기 하나 집어 먹기 (같이 먹는 냄비면 각자 다른 건더기)
     this.phase = 'topbite';
-    // 같이 먹는 냄비는 저마다 자기 쪽에 가까운 건더기를 집어요 (짝꿍 얼굴 앞으로 팔을 뻗지 않게)
-    let top: THREE.Object3D | null = null;
-    if (B.shared) {
-      const sx = ch.root.position.x;
-      const cands = (p?.toppings ?? []).map((id) => food.getObjectByName(id)).filter((o): o is THREE.Object3D => !!o && o.visible);
-      top = cands.sort((x, y) => Math.abs(x.getWorldPosition(V()).x - sx) - Math.abs(y.getWorldPosition(V()).x - sx))[0] ?? null;
-    } else top = p?.toppings[0] ? food.getObjectByName(p.toppings[0]) ?? null : null;
+    const top = pickTop();
     if (top && top.visible) {
       ch.lean = LEAN * 0.875; ch.look = view(); ch.headExtra.x = -0.05;
       const tp = top.getWorldPosition(V()).add(V(0, 0.02, 0));
@@ -1153,6 +1162,7 @@ export class Stage {
     ch.chop.scale.setScalar(1); ch.chop.position.set(0, 0, 0);
     if (B.kind === 'pot') await this.sipWithSpoon(ch, B, side, placeTip, color, onSlurp, R);
     else await this.drinkFrom(ch, B, onSlurp, R);
+    }
     food.children.forEach((c) => { if (c.name !== 'broth') c.visible = false; });
     B.steam.set(0.15);
     ch.manual = false;
@@ -1161,6 +1171,80 @@ export class Stage {
     ch.setMood('eat');
     ch.play('full');
     await wait(0.6);
+  }
+
+  // 주둥이가 아주 긴 손님: 그릇은 카운터에 둔 채 고개를 숙여 주둥이 끝으로 면·건더기·국물을 먹어요.
+  // 주둥이 끝이 국물 면(또는 건더기)에 닿도록 몸을 숙이는 정도를 매 순간 조금씩 맞춰요
+  private async eatHeadDown(ch: Chibi, B: BowlInfo, surf: () => THREE.Vector3, pickTop: () => THREE.Object3D | null, onSlurp?: () => void) {
+    const pot = B.kind === 'pot', bowl = B.group, food = B.food;
+    const sc = ch.root.scale.x;
+    const noodles = food.getObjectByName('noodles');
+    // 오른손도 쉬어요: 그릇이면 양옆을 잡고, 냄비면 냄비 밖 카운터에
+    if (!pot) ch.setHandWorld(1, bowl.localToWorld(B.grips[1].clone().add(V(0, 0.01, 0))), V(-1, 0.1, 0));
+    else {
+      const want = ch.toWorld(V(0.32, 0.5, 0.46)), c = bowl.position, out = V(want.x - c.x, 0, want.z - c.z), minR = POT_R + 0.16;
+      if (out.length() >= minR) ch.setHand(1, V(0.32, 0.5, 0.46), V(-0.4, 0, 1));
+      else { const dir = out.lengthSq() > 1e-6 ? out.normalize() : V(1, 0, 0); ch.setHandWorld(1, V(c.x, want.y, c.z).addScaledVector(dir, minR), dir.clone().add(V(0, -0.2, 0))); }
+    }
+    const tipW = () => ch.head.localToWorld(V(0, -0.1, HR + ch.faceReach / sc));
+    let lean = Math.max(0.05, ch.lean);
+    const NOD = 0.45;
+    // 숙이기: 고개를 끄덕이듯 숙이고, 주둥이 끝 높이를 보며 몸을 조금씩 더 숙이거나 펴요
+    const dip = (to: () => THREE.Vector3, dur: number, every?: (k: number) => void) => tween(dur, (k) => {
+      ch.look = null;
+      ch.headExtra.x = Math.min(NOD, ch.headExtra.x + 0.05);
+      const err = tipW().y - (to().y + 0.012 * sc);
+      lean = THREE.MathUtils.clamp(lean + THREE.MathUtils.clamp(err * 0.35, -0.025, 0.025), 0.02, 0.85);
+      ch.lean = lean;
+      every?.(k);
+    }, { ease: ease.linear });
+    const rise = (dur: number) => { const l0 = lean, h0 = ch.headExtra.x; return tween(dur, (k) => { lean = lerp(l0, 0.06, k); ch.lean = lean; ch.headExtra.x = h0 * (1 - k); }, { ease: ease.inOutCubic }); };
+    // 면: 두세 번 후루룩
+    const bites = noodles ? 2 : 1;
+    for (let b = 0; b < bites; b++) {
+      this.phase = 'slurp';
+      await dip(surf, 0.7);
+      sfx.slurp();
+      onSlurp?.();
+      ch.setMood('surprised');
+      this.splash(B, surf(), 0.2, '#FFFFFF');
+      if (noodles) {
+        noodles.scale.multiplyScalar(0.82);
+        const loose = noodles.children.filter((c) => c.userData.loose && c.visible);
+        loose.slice(0, Math.ceil(loose.length / (bites - b))).forEach((c) => { c.visible = false; });
+      }
+      await dip(surf, 0.45);
+      await rise(0.4);
+      ch.setMood('eat');
+      ch.chewing = true;
+      await wait(0.5);
+      ch.chewing = false;
+    }
+    // 건더기 하나
+    this.phase = 'topbite';
+    const top = pickTop();
+    if (top && top.visible) {
+      const tp = top.getWorldPosition(V());
+      await dip(() => tp, 0.6);
+      sfx.pop();
+      top.removeFromParent(); disposeTree(top);
+      await rise(0.35);
+      ch.chewing = true;
+      await wait(0.5);
+      ch.chewing = false;
+    }
+    // 국물: 고개를 숙인 채 쭉 들이켜요
+    this.phase = 'drink';
+    const L = B.liquid, L0 = L ? L.level : 0, Lend = B.box.prof.floorAt(0) + 0.006;
+    await dip(surf, 0.5);
+    sfx.slurp();
+    onSlurp?.();
+    ch.chewing = true;
+    await dip(surf, 1.2, (k) => { if (L) L.level = lerp(L0, Lend, k); if (noodles && k > 0.5) noodles.visible = false; });
+    ch.chewing = false;
+    await rise(0.5);
+    sfx.soft();
+    L?.kick(0, -0.2);
   }
 
   // 그릇을 두 손으로 들고 기울여 마셔요. 국물 면은 기울여도 수평이라 입 쪽 테두리로 모여요
