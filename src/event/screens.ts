@@ -60,17 +60,19 @@ export const EV = {
         (b.querySelector('.who') as HTMLElement).textContent = nm ?? '';
       });
       let pending: Promise<void> = Promise.resolve();
+      let failed = false; // 기록 서버에서 들어온 번호를 못 받아 왔어요 (오래 쉬던 서버는 첫 대답이 늦어요)
       // 들어온 번호 불러오기 (도전 시작을 누르면 이게 끝날 때까지 기다려서 겹친 번호를 놓치지 않아요)
       const loadRoster = () => (pending = (async () => {
         const my = ++seq;
         // 고른 학년·반은 바로 기억해요 (다음 친구가 같은 반이면 다시 누르지 않게)
         if (grade || cls) try { localStorage.setItem(LAST, JSON.stringify({ grade, cls })); } catch { /* 괜찮아요 */ }
-        taken = new Map(); paint(); legend.textContent = ''; hint.textContent = '';
+        taken = new Map(); paint(); legend.textContent = ''; hint.textContent = ''; failed = false;
         if (!grade || !cls || !roster) return;
         legend.textContent = '이 반에서 들어온 번호를 확인하는 중…';
         const m = await roster(grade, cls);
         if (my !== seq || !wrap.isConnected) return;
         taken = m?.names ?? new Map(); paint();
+        failed = !m || m.partial;
         legend.innerHTML = '';
         legend.append(h('i', { class: 'dot' }), !m ? '기록 서버에 닿지 않아 들어온 번호를 보여 주지 못했어요.'
           : m.partial ? `기록 서버에 닿지 않아 이 기기에서 들어온 번호만 보여요 (${taken.size}명).`
@@ -98,6 +100,8 @@ export const EV = {
         const label = ok.textContent;
         ok.textContent = '확인하는 중…';
         await pending.catch(() => { /* 못 불러와도 넘어가요 */ });
+        // 못 받아 왔으면 한 번만 더 물어봐요 (그래도 안 되면 그냥 넘어가요)
+        if (failed && wrap.isConnected) await loadRoster().catch(() => { /* 넘어가요 */ });
         if (!wrap.isConnected) return;
         ok.textContent = label;
         try { localStorage.setItem(LAST, JSON.stringify({ grade, cls })); } catch { /* 괜찮아요 */ }
