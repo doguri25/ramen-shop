@@ -20,6 +20,10 @@ const PI = Math.PI;
 const V = (x = 0, y = 0, z = 0) => new THREE.Vector3(x, y, z);
 // 이만큼(세상 길이) 넘게 튀어나온 주둥이·부리·코는 고개를 숙여 먹어요 (펠리컨·악어·코끼리)
 const LONG_SNOUT = 0.12;
+const WALL_Z = -1.75; // 문이 달린 뒷벽
+// 나갈 때 문 여는 손님: 문 가운데에서 왼쪽으로 x만큼 떨어져 서서(문짝이 쓸고 지나가는 자리 밖), 문을 open(0~1)만큼 당기는 동안
+// back만큼 뒤로 물러서요. gap: 얼굴 앞과 벽 사이 틈. snoutTurn: 고개를 옆으로 돌린 긴 주둥이가 앞으로 나오는 비율
+const PULL = { x: -0.8, back: [0, 0.2], open: 0.33, dur: 0.85, snoutTurn: 0.825, gap: 0.06 } as const;
 const POT_SPOT_Z = -0.02, POT_SPOT_Z2 = -0.1; // 냄비째 내어 줄 때 냄비 자리: 혼자 온 손님, 두 손님 (그릇은 -0.24)
 type View = 'guest' | 'pot' | 'door' | 'wide' | 'serve' | 'eat' | 'eat2';
 const VIEWS: Record<View, { pos: [number, number, number]; look: [number, number, number]; focus: number; range: number; dof: number }> = {
@@ -249,6 +253,19 @@ export class Stage {
     const gs = this.guests.slice();
     this.props.forEach((p) => tween(0.3, (k) => p.scale.setScalar(Math.max(0.01, 1 - k))));
     for (const b of this.bowls) tween(0.35, (k) => b.scale.setScalar(Math.max(0.01, 1 - k)));
+    // 문은 가게 안쪽으로 열려요. 문에 가장 가까이 앉은 손님이 손잡이 쪽(문짝이 쓸고 지나가는 자리 밖)에 서서
+    // 손잡이를 당겨 열고, 같이 온 친구는 내려선 자리에서 기다렸다가 따라 나가요
+    const D = this.shop.doorPos;
+    const opener = gs.reduce((a, b) => (b.root.position.x > a.root.position.x ? b : a), gs[0]);
+    let opened = () => { /* 문이 열리면 불러요 */ };
+    const doorOpened = new Promise<void>((r) => { opened = r; });
+    // 문간으로 나가는 길: 벽과 문틀에서 조금 떨어져 걷다가 비스듬히 문간 가운데로 들어가요
+    // (활짝 열린 문짝 쪽으로 똑바로 걸어가면 긴 주둥이가 문짝에 닿아요)
+    const goOut = async (ch: Chibi) => {
+      await this.walkTo(ch, V(D.x - 0.3, 0, D.z + 0.13));
+      await this.walkTo(ch, V(D.x - 0.08, 0, D.z - 0.13));
+      await this.walkTo(ch, this.shop.doorOut.clone().add(V(0, 0, -0.2)));
+    };
     await Promise.all(gs.map(async (ch, i) => {
       await wait(i * 0.3);
       ch.bounce = 0; ch.talking = false; ch.manual = false; ch.chewing = false;
@@ -258,13 +275,60 @@ export class Stage {
       const p0 = ch.root.position.clone();
       await tween(0.4, (k) => { ch.root.position.y = lerp(p0.y, LEG, k) + Math.sin(k * PI) * 0.2; ch.root.position.z = lerp(p0.z, p0.z - 0.3, k); });
       ch.seated = false;
-      // 문은 안쪽으로 열려서, 손님이 문 앞에 서기 전에 미리 열어 둬요 (문짝이 손님을 뚫고 지나가지 않게)
-      if (i === 0) { this.shop.openDoor(true); sfx.bell(); this.swingBell(); }
-      await this.walkTo(ch, this.shop.doorPos.clone().add(V(0, 0, 0.1)));
-      await this.walkTo(ch, this.shop.doorOut.clone().add(V(0, 0, -0.2)));
+      if (ch === opener) {
+        this.setView('door', 1.3); // 들어올 때처럼 문 쪽을 봐요
+        await this.pullDoor(ch);
+        opened();
+      } else {
+        await this.turnTo(ch, Math.atan2(D.x - ch.root.position.x, D.z - ch.root.position.z));
+        await doorOpened;
+        await wait(0.6 + 0.3 * i);
+      }
+      await goOut(ch);
     }));
     this.shop.openDoor(false);
     this.clearGuests();
+  }
+
+  // 손잡이를 잡고 당겨서 문을 열어요. 문짝이 다가오는 만큼 뒤로 물러서고, 조금 열리면 손을 놓아요 (나머지는 문이 스르르 열려요)
+  private async pullDoor(ch: Chibi) {
+    const P = PULL;
+    const sc = ch.root.scale.x;
+    // 문을 바라보고 서요. 주둥이가 벽에 닿지 않을 만큼 떨어져요 (주둥이가 긴 손님은 고개를 옆으로 돌려서 덜 떨어져도 돼요)
+    const longSnout = ch.faceReach * sc >= LONG_SNOUT;
+    const ext = Math.max(HR, (HR + ch.faceReach) * (longSnout ? P.snoutTurn : 1)) * sc + P.gap;
+    const at = V(this.shop.doorPos.x + P.x, 0, WALL_Z + ext);
+    // 문 앞으로 가서 문 쪽으로 똑바로 몇 걸음 (그래서 서면 이미 문을 보고 있어요. 제자리에서 돌다가 주둥이가 벽을 쓸지 않게)
+    await this.walkTo(ch, at.clone().add(V(0, 0, 0.3)));
+    ch.manual = true; // 여기부터는 팔과 고개를 무대가 맡아요
+    ch.look = longSnout ? V(at.x - 2, LEG + 1.9 * sc, at.z - 0.5) : null; // 주둥이가 긴 손님은 고개를 문 반대쪽 위로 살짝 돌려요
+    await this.walkTo(ch, at);
+    const hand = 0; // 왼손(문 쪽 손)으로 잡아요
+    const knob = this.shop.knobWorld();
+    const into = V();
+    const grip = () => {
+      this.shop.knobWorld(knob);
+      const a = this.shop.doorAngle();
+      into.set(-Math.sin(a), 0, -Math.cos(a)); // 손끝은 문짝 쪽
+      ch.setHandWorld(hand, knob, into);
+    };
+    const h0 = ch.handWorld(hand);
+    await tween(0.35, (k) => { this.shop.knobWorld(knob); ch.setHandWorld(hand, h0.clone().lerp(knob, k), V(0, 0, -1)); }, { ease: ease.inOutCubic });
+    grip();
+    await wait(0.15);
+    sfx.door(); sfx.bell(); this.swingBell();
+    const p = ch.root.position, g0 = p.clone();
+    await tween(P.dur, (k) => {
+      this.shop.holdDoor(P.open * k);
+      p.set(g0.x + P.back[0] * k, g0.y, g0.z + P.back[1] * k);
+      grip();
+    }, { ease: ease.inOutCubic });
+    // 손을 문짝에서 떼어 몸 쪽으로 거두고 나면 문이 마저 열려요
+    const k0 = knob.clone(), rest = ch.toWorld(V(-0.2, 0.45, 0.15));
+    await tween(0.25, (k) => ch.setHandWorld(hand, k0.clone().lerp(rest, 0.6 * k), into));
+    this.shop.openDoor(true);
+    ch.manual = false;
+    ch.look = null;
   }
 
   clearGuests() {

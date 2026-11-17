@@ -78,7 +78,8 @@ export function makeShop() {
   mesh(boxG(0.91, 2.18, 0.05), M('#B5793F', { noise: 1.5 }), [0, 1.09, 0], 1, [0, 0, 0], leaf);
   mesh(boxG(0.72, 0.85, 0.06), M('#DDEFFA', { flat: 0.6, rim: 0, spec: 0.3 }), [0, 1.55, 0.01], 1, [0, 0, 0], leaf);
   for (const x of [-0.12, 0.12]) mesh(boxG(0.03, 0.85, 0.07), M('#9A6232'), [x, 1.55, 0.01], 1, [0, 0, 0], leaf);
-  mesh(sphereG(0.04), M('#E7B84E', { spec: 0.7 }), [-0.36, 1.05, 0.05], 1, [0, 0, 0], leaf);
+  // 손잡이: 손님(키가 작은 동물들)이 손을 뻗어 잡을 수 있는 높이
+  const knob = mesh(sphereG(0.04), M('#E7B84E', { spec: 0.7 }), [-0.36, 0.88, 0.05], 1, [0, 0, 0], leaf);
   // 문 위 천(노렌): 진짜 천처럼 매달려 흔들려요. 문짝이 열리면서 밀고, 문이 열릴 때 들어오는 바람에 펄럭여요
   const noren = new Noren(wc('#FFFFFF', { map: tex(norenCanvas()), rim: 0, side: THREE.DoubleSide, transparent: true }), new THREE.Vector3(doorX, 1.95, -1.58), 1.0, 0.65, -1.64);
   noren.meshes.forEach((m) => { m.userData.noBake = true; root.add(m); });
@@ -219,6 +220,10 @@ export function makeShop() {
     doorOut: new THREE.Vector3(doorX, 0, -2.2),
     seat: (i: number, n: number) => new THREE.Vector3(n === 1 ? 0 : (i ? 0.42 : -0.42), 0.56, -0.68),
     openDoor(v: boolean) { doorTarget = v ? 1 : 0; if (v) noren.puff(); },
+    // 손님이 손잡이를 당기는 동안: 문 열린 정도(0~1)를 직접 정해요
+    holdDoor(k: number) { doorOpen = doorTarget = k; },
+    knobWorld: (out = new THREE.Vector3()) => knob.getWorldPosition(out),
+    doorAngle: () => hinge.rotation.y,
     update(dt: number, heads: Ball[] = [], cloth = true) {
       t += dt;
       cloudT.offset.x = (cloudT.offset.x + dt * 0.006) % 1;
