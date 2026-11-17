@@ -9,6 +9,11 @@ import './event.css';
 const root = () => document.getElementById('ui')!;
 const mount = <T extends HTMLElement>(el: T) => { root().appendChild(el); return el; };
 const LAST = 'event-last-class';
+// 판을 하다가 멈춘 학생 (잠깐 멈추기, 창을 닫음, 새로 고침 모두). 다음에 들어오는 칸에 학년·반·번호·이름을 그대로 채워 둬요
+const PAUSED = 'event-paused';
+export function rememberPaused(w: Who | null) {
+  try { if (w) localStorage.setItem(PAUSED, JSON.stringify(w)); else localStorage.removeItem(PAUSED); } catch { /* 괜찮아요 */ }
+}
 const NAME_RE = /^[가-힣a-zA-Z0-9]{1,8}$/;
 export const whoText = (w: Who) => `${w.grade}학년 ${w.cls}반 ${w.num}번 ${w.name}`;
 const medal = (n: number) => (n <= 3 ? h('span', { class: 'gm', html: icon('medal' + n, 30) }) : String(n));
@@ -30,13 +35,19 @@ export const EV = {
   // 돌려주는 takenBy: 고른 번호에 먼저 들어온 친구의 가린 이름(김○○). 없으면 null
   login(roster?: (grade: number, cls: number) => Promise<{ names: Map<number, string>; partial: boolean } | null>, prefillName = ''): Promise<{ who: Who; takenBy: string | null } | null> {
     return new Promise((res) => {
-      let last: Partial<Who> = {};
+      let last: Partial<Who> = {}, paused: Partial<Who> = {};
       try { last = JSON.parse(localStorage.getItem(LAST) || '{}'); } catch { /* 처음 */ }
-      let grade = last.grade ?? 0, cls = last.cls ?? 0, num = 0, seq = 0;
+      try { paused = JSON.parse(localStorage.getItem(PAUSED) || '{}'); } catch { /* 없어요 */ }
+      // 하다가 멈춘 친구가 있으면 그 친구의 학년·반·번호·이름을 채워 둬요 (번호만 다시 고르러 온 때는 빼고)
+      const resume = !prefillName && paused.grade && paused.cls && paused.num && paused.name ? (paused as Who) : null;
+      let grade = resume?.grade ?? last.grade ?? 0, cls = resume?.cls ?? last.cls ?? 0, num = resume?.num ?? 0, seq = 0;
       let taken = new Map<number, string>();
       const wrap = h('div', { class: 'modal-wrap fade-in' });
       const name = h('input', { class: 'inp', maxLength: 8, placeholder: '이름 (예: 김민수)', style: 'flex:1;min-width:200px', autocomplete: 'off' }) as HTMLInputElement;
-      name.value = prefillName; // 번호만 다시 고르러 왔을 때는 쓴 이름을 그대로 둬요
+      name.value = prefillName || resume?.name || ''; // 번호만 다시 고르러 왔을 때는 쓴 이름을 그대로 둬요
+      // 채워 둔 걸 알려 줘요. 다른 친구가 번호나 이름을 바꾸면 사라져요
+      const again = h('div', { class: 'ev-hint name-hint ev-again' }, resume ? `하다가 멈춘 ${resume.num}번 ${resume.name} 친구의 번호와 이름을 채워 두었어요. 이어서 하려면 '도전 시작'을 눌러요. 다른 친구라면 번호와 이름을 고쳐 써요.` : '');
+      const stillResume = () => { if (resume && (grade !== resume.grade || cls !== resume.cls || num !== resume.num || name.value.replace(/\s+/g, '') !== resume.name)) again.textContent = ''; };
       const legend = h('div', { class: 'ev-legend' });
       // 번호 버튼: 이미 들어온 번호는 초록색으로 칠하고 가린 이름(김○○)을 작게 적어요
       const hint = h('div', { class: 'ev-hint name-hint' });
@@ -51,6 +62,7 @@ export const EV = {
           hint.textContent = nm ? `${i}번은 ${nm} 친구가 들어온 번호예요. 나라면 처음과 똑같이 이름을 써요.` : '';
           check();
         } }, h('span', { class: 'n' }, String(i)), h('span', { class: 'who' })) as HTMLButtonElement;
+        if (i === num) b.classList.add('on');
         numBtns.push(b); nums.appendChild(b);
       }
       const paint = () => numBtns.forEach((b, k) => {
@@ -90,6 +102,7 @@ export const EV = {
         summary.append(...[[grade, '학년'], [cls, '반'], [num, '번']].map(([v, u]) => h('span', { class: v ? 'on' : '' }, v ? `${v}${u}` : `?${u}`)), h('span', { class: n ? 'on' : '' }, n || '이름'));
         warn.textContent = n && !NAME_RE.test(n) ? '이름은 한글·영어·숫자로 8글자까지 써 주세요.' : '';
         ok.disabled = !(grade && cls && num && NAME_RE.test(n));
+        stillResume();
       };
       name.addEventListener('input', () => check());
       ok.addEventListener('click', async () => {
@@ -115,7 +128,7 @@ export const EV = {
         step(1, '학년', 'g', pad(6, 6, grade, (v) => { grade = v; check(); loadRoster(); })),
         step(2, '반', 'c', pad(15, 15, cls, (v) => { cls = v; check(); loadRoster(); })),
         step(3, '번호', 'n', nums, legend),
-        step(4, '이름', 'm', name, hint, warn),
+        step(4, '이름', 'm', name, hint, warn, again),
         h('div', { class: 'actions ev-login-acts' }, summary, ok)));
       mount(wrap);
       check();

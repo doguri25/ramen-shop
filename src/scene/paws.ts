@@ -7,7 +7,9 @@ import { cylG, M, mesh, sphereG, torusG } from './geo';
 const FUR = '#F3DFC1', PAD = '#E9A0A8', SLEEVE = '#C2560E', CUFF = '#FFF4E6', APRON = '#FFF4E6';
 const UP = new THREE.Vector3(0, 1, 0);
 const V = (x = 0, y = 0, z = 0) => new THREE.Vector3(x, y, z);
-const UPPER = 0.3, FORE = 0.29; // 위팔·아래팔 길이
+const UPPER = 0.3, FORE = 0.29; // 위팔·아래팔 길이 (다 펴면)
+const R_SHOULDER = 0.054, R_ELBOW = 0.048, R_WRIST = 0.043; // 소매 굵기
+const BEND = 1.015; // 손이 가까울 때 팔 길이 = 어깨~손목 거리 × BEND (팔꿈치가 살짝만 굽어요)
 
 export class Paw {
   paw = new THREE.Group();
@@ -34,11 +36,12 @@ export class Paw {
     this.paw.add(this.hold);
     this.hold.position.set(0, 0.02, -0.07);
     const sl = M(SLEEVE, { noise: 1.6 });
-    this.upper = mesh(cylG(0.045, 0.052, 1, 16), sl, [0, 0, 0], 1, [0, 0, 0], parent);
-    this.fore = mesh(cylG(0.04, 0.045, 1, 16), sl, [0, 0, 0], 1, [0, 0, 0], parent);
-    this.elbow = mesh(sphereG(0.046, 14, 10), sl, [0, 0, 0], 1, [0, 0, 0], parent);
-    this.ball = mesh(sphereG(0.054, 14, 10), sl, [0, 0, 0], 1, [0, 0, 0], parent);
-    this.cuff = mesh(torusG(0.04, 0.015, 8, 18), M(CUFF), [0, 0, 0], 1, [0, 0, 0], parent);
+    // 소매는 어깨에서 손목까지 매끄럽게 가늘어져요 (팔꿈치에서 굵기가 툭 바뀌지 않게, 팔꿈치 공도 같은 굵기)
+    this.upper = mesh(cylG(R_SHOULDER, R_ELBOW, 1, 16), sl, [0, 0, 0], 1, [0, 0, 0], parent);
+    this.fore = mesh(cylG(R_ELBOW, R_WRIST, 1, 16), sl, [0, 0, 0], 1, [0, 0, 0], parent);
+    this.elbow = mesh(sphereG(R_ELBOW, 14, 10), sl, [0, 0, 0], 1, [0, 0, 0], parent);
+    this.ball = mesh(sphereG(R_SHOULDER, 14, 10), sl, [0, 0, 0], 1, [0, 0, 0], parent);
+    this.cuff = mesh(torusG(0.043, 0.015, 8, 18), M(CUFF), [0, 0, 0], 1, [0, 0, 0], parent);
   }
   // 어깨에서 멀면 몸을 앞으로 기울여요 (그 만큼을 돌려줘요)
   reachLean() {
@@ -53,11 +56,12 @@ export class Paw {
     const toS = S.clone().sub(this.cur);
     const fdir = toS.clone().normalize(); // 앞발 → 어깨 쪽
     const W = this.cur.clone().addScaledVector(fdir, 0.055);
-    // 두 마디 팔 (닿지 않으면 만화처럼 조금 늘어나요)
+    // 두 마디 팔. 손이 가까우면 팔이 그만큼 짧아져서 팔꿈치가 크게 꺾이지 않고 살짝만 굽어요
+    // (닿지 않으면 만화처럼 조금 늘어나요)
     const SW = W.clone().sub(S);
     const d = Math.max(1e-4, SW.length());
-    const k = Math.max(1, d / (UPPER + FORE));
-    const a = UPPER * k, b = FORE * k;
+    const len = Math.max(d, Math.min(UPPER + FORE, d * BEND));
+    const a = len * (UPPER / (UPPER + FORE)), b = len * (FORE / (UPPER + FORE));
     const ax = SW.clone().divideScalar(d);
     const x = (a * a - b * b + d * d) / (2 * d);
     const h = Math.sqrt(Math.max(0, a * a - x * x));

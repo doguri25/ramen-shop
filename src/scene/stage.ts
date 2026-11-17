@@ -1118,29 +1118,54 @@ export class Stage {
     };
     if (longSnout) await this.eatHeadDown(ch, B, surf, pickTop, onSlurp);
     else {
-    // 젓가락 끝을 tip에 대요. 손이 어깨에서 너무 멀면(팔이 길게 늘어나 보이면) 손을 젓가락 줄을 따라 어깨 쪽으로 옮겨요.
-    //  - 손이 끝 쪽으로 가야 하면 젓가락 끝 가까이를 쥐어요 (젓가락이 손 뒤로 삐져나와요)
-    //  - 손이 뒤쪽으로 가야 하면 젓가락을 조금 길게 늘여요 (두 배까지)
+    // 젓가락 끝을 tip에 대요. 손이 어깨에서 너무 멀면(팔이 길게 늘어나 보이면)
+    //  1) 먼저 젓가락을 어깨 → 끝 방향 쪽으로 기울여요 (손이 어깨와 끝 사이로 들어와요. 입에 가져갈 때는 옆에서 들어오는 모양)
+    //  2) 그래도 멀면 젓가락을 길게 늘여요 (두 배까지). 그릇·냄비 위에서는 손이 늘 테두리보다 위에 있어요
     // (숟가락도 같은 방법으로, 늘이는 건 1.4배까지)
     const MAXR = 0.5 * sc;
+    // 그릇·냄비 위에서는 손이 테두리보다 높아야 해요 (앞발이 음식에 빠져 보이지 않게)
+    // (그릇 무리에는 김도 들어 있어서 크기 대신 그릇 안쪽 모양으로 테두리를 재요)
+    const vc = food.localToWorld(V(0, B.box.prof.rimY, 0)), rimY = vc.y;
+    const rimR = food.localToWorld(V(B.box.prof.rimR, B.box.prof.rimY, 0)).distanceTo(vc) + 0.02, PAW = 0.07 * sc;
+    const aboveRim = (hp: THREE.Vector3) => Math.hypot(hp.x - vc.x, hp.z - vc.z) > rimR + PAW || hp.y > rimY + PAW;
+    // 입으로 가져갈 때 옆에서 들어오는 방향 (오른손 쪽에서 입 쪽으로, 살짝 위로)
+    const fromSide = () => V(-0.9, 0.25, -0.35).normalize().applyQuaternion(ch.root.quaternion);
     const placeTip = (tip: THREE.Vector3, aimW: THREE.Vector3, reach = 0.23, tool: THREE.Object3D | null = ch.chop, maxExt = 2) => {
-      const a = aimW.clone().normalize();
+      let a = aimW.clone().normalize();
       const L0 = reach * sc;
       let L = L0;
       if (tool) {
         const S = ch.toWorld(ch.arms[1].shoulder);
         const d = tip.clone().sub(S);
-        if (d.clone().addScaledVector(a, -L0).length() > MAXR) {
-          const lo = L0 * 0.4, hi = L0 * maxExt;
-          const b = d.dot(a), disc = b * b - (d.lengthSq() - MAXR * MAXR);
-          if (disc >= 0) {
-            const r = Math.sqrt(disc), a0 = Math.max(lo, b - r), a1 = Math.min(hi, b + r);
-            L = a0 <= a1 ? Math.min(a1, Math.max(a0, L0)) : Math.min(hi, Math.max(lo, b));
-          } else L = Math.min(hi, Math.max(lo, b));
+        const handOf = (v: THREE.Vector3, l: number) => tip.clone().addScaledVector(v, -l);
+        const good = (v: THREE.Vector3, l: number) => { const hp = handOf(v, l); return hp.distanceTo(S) <= MAXR && aboveRim(hp); };
+        if (!good(a, L0)) {
+          // 찾는 차례: 젓가락 길이 그대로 → 조금씩 길게(그만큼까지), 방향은 원래 방향 → 어깨 쪽 / 옆에서 들어오는 쪽으로 조금씩
+          const base = a.clone(), goals = [d.clone().normalize(), fromSide()];
+          const lens = [1, 1.2, 1.4, 1.6, 1.8, 2].filter((k) => k <= maxExt + 1e-6).map((k) => k * L0);
+          let best: [THREE.Vector3, number] | null = null;
+          search: for (const l of lens) {
+            for (let i = 0; i <= 12; i++) {
+              for (const g of goals) {
+                const v = base.clone().lerp(g, i / 12).normalize();
+                if (good(v, l)) { best = [v, l]; break search; }
+              }
+            }
+          }
+          if (best) [a, L] = best;
+          else {
+            // 어디서도 안 되면: 손이 그릇 속에 들어가지 않는 자리 가운데 어깨에 가장 가까운 곳 (팔이 조금 늘어나요)
+            let bd = Infinity;
+            for (const l of lens) for (let i = 0; i <= 12; i++) for (const g of goals) {
+              const v = base.clone().lerp(g, i / 12).normalize(), hp = handOf(v, l);
+              const cost = hp.distanceTo(S) + (aboveRim(hp) ? 0 : 10);
+              if (cost < bd) { bd = cost; a = v; L = l; }
+            }
+          }
         }
+        // 젓가락은 손 안으로 밀어 넣지 않아요 (손가락에 묻혀 보이지 않게). 필요하면 길게만 늘여요
         const s0 = Math.max(0.01, tool.scale.x);
-        if (L >= L0) { tool.scale.z = s0 * (L / L0); tool.position.z = 0; }
-        else { tool.scale.z = s0; tool.position.z = (L - L0) / sc; }
+        tool.scale.z = s0 * (L / L0); tool.position.z = 0;
       }
       ch.setHandWorld(1, tip.clone().addScaledVector(a, -L), a);
     };

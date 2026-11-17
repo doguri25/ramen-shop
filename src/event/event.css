@@ -160,3 +160,5 @@
 .ev-rank header { flex-wrap: wrap; }
 .ev-rank header h2 { white-space: nowrap; }
 .ev-rank header .icon-btn { flex-shrink: 0; }
+/* 하다가 멈춘 친구의 번호·이름을 채워 뒀다는 안내 */
+.ev-login .ev-again { background: #E8F0FE; color: #1A4FA3; border-radius: 10px; padding: 8px 12px; margin-top: 6px; }

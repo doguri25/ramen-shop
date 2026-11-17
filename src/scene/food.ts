@@ -441,7 +441,8 @@ export function makeSpoon() {
   const cup = mesh(new THREE.SphereGeometry(0.032, 16, 8, 0, PI * 2, PI / 2, PI / 2), steel, [0, 0.012, 0.2], [1, 0.45, 1.35], [0, 0, 0], g);
   cup.userData.ownGeo = true;
   (cup.material as THREE.ShaderMaterial).side = THREE.DoubleSide;
-  mesh(boxG(0.012, 0.005, 0.16), steel, [0, 0.008, 0.09], 1, [0.12, 0, 0], g);
+  // 손잡이 끝이 주먹 뒤로 조금 나오게 길게
+  mesh(boxG(0.012, 0.005, 0.21), steel, [0, 0.008, 0.065], 1, [0.12, 0, 0], g);
   const liquid = mesh(new THREE.CircleGeometry(0.028, 16), M('#E9A15A', { rim: 0, flat: 0.3, spec: 0.5 }), [0, 0.006, 0.2], [1, 1.3, 1], [-PI / 2, 0, 0], g);
   liquid.userData.ownGeo = true;
   liquid.name = 'liquid';

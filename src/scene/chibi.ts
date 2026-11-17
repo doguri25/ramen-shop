@@ -6,6 +6,7 @@ import { boxG, capsuleG, coneG, cylG, group, M, mesh, shellG, sphereG, torusG, t
 
 export const HR = 0.34; // 머리 반지름
 const ARM_MAX = 0.52; // 팔(어깨~손) 길이: 이보다 멀면 곧게 펴지고 조금 늘어나요
+const CHOP_X = -0.012, CHOP_Y = -0.016; // 젓가락을 쥐는 자리 (손 기준)
 const PI = Math.PI;
 const FRONT = PI / 2;
 const INK = '#3A2A22';
@@ -124,8 +125,8 @@ export class Chibi {
       const rest = V(side * 0.3, 0.26, 0.08);
       this.arms.push({ side, shoulder, upper, fore, elbow, joint, cuff, hand, cur: rest.clone(), target: rest.clone(), aim: null, aimCur: V(0, -0.4, 1).normalize() });
     }
-    // 젓가락 (오른손)
-    for (const dx of [-0.011, 0.011]) mesh(cylG(0.0045, 0.0065, 0.21, 6), M('#B9763E', { spec: 0.4 }), [dx, 0.004, 0.125], 1, [PI / 2, 0, dx * 1.4], this.chop);
+    // 젓가락 (오른손): 엄지와 손가락 사이로 지나가게 엄지 쪽·손가락 아래로 조금 비켜 쥐고, 윗동이 주먹 뒤로 삐져나와요
+    for (const dx of [-0.011, 0.011]) mesh(cylG(0.0045, 0.0065, 0.28, 6), M('#B9763E', { spec: 0.4 }), [CHOP_X + dx, CHOP_Y, 0.09], 1, [PI / 2, 0, dx * 1.4], this.chop);
     this.chop.visible = false;
     this.arms[1].hand.add(this.chop);
     // 머리
@@ -800,7 +801,7 @@ export class Chibi {
   toLocal(w: THREE.Vector3) { return this.body.worldToLocal(w.clone()); }
   toWorld(l: THREE.Vector3) { return this.body.localToWorld(l.clone()); }
   mouthWorld() { return this.head.localToWorld(V(0, -0.15, HR * 0.92)); }
-  chopTipWorld() { return this.chop.localToWorld(V(0, 0.004, 0.23)); }
+  chopTipWorld() { return this.chop.localToWorld(V(CHOP_X, CHOP_Y, 0.23)); }
   handWorld(side: number) { return this.arms[side].hand.getWorldPosition(V()); }
   showChop(on: boolean) { this.chop.visible = on; }
 

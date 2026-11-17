@@ -9,7 +9,7 @@ import { CUS_56, CUSTOMERS_56 } from './data/customers56';
 import { CUS_14, CUSTOMERS_14 } from './data/customers14';
 import { EVENT } from './event/flag';
 import { bandOf, keyOf, maskName, rank, type Best, type SendResult, type Who } from './event/rank';
-import { EV, whoText } from './event/screens';
+import { EV, rememberPaused, whoText } from './event/screens';
 import { ING, INGREDIENTS } from './data/ingredients';
 import { TUTOR_INTRO } from './data/text';
 import type { Customer, Owner, Picks, RamenRecord, Step } from './data/types';
@@ -345,7 +345,8 @@ export class App {
       if (extra) lines.splice(1, 0, extra);
       await UI.reaction(c, shown, heart, (i, w) => say(i, w, lines), lines, r.stars);
       this.stage.talk(0, false);
-      const canRetry = !tutorial && attempt === 0 && r.stars === 1;
+      // 행사용은 대회라 다시 끓일 기회가 없어요
+      const canRetry = !tutorial && !EVENT && attempt === 0 && r.stars === 1;
       const choice = await UI.note(c, picks, r, heart, canRetry, tutorial, !heart && isBackward(name));
       this.serving = false;
       if (choice === 'retry') {
@@ -542,8 +543,11 @@ export class App {
       this.owner = o;
       this.fixOrder(o);
       this.records = await db.records(o.id);
+      // 하다가 멈추거나 창을 닫아도 다음에 학년·반·번호·이름이 채워져 있게 기억해 둬요 (판을 끝내면 지워요)
+      rememberPaused(w);
       const end = await this.playRun(o);
       if (end === 'stop') return 'home';
+      rememberPaused(null);
       // 판 끝: 마지막 그릇 기록을 보내 두고(늦어도 6초) 내 결과만 보여 줘요. 랭킹은 선생님 화면에서만 봐요
       const sent = await Promise.race([this.sending ?? Promise.resolve(null), sleep(6000).then(() => null)]);
       const ev = o.ev!;

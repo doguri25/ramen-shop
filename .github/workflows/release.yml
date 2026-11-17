@@ -19,6 +19,8 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run build
+      # 행사용(어깨동무 마음 요리사 도전)도 같은 묶음의 event/ 에 넣어요
+      - run: npm run build:event
 
       - name: 배포 파일 묶기
         run: |
