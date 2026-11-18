@@ -122,16 +122,46 @@ export class Stage {
     this.cam.updateProjectionMatrix();
   }
 
+  // 카메라 자리 = 장면마다 정한 자리(camBase) + 다가가기(dolly).
+  // 손이 팔 길이보다 먼 곳(옆 그릇, 손님 앞에 내려놓는 냄비)을 잡을 때 팔이 고무처럼 늘어나 보이지 않게,
+  // 카메라(내 몸)가 그쪽으로 수평으로 다가가요. 보는 방향은 그대로라 화면이 그쪽으로 조금 당겨져 보여요
+  private camBase = new THREE.Vector3(...VIEWS.guest.pos);
+  private dolly = V();
+  private dollyWant = V();
+  dollyOn = true;
+  focusShift = 0; // 다가간 만큼 초점 거리를 줄여요
+  private placeCam() {
+    this.cam.position.copy(this.camBase).add(this.dolly);
+    this.cam.lookAt(this.look.clone().add(this.dolly));
+  }
+  // 손이 닿아야 하는 곳까지 어깨에서 REACH 안에 들어오려면 카메라가 수평으로 얼마나 다가가야 하나
+  private reachDolly(out: THREE.Vector3) {
+    out.set(0, 0, 0);
+    if (!this.dollyOn || !this.pawsOn || !this.paws.group.visible) return out;
+    const REACH = 0.42, MAXD = 0.85;
+    this.cam.updateMatrixWorld();
+    let best = 0;
+    for (const p of [this.paws.L, this.paws.R]) {
+      const W = this.paws.group.localToWorld(p.target.clone());
+      const S = this.paws.group.localToWorld(p.shoulder.clone()).sub(this.dolly); // 다가가기 전 어깨 자리
+      const dx = W.x - S.x, dy = W.y - S.y, dz = W.z - S.z, a = Math.hypot(dx, dz);
+      if (a < 1e-4) continue;
+      const h = a - (Math.abs(dy) < REACH ? Math.sqrt(REACH * REACH - dy * dy) : 0);
+      if (h > best) { best = h; out.set(dx / a, 0, dz / a).multiplyScalar(Math.min(h, MAXD)); }
+    }
+    return out;
+  }
+
   setView(v: View, dur = 0.9): Promise<void> {
     this.view = v;
-    const from = this.cam.position.clone(), fromL = this.look.clone();
+    const from = this.camBase.clone(), fromL = this.look.clone();
     const to = new THREE.Vector3(...VIEWS[v].pos), toL = new THREE.Vector3(...VIEWS[v].look);
     const d0 = { ...this.dof }, d1 = { focus: VIEWS[v].focus, range: VIEWS[v].range, amount: VIEWS[v].dof };
-    if (dur <= 0) { this.cam.position.copy(to); this.look.copy(toL); this.cam.lookAt(this.look); Object.assign(this.dof, d1); return Promise.resolve(); }
+    if (dur <= 0) { this.camBase.copy(to); this.look.copy(toL); this.placeCam(); Object.assign(this.dof, d1); return Promise.resolve(); }
     return tween(dur, (k) => {
-      this.cam.position.lerpVectors(from, to, k);
+      this.camBase.lerpVectors(from, to, k);
       this.look.lerpVectors(fromL, toL, k);
-      this.cam.lookAt(this.look);
+      this.placeCam();
       this.dof.focus = lerp(d0.focus, d1.focus, k); this.dof.range = lerp(d0.range, d1.range, k); this.dof.amount = lerp(d0.amount, d1.amount, k);
     }, { ease: ease.inOutCubic });
   }
@@ -303,7 +333,7 @@ export class Stage {
     ch.manual = true; // 여기부터는 팔과 고개를 무대가 맡아요
     ch.look = longSnout ? V(at.x - 2, LEG + 1.9 * sc, at.z - 0.5) : null; // 주둥이가 긴 손님은 고개를 문 반대쪽 위로 살짝 돌려요
     await this.walkTo(ch, at);
-    const hand = 0; // 왼손(문 쪽 손)으로 잡아요
+    const hand = 0; // 문 쪽 손(오른손)으로 잡아요
     const knob = this.shop.knobWorld();
     const into = V();
     const grip = () => {
@@ -1110,17 +1140,17 @@ export class Stage {
     // 왼손은 그릇 옆을 살짝 잡아요. 뜨거운 냄비는 만지지 않고 카운터에 얹어 둬요
     if (pot) {
       // 쉬는 손은 냄비 옆 카운터에 얹어요. 같이 먹는 냄비라 손이 냄비 쪽에 있으면, 손끝까지 냄비 밖에 오도록 밀어 두고 손끝도 바깥을 향해요
-      const want = ch.toWorld(V(-0.32, 0.5, 0.46));
+      const want = ch.toWorld(V(0.32, 0.5, 0.46));
       const c = bowl.position, out = V(want.x - c.x, 0, want.z - c.z);
       const minR = POT_R + 0.16;
-      if (out.length() >= minR) ch.setHand(0, V(-0.32, 0.5, 0.46), V(0.4, 0, 1));
+      if (out.length() >= minR) ch.setHand(1, V(0.32, 0.5, 0.46), V(-0.4, 0, 1));
       else {
-        const dir = out.lengthSq() > 1e-6 ? out.normalize() : V(-1, 0, 0);
-        ch.setHandWorld(0, V(c.x, want.y, c.z).addScaledVector(dir, minR), dir.clone().add(V(0, -0.2, 0)));
+        const dir = out.lengthSq() > 1e-6 ? out.normalize() : V(1, 0, 0);
+        ch.setHandWorld(1, V(c.x, want.y, c.z).addScaledVector(dir, minR), dir.clone().add(V(0, -0.2, 0)));
       }
     } else {
-      const lh = bowl.localToWorld(B.grips[0].clone().add(V(0, 0.01, 0)));
-      ch.setHandWorld(0, lh, V(1, 0.1, 0));
+      const lh = bowl.localToWorld(B.grips[1].clone().add(V(0, 0.01, 0)));
+      ch.setHandWorld(1, lh, V(-1, 0.1, 0));
     }
     // 건더기 하나 고르기: 같이 먹는 냄비는 저마다 자기 쪽에 가까운 건더기 (짝꿍 얼굴 앞으로 팔을 뻗지 않게)
     const pickTop = (): THREE.Object3D | null => {
@@ -1142,13 +1172,13 @@ export class Stage {
     const rimR = food.localToWorld(V(B.box.prof.rimR, B.box.prof.rimY, 0)).distanceTo(vc) + 0.02, PAW = 0.07 * sc;
     const aboveRim = (hp: THREE.Vector3) => Math.hypot(hp.x - vc.x, hp.z - vc.z) > rimR + PAW || hp.y > rimY + PAW;
     // 입으로 가져갈 때 옆에서 들어오는 방향 (오른손 쪽에서 입 쪽으로, 살짝 위로)
-    const fromSide = () => V(-0.9, 0.25, -0.35).normalize().applyQuaternion(ch.root.quaternion);
+    const fromSide = () => V(0.9, 0.25, -0.35).normalize().applyQuaternion(ch.root.quaternion);
     const placeTip = (tip: THREE.Vector3, aimW: THREE.Vector3, reach = 0.23, tool: THREE.Object3D | null = ch.chop, maxExt = 2) => {
       let a = aimW.clone().normalize();
       const L0 = reach * sc;
       let L = L0;
       if (tool) {
-        const S = ch.toWorld(ch.arms[1].shoulder);
+        const S = ch.toWorld(ch.arms[0].shoulder);
         const d = tip.clone().sub(S);
         const handOf = (v: THREE.Vector3, l: number) => tip.clone().addScaledVector(v, -l);
         const good = (v: THREE.Vector3, l: number) => { const hp = handOf(v, l); return hp.distanceTo(S) <= MAXR && aboveRim(hp); };
@@ -1180,10 +1210,10 @@ export class Stage {
         const s0 = Math.max(0.01, tool.scale.x);
         tool.scale.z = s0 * (L / L0); tool.position.z = 0;
       }
-      ch.setHandWorld(1, tip.clone().addScaledVector(a, -L), a);
+      ch.setHandWorld(0, tip.clone().addScaledVector(a, -L), a);
     };
     // 냄비는 테두리가 입 높이에 가까워요. 고개를 조금 더 들고 젓가락을 눕혀야 손이 냄비 속으로 내려가지 않아요
-    const DOWN = V(-0.12, -1, 0.25).normalize(), MOUTH = pot ? V(-0.15, 0.3, -0.94).normalize() : V(-0.15, 0.62, -0.77).normalize();
+    const DOWN = V(0.12, -1, 0.25).normalize(), MOUTH = pot ? V(0.15, 0.3, -0.94).normalize() : V(0.15, 0.62, -0.77).normalize();
     const UP = (pot ? 0.22 : 0.08) + R * 0.6;
     const bites = noodles ? (B.shared ? 2 : 3) : 1;
     for (let b = 0; b < bites; b++) {
@@ -1209,7 +1239,7 @@ export class Stage {
       await tween(0.8, (k) => {
         const e = ease.inOutCubic(k);
         const mouth = ch.mouthWorld();
-        placeTip(dipTip.clone().lerp(mouth.clone().add(V(0.02, -0.03, 0.07 + R)), e), DOWN.clone().lerp(MOUTH, e));
+        placeTip(dipTip.clone().lerp(mouth.clone().add(V(-0.02, -0.03, 0.07 + R)), e), DOWN.clone().lerp(MOUTH, e));
         ch.headExtra.x = -0.05 - UP * k;
         ch.lean = LEAN * (1 - 0.875 * k);
         bundle.hold(ch.chopTipWorld());
@@ -1246,7 +1276,7 @@ export class Stage {
       await tween(0.6, (k) => {
         const e = ease.inOutCubic(k);
         const mouth = ch.mouthWorld();
-        placeTip(tp.clone().lerp(mouth.clone().add(V(0.02, -0.02, 0.06 + R)), e), DOWN.clone().lerp(MOUTH, e));
+        placeTip(tp.clone().lerp(mouth.clone().add(V(-0.02, -0.02, 0.06 + R)), e), DOWN.clone().lerp(MOUTH, e));
         top.position.copy(ch.chopTipWorld()).add(V(0, -0.012, 0));
         ch.lean = LEAN * 0.875 * (1 - 0.857 * k);
         ch.headExtra.x = -0.05 - UP * k;
@@ -1282,11 +1312,11 @@ export class Stage {
     const sc = ch.root.scale.x;
     const noodles = food.getObjectByName('noodles');
     // 오른손도 쉬어요: 그릇이면 양옆을 잡고, 냄비면 냄비 밖 카운터에
-    if (!pot) ch.setHandWorld(1, bowl.localToWorld(B.grips[1].clone().add(V(0, 0.01, 0))), V(-1, 0.1, 0));
+    if (!pot) ch.setHandWorld(0, bowl.localToWorld(B.grips[0].clone().add(V(0, 0.01, 0))), V(1, 0.1, 0));
     else {
-      const want = ch.toWorld(V(0.32, 0.5, 0.46)), c = bowl.position, out = V(want.x - c.x, 0, want.z - c.z), minR = POT_R + 0.16;
-      if (out.length() >= minR) ch.setHand(1, V(0.32, 0.5, 0.46), V(-0.4, 0, 1));
-      else { const dir = out.lengthSq() > 1e-6 ? out.normalize() : V(1, 0, 0); ch.setHandWorld(1, V(c.x, want.y, c.z).addScaledVector(dir, minR), dir.clone().add(V(0, -0.2, 0))); }
+      const want = ch.toWorld(V(-0.32, 0.5, 0.46)), c = bowl.position, out = V(want.x - c.x, 0, want.z - c.z), minR = POT_R + 0.16;
+      if (out.length() >= minR) ch.setHand(0, V(-0.32, 0.5, 0.46), V(0.4, 0, 1));
+      else { const dir = out.lengthSq() > 1e-6 ? out.normalize() : V(-1, 0, 0); ch.setHandWorld(0, V(c.x, want.y, c.z).addScaledVector(dir, minR), dir.clone().add(V(0, -0.2, 0))); }
     }
     const tipW = () => ch.head.localToWorld(V(0, -0.1, HR + ch.faceReach / sc));
     let lean = Math.max(0.05, ch.lean);
@@ -1398,13 +1428,13 @@ export class Stage {
   // 뜨거운 냄비는 들지 않고 숟가락으로 떠 마셔요
   private async sipWithSpoon(ch: Chibi, B: BowlInfo, side: number, placeTip: (tip: THREE.Vector3, aim: THREE.Vector3, reach?: number, tool?: THREE.Object3D | null, maxExt?: number) => void, color: string, onSlurp?: () => void, R = 0) {
     const spoon = makeSpoon();
-    ch.arms[1].hand.add(spoon);
+    ch.arms[0].hand.add(spoon);
     const sl = spoon.getObjectByName('liquid') as THREE.Mesh;
     sl.material = Mu(color, { rim: 0, flat: 0.3, spec: 0.5 });
     spoon.scale.setScalar(0.01);
     await tween(0.25, (k) => spoon.scale.setScalar(Math.max(0.01, k)), { ease: ease.outBack });
     const L = B.liquid;
-    const DOWN = V(-0.1, -1, 0.3).normalize(), MOUTH = V(-0.15, 0.3, -0.94).normalize();
+    const DOWN = V(0.1, -1, 0.3).normalize(), MOUTH = V(0.15, 0.3, -0.94).normalize();
     for (let i = 0; i < 2; i++) {
       const s = B.food.localToWorld(V(side * 0.09 + (Math.random() - 0.5) * 0.03, (L ? L.level : 0) + 0.002, 0.04));
       const lean = 0.05 * Math.max(0.15, 1 - R * 4);
@@ -1417,7 +1447,7 @@ export class Stage {
       ch.look = null;
       await tween(0.6, (k) => {
         const e = ease.inOutCubic(k);
-        placeTip(s.clone().lerp(ch.mouthWorld().add(V(0.02, -0.02, 0.06 + R)), e), DOWN.clone().lerp(MOUTH, e), 0.2, spoon, 1.4);
+        placeTip(s.clone().lerp(ch.mouthWorld().add(V(-0.02, -0.02, 0.06 + R)), e), DOWN.clone().lerp(MOUTH, e), 0.2, spoon, 1.4);
         ch.lean = lean * (1 - 0.875 * k); ch.headExtra.x = -0.05 - (0.22 + R * 0.6) * k;
       }, { ease: ease.linear });
       sfx.slurp();
@@ -1504,6 +1534,12 @@ export class Stage {
 
   update(dt: number) {
     this.t += dt;
+    // 팔이 모자라면 카메라가 다가가요 (천천히 따라가서 멀미 나지 않게)
+    this.reachDolly(this.dollyWant);
+    this.dolly.lerp(this.dollyWant, 1 - Math.exp(-dt * 4.5));
+    if (this.dolly.lengthSq() < 1e-8 && this.dollyWant.lengthSq() === 0) this.dolly.set(0, 0, 0);
+    this.placeCam();
+    this.focusShift = this.dolly.dot(V(0, 0, -1).applyQuaternion(this.cam.quaternion));
     if (Math.abs(this.shift - this.shiftTarget) > 0.5 || this.shift !== 0) {
       this.shift += (this.shiftTarget - this.shift) * Math.min(1, dt * 5);
       this.applyShift();

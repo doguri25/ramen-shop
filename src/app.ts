@@ -144,7 +144,7 @@ export class App {
       shared.uTime.value += dt;
       this.stage.update(dt);
       const d = this.stage.dof;
-      this.wcr.setDof(d.focus, d.range, d.amount);
+      this.wcr.setDof(Math.max(0.2, d.focus - this.stage.focusShift), d.range, d.amount);
       this.wcr.render(this.stage.scene, this.stage.cam);
       this.probe.sample(raw);
     } catch (e) {

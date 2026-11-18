@@ -6,7 +6,7 @@ import { boxG, capsuleG, coneG, cylG, group, M, mesh, shellG, sphereG, torusG, t
 
 export const HR = 0.34; // 머리 반지름
 const ARM_MAX = 0.52; // 팔(어깨~손) 길이: 이보다 멀면 곧게 펴지고 조금 늘어나요
-const CHOP_X = -0.012, CHOP_Y = -0.016; // 젓가락을 쥐는 자리 (손 기준)
+const CHOP_X = 0.012, CHOP_Y = -0.016; // 젓가락을 쥐는 자리 (손 기준, 오른손 엄지 쪽이 +x)
 const PI = Math.PI;
 const FRONT = PI / 2;
 const INK = '#3A2A22';
@@ -126,10 +126,10 @@ export class Chibi {
       const rest = V(side * 0.3, 0.26, 0.08);
       this.arms.push({ side, shoulder, upper, fore, elbow, joint, cuff, hand, thumb, cur: rest.clone(), target: rest.clone(), aim: null, aimCur: V(0, -0.4, 1).normalize(), thumbUp: false, thumbW: 0 });
     }
-    // 젓가락 (오른손): 엄지와 손가락 사이로 지나가게 엄지 쪽·손가락 아래로 조금 비켜 쥐고, 윗동이 주먹 뒤로 삐져나와요
+    // 젓가락 (손님의 오른손 = arms[0], 몸 -x 쪽. 마주 보는 내 쪽에서는 화면 왼쪽): 엄지와 손가락 사이로 지나가게 엄지 쪽·손가락 아래로 조금 비켜 쥐고, 윗동이 주먹 뒤로 삐져나와요
     for (const dx of [-0.011, 0.011]) mesh(cylG(0.0045, 0.0065, 0.28, 6), M('#B9763E', { spec: 0.4 }), [CHOP_X + dx, CHOP_Y, 0.09], 1, [PI / 2, 0, dx * 1.4], this.chop);
     this.chop.visible = false;
-    this.arms[1].hand.add(this.chop);
+    this.arms[0].hand.add(this.chop);
     // 머리
     this.headPivot.position.set(0, 0.58, 0);
     this.body.add(this.headPivot);
@@ -818,7 +818,7 @@ export class Chibi {
     L.target.copy(this.restFor(-1)); R.target.copy(this.restFor(1)); L.aim = null; R.aim = null; L.thumbUp = R.thumbUp = false;
     if (this.walking) {
       const sw = Math.sin(this.walkPhase);
-      L.target.z += sw * 0.12; R.target.z -= sw * 0.12;
+      L.target.z -= sw * 0.12; R.target.z += sw * 0.12; // 아래에서 좌우를 뒤집으니 부호도 반대로 (다리와 엇갈리게)
       L.target.y += Math.abs(sw) * 0.03; R.target.y += Math.abs(sw) * 0.03;
     }
     switch (this.act) {
@@ -886,6 +886,18 @@ export class Chibi {
         break;
     }
     this.lean = lean;
+    this.mirrorPose();
+  }
+
+  // 위 자세들은 마주 보는 내 쪽에서 오른쪽에 있는 손(R)을 주로 쓰게 적었어요. 그 손은 손님에게 왼손이라,
+  // 좌우를 뒤집어 손님의 오른손(arms[0])이 말하기·손 흔들기·엄지 척을 하게 해요 (두 손을 같이 쓰는 자세는 그대로예요)
+  private mirrorPose() {
+    const [a, b] = this.arms;
+    const ta = a.target.clone(), tb = b.target.clone(), ma = a.aim, mb = b.aim, ua = a.thumbUp;
+    a.target.set(-tb.x, tb.y, tb.z); b.target.set(-ta.x, ta.y, ta.z);
+    a.aim = mb ? V(-mb.x, mb.y, mb.z) : null; b.aim = ma ? V(-ma.x, ma.y, ma.z) : null;
+    a.thumbUp = b.thumbUp; b.thumbUp = ua;
+    this.headExtra.y = -this.headExtra.y; this.headExtra.z = -this.headExtra.z;
   }
 
   // 두 마디 팔: 손까지 거리보다 팔 길이를 조금 길게 잡아 팔꿈치가 자연스럽게 굽어요.
