@@ -292,7 +292,7 @@ export class App {
       for (let k = 0; k < n; k++) setTimeout(() => sfx.talk(), k * 85);
       clearTimeout((this as any)._talkT);
       (this as any)._talkT = setTimeout(() => this.stage.talk(who, false), Math.max(900, l.length * 70));
-      speak(l, c.source === 'book' || c.source === 'tutorial' ? 0.9 : 1.25);
+      speak(l, c.slowVoice || c.source === 'tutorial' ? 0.9 : 1.25);
     };
   }
 

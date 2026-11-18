@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { cylG, M, mesh, sphereG, torusG } from './geo';
 
-// 사장님(라면 먹는 개)의 몸과 두 팔.
+// 사장님(나)의 몸과 두 팔.
 // 몸통은 카메라 아래에 서 있고(고개를 숙이면 화면 아래로 가슴과 앞치마가 살짝 보여요),
 // 팔은 어깨 → 팔꿈치 → 손목 두 마디로 이어져 어느 쪽을 보든 화면 가장자리에서 들어와요.
 const FUR = '#F3DFC1', PAD = '#E9A0A8', SLEEVE = '#C2560E', CUFF = '#FFF4E6', APRON = '#FFF4E6';

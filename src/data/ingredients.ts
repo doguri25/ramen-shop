@@ -22,9 +22,9 @@ export const INGREDIENTS: Ingredient[] = [
   I('n_long', 'noodle', '길쭉 기억 면', ['그리움 달래기'], '길게 이어진 면처럼 좋은 기억은 오래오래 이어져요.', { model: 'noodle', color: '#EDCD8C', style: 'long' }),
 
   // 스프 8
-  I('s_sadness', 'soup', '슬픔 날려 스프', ['눈물 닦기', '토닥임'], '슬픔을 꾹 참지 말고 이야기하면 마음이 가벼워져요.', { model: 'packet', color: '#E98BA3', color2: '#D8783F' }, '책에 나온 라면'),
-  I('s_calm', 'soup', '사르르 편안 스프', ['깊은 숨'], '숨을 천천히 고르면 마음도 사르르 풀려요.', { model: 'packet', color: '#8DC26F', color2: '#D99A4F' }, '책에 나온 라면'),
-  I('s_love', 'soup', '퐁퐁 사랑 샘 스프', ['소중함', '좋은 점 찾기'], '사랑은 샘물 같아서 나눌수록 더 솟아요.', { model: 'packet', color: '#E3645A', color2: '#D8643F' }, '책에 나온 라면'),
+  I('s_sadness', 'soup', '눈물 토닥 스프', ['눈물 닦기', '토닥임'], '슬픔을 꾹 참지 말고 이야기하면 마음이 가벼워져요.', { model: 'packet', color: '#E98BA3', color2: '#D8783F' }),
+  I('s_calm', 'soup', '살랑살랑 숨쉬기 스프', ['깊은 숨'], '숨을 천천히 크게 쉬면 마음도 살랑살랑 풀려요.', { model: 'packet', color: '#8DC26F', color2: '#D99A4F' }),
+  I('s_love', 'soup', '보물찾기 칭찬 스프', ['소중함', '좋은 점 찾기'], '나와 친구의 좋은 점을 보물처럼 하나씩 찾아 칭찬해 봐요.', { model: 'packet', color: '#E3645A', color2: '#D8643F' }),
   I('s_cheer', 'soup', '씩씩 힘내 스프', ['씩씩함', '다시 해 보기'], '"힘내!" 한마디가 큰 힘이 될 때가 있어요.', { model: 'packet', color: '#E9B92A', color2: '#D9703A' }),
   I('s_party', 'soup', '반짝반짝 축하 스프', ['축하', '뿌듯함'], '해낸 일을 축하하면 다음에도 해낼 힘이 생겨요.', { model: 'packet', color: '#47AE7A', color2: '#E0A045' }),
   I('s_cool', 'soup', '후~ 식힘 스프', ['잠깐 멈춤', '마음 말하기'], '뜨거운 국물을 후~ 불어 식히듯, 멈추고 숨 쉬고 나서 말해요.', { model: 'packet', color: '#6FB3E0', color2: '#D99257' }),

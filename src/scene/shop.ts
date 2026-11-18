@@ -331,7 +331,7 @@ export function makeShop() {
 }
 export type Shop = ReturnType<typeof makeShop>;
 
-// 사장님(라면 먹는 개) 앞발 — 카메라에 붙어 있어요
+// 사장님(나) 앞발 — 카메라에 붙어 있어요
 export function makePaws() {
   const g = new THREE.Group();
   const fur = '#F3DFC1', pad = '#E9A0A8', sleeve = '#C2560E';

@@ -51,7 +51,8 @@ export interface ChibiSpec {
 export interface Customer {
   id: string;
   name: string;
-  source: 'book' | 'new' | 'tutorial';
+  source: 'new' | 'tutorial';
+  slowVoice?: boolean;      // 읽어 줄 때 천천히 (할머니·할아버지)
   chibi: ChibiSpec | ChibiSpec[];
   greet: string;
   story: string[];          // "@1 " 로 시작하면 두 번째 손님이 말해요. [[단서]]
