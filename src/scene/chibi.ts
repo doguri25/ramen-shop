@@ -818,7 +818,7 @@ export class Chibi {
     L.target.copy(this.restFor(-1)); R.target.copy(this.restFor(1)); L.aim = null; R.aim = null; L.thumbUp = R.thumbUp = false;
     if (this.walking) {
       const sw = Math.sin(this.walkPhase);
-      L.target.z += sw * 0.12; R.target.z -= sw * 0.12;
+      L.target.z -= sw * 0.12; R.target.z += sw * 0.12; // 아래에서 좌우를 뒤집으니 부호도 반대로 (다리와 엇갈리게)
       L.target.y += Math.abs(sw) * 0.03; R.target.y += Math.abs(sw) * 0.03;
     }
     switch (this.act) {
@@ -886,6 +886,19 @@ export class Chibi {
         break;
     }
     this.lean = lean;
+    this.mirrorPose();
+  }
+
+  // 위 자세들은 마주 보는 내 쪽에서 오른쪽에 있는 손(R)을 주로 쓰게 적었어요. 그 손은 손님에게 왼손이라,
+  // 좌우를 뒤집어 손님의 오른손(arms[0])이 말하기·손 흔들기·엄지 척 같은 손짓을 해요 (두 손을 같이 쓰는 자세는 그대로).
+  // 먹을 때는 무대가 손을 직접 움직여서(manual) 젓가락은 그대로 왼손(arms[1])에 쥐어요
+  private mirrorPose() {
+    const [a, b] = this.arms;
+    const ta = a.target.clone(), tb = b.target.clone(), ma = a.aim, mb = b.aim, ua = a.thumbUp;
+    a.target.set(-tb.x, tb.y, tb.z); b.target.set(-ta.x, ta.y, ta.z);
+    a.aim = mb ? V(-mb.x, mb.y, mb.z) : null; b.aim = ma ? V(-ma.x, ma.y, ma.z) : null;
+    a.thumbUp = b.thumbUp; b.thumbUp = ua;
+    this.headExtra.y = -this.headExtra.y; this.headExtra.z = -this.headExtra.z;
   }
 
   // 두 마디 팔: 손까지 거리보다 팔 길이를 조금 길게 잡아 팔꿈치가 자연스럽게 굽어요.
