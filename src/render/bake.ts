@@ -13,8 +13,16 @@ const V3 = () => new THREE.Vector3();
 interface Picked { mesh: THREE.Mesh; recv: boolean; shell: boolean; glow: boolean }
 // 굽는 방법(일꾼 계산식)을 바꾸면 올려요. 저장본 지문에 들어가요
 const ALGO = 'rt5';
-// 긴 계산 사이사이 화면이 멈추지 않게 숨을 돌려요
-const idle = () => new Promise<void>((r) => setTimeout(r, 0));
+// 긴 계산 사이사이 화면이 멈추지 않게 숨을 돌려요. 물체마다 쉬면 화면을 그리는 동안 기다리느라 몇십 초가 걸려서,
+// 12ms 넘게 일했을 때만 쉬어요
+let worked = 0;
+const idle = async () => {
+  const now = performance.now();
+  if (!worked) worked = now;
+  if (now - worked < 12) return;
+  await new Promise<void>((r) => setTimeout(r, 0));
+  worked = performance.now();
+};
 
 const isBakeMat = (m: THREE.Material) => {
   const s = m as THREE.ShaderMaterial;
@@ -174,6 +182,8 @@ export interface BakeOpts {
   lamps: THREE.Vector3[]; // 등불 위치
   quality: 'high' | 'mid' | 'low';
   onProgress?: (k: number) => void;
+  // 함께 실어 보낸 구운 값이 없을 때 새로 굽지 않아요 (메모리가 작은 휴대폰: 몇 분씩 굽다가 브라우저가 꺼지지 않게)
+  noWorker?: boolean;
 }
 
 // 굽고 나서 조명이 천천히 스며들게
@@ -185,6 +195,13 @@ function fadeIn(sec = 1.6) {
     if (k < 1) requestAnimationFrame(step);
   };
   requestAnimationFrame(step);
+}
+
+// 저장 형식(0~255)을 빛 값으로 (rgb 는 0~1.275, 네 번째는 0~1)
+function decode(q: Uint8Array) {
+  const out = new Float32Array(q.length);
+  for (let i = 0; i < q.length; i++) out[i] = (i % 4 === 3) ? q[i] / 255 : q[i] / 200;
+  return out;
 }
 
 export async function bakeLighting(root: THREE.Object3D, o: BakeOpts): Promise<{ verts: number; ms: number; cached: boolean; key: string } | null> {
@@ -277,12 +294,27 @@ export async function bakeLighting(root: THREE.Object3D, o: BakeOpts): Promise<{
   let cached = false;
   try {
     const q = (await get(key)) as Uint8Array | undefined;
-    if (q && q.length === nV * 4) {
-      out = new Float32Array(nV * 4);
-      for (let i = 0; i < q.length; i++) out[i] = (i % 4 === 3) ? q[i] / 255 : q[i] / 200; // rgb 는 0~1.275
-      cached = true;
-    }
+    if (q && q.length === nV * 4) { out = decode(q); cached = true; }
   } catch { /* 저장소를 못 쓰면 새로 구워요 */ }
+
+  // 저장본이 없으면 사이트에 함께 실어 보낸 구운 값을 받아요 (가게가 같으면 지문도 같아요. scripts/bake-ship.cjs 로 만들어요)
+  if (!out) {
+    try {
+      const r = await fetch(`${import.meta.env.BASE_URL}bake/${key.replace(/:/g, '-')}.bin`, { cache: 'force-cache' });
+      const q = r.ok ? new Uint8Array(await r.arrayBuffer()) : null;
+      if (q && q.length === nV * 4) {
+        out = decode(q);
+        cached = true;
+        try { await set(key, q); } catch { /* 다음에 또 받으면 돼요 */ }
+      }
+    } catch { /* 못 받으면 새로 구워요 */ }
+  }
+
+  if (!out && o.noWorker) {
+    // 굽지 않고 원래 모양으로 돌려놓아요 (잘게 나눈 정점이 남지 않게)
+    for (const [m, g0] of swaps) { const ng = m.geometry; m.geometry = g0; ng.dispose(); }
+    return null;
+  }
 
   if (!out) {
     // 가리는 삼각형(세상 좌표)과 색: 새로 구울 때만 모아요

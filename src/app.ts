@@ -26,6 +26,11 @@ import { db, local, type TeacherSettings } from './storage/db';
 import { h, toast } from './ui/dom';
 import { UI } from './ui/screens';
 
+// 메모리가 작은 기기 (안드로이드 크롬·삼성 인터넷이 알려 줘요. 6GB 는 4로 알려 줘요. 아이패드 사파리는 몰라서 넉넉하다고 봐요)
+const DEVICE_MEM = (navigator as Navigator & { deviceMemory?: number }).deviceMemory ?? 8;
+const LOW_MEM = DEVICE_MEM <= 4;
+const LOW_MEM_PHONE = LOW_MEM && Math.min(screen.width, screen.height) < 600;
+
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 // 수업용 손님과 행사용 5~6학년 손님을 모두 찾을 수 있게
 const CUSX = new Map<string, Customer>([...CUS, ...CUS_14, ...CUS_56]);
@@ -77,8 +82,9 @@ export class App {
     shared.uPaper.value = paper;
     setFaceTexture(tex(faceAtlas()));
     const q = this.teacher.quality ?? 'auto';
-    // 화질은 점 개수 한도로 정해서, 작은 화면도 처음부터 '높음'으로 또렷하게 시작해요
-    const tier: Tier = q === 'auto' ? 'high' : q;
+    // 화질은 점 개수 한도로 정해서, 작은 화면도 처음부터 '높음'으로 또렷하게 시작해요.
+    // 메모리가 작은 휴대폰(4GB 이하)은 처음부터 '낮음'으로 가볍게 해요 (그림 버퍼가 작아지고 물리 계산도 줄어요)
+    const tier: Tier = q === 'auto' ? (LOW_MEM_PHONE ? 'low' : 'high') : q;
     const apply = (t: Tier) => { this.wcr.setTier(TIERS[t]); PHYS.iters = t === 'low' ? 6 : t === 'mid' ? 8 : 10; };
     apply(tier);
     this.probe = new QualityProbe(tier, apply, q !== 'auto');
@@ -115,7 +121,7 @@ export class App {
       const lamps = shop.lamps.map((b) => b.getWorldPosition(new THREE.Vector3()).add(new THREE.Vector3(0, -0.1, 0)));
       // 굽는 품질은 성능 측정과 상관없이 정해요 (선생님이 화질을 고정했으면 그 값)
       const q = this.teacher.quality && this.teacher.quality !== 'auto' ? this.teacher.quality : 'high';
-      this.bakeInfo = await bakeLighting(shop.root, { version: 'rt5', light: LIGHT_W, lamps, quality: q });
+      this.bakeInfo = await bakeLighting(shop.root, { version: 'rt5', light: LIGHT_W, lamps, quality: q, noWorker: LOW_MEM });
       console.info('[bake]', this.bakeInfo);
     } catch (e) { console.warn('[bake]', e); }
   }
