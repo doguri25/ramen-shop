@@ -45,7 +45,7 @@ function setCell(t: THREE.Texture, eye: boolean, i: number) {
 }
 
 export type Act = 'idle' | 'talk' | 'wave' | 'bow' | 'cheer' | 'clap' | 'scratch' | 'think' | 'fist' | 'worry' | 'sad' | 'full' | 'nod' | 'thumbs';
-interface Arm { side: number; shoulder: THREE.Vector3; upper: THREE.Mesh; fore: THREE.Mesh; elbow: THREE.Mesh; joint: THREE.Mesh; cuff: THREE.Mesh; hand: THREE.Group; cur: THREE.Vector3; target: THREE.Vector3; aim: THREE.Vector3 | null; aimCur: THREE.Vector3 }
+interface Arm { side: number; shoulder: THREE.Vector3; upper: THREE.Mesh; fore: THREE.Mesh; elbow: THREE.Mesh; joint: THREE.Mesh; cuff: THREE.Mesh; hand: THREE.Group; thumb: THREE.Mesh; cur: THREE.Vector3; target: THREE.Vector3; aim: THREE.Vector3 | null; aimCur: THREE.Vector3; thumbUp: boolean; thumbW: number }
 const V = (x = 0, y = 0, z = 0) => new THREE.Vector3(x, y, z);
 const UP = V(0, 1, 0);
 export const LEG = 0.14; // 서 있을 때 몸을 들어 올리는 높이
@@ -120,10 +120,11 @@ export class Chibi {
       const cuff = mesh(torusG(0.056, 0.02, 8, 18), M(lighten(s.cloth, 0.4)), [0, 0, 0], 1, [0, 0, 0], this.body);
       mesh(sphereG(1, 16, 12), M(pawCol), [0, 0, 0.03], [0.078, 0.066, 0.085], [0, 0, 0], hand);
       for (let k = -1; k <= 1; k++) mesh(sphereG(0.026, 10, 8), M(pawCol), [k * 0.034, 0.012, 0.1], 1, [0, 0, 0], hand);
-      mesh(sphereG(0.028, 10, 8), M(pawCol), [-side * 0.065, 0.018, 0.045], 1, [0, 0, 0], hand);
+      // 엄지는 몸 안쪽 (손바닥을 아래로 둘 때 오른손·왼손 모두 엄지가 가운데 쪽에 와요)
+      const thumb = mesh(sphereG(0.028, 10, 8), M(pawCol), [-side * 0.065, 0.018, 0.045], 1, [0, 0, 0], hand);
       if (s.kind !== 'human') mesh(sphereG(1, 10, 8), M('#E9A0A8', { rim: 0.2 }), [0, -0.055, 0.04], [0.035, 0.012, 0.03], [0, 0, 0], hand);
       const rest = V(side * 0.3, 0.26, 0.08);
-      this.arms.push({ side, shoulder, upper, fore, elbow, joint, cuff, hand, cur: rest.clone(), target: rest.clone(), aim: null, aimCur: V(0, -0.4, 1).normalize() });
+      this.arms.push({ side, shoulder, upper, fore, elbow, joint, cuff, hand, thumb, cur: rest.clone(), target: rest.clone(), aim: null, aimCur: V(0, -0.4, 1).normalize(), thumbUp: false, thumbW: 0 });
     }
     // 젓가락 (오른손): 엄지와 손가락 사이로 지나가게 엄지 쪽·손가락 아래로 조금 비켜 쥐고, 윗동이 주먹 뒤로 삐져나와요
     for (const dx of [-0.011, 0.011]) mesh(cylG(0.0045, 0.0065, 0.28, 6), M('#B9763E', { spec: 0.4 }), [CHOP_X + dx, CHOP_Y, 0.09], 1, [PI / 2, 0, dx * 1.4], this.chop);
@@ -814,7 +815,7 @@ export class Chibi {
     const k = this.actT;
     let lean = 0;
     this.headExtra.set(0, 0, 0);
-    L.target.copy(this.restFor(-1)); R.target.copy(this.restFor(1)); L.aim = null; R.aim = null;
+    L.target.copy(this.restFor(-1)); R.target.copy(this.restFor(1)); L.aim = null; R.aim = null; L.thumbUp = R.thumbUp = false;
     if (this.walking) {
       const sw = Math.sin(this.walkPhase);
       L.target.z += sw * 0.12; R.target.z -= sw * 0.12;
@@ -848,7 +849,8 @@ export class Chibi {
         break;
       }
       case 'thumbs':
-        R.target.set(0.22, 0.7, 0.32); R.aim = V(0, 1, 0.4);
+        // 엄지 척: 주먹 쥔 손가락은 나를 보고, 엄지는 위로 세워요
+        R.target.set(0.22, 0.7, 0.32); R.aim = V(-0.15, 0.2, 1); R.thumbUp = true;
         this.headExtra.z = -0.06;
         break;
       case 'scratch':
@@ -921,8 +923,15 @@ export class Chibi {
     const wantAim = arm.aim ?? fdir.clone().add(V(0, -0.35, 0.4)).normalize();
     arm.aimCur.lerp(wantAim, k).normalize();
     arm.hand.position.copy(b);
-    const m = new THREE.Matrix4().lookAt(V(), arm.aimCur.clone().negate(), Math.abs(arm.aimCur.y) > 0.95 ? V(0, 0, 1) : UP);
+    // 엄지 척일 때는 손을 옆으로 세워 엄지(-side 쪽)가 위를 보게 돌려요
+    arm.thumbW += ((arm.thumbUp ? 1 : 0) - arm.thumbW) * k;
+    const up = Math.abs(arm.aimCur.y) > 0.95 ? V(0, 0, 1) : UP.clone();
+    if (arm.thumbW > 0.001) up.lerp(V(arm.side, 0, 0), arm.thumbW).normalize();
+    const m = new THREE.Matrix4().lookAt(V(), arm.aimCur.clone().negate(), up);
     arm.hand.quaternion.setFromRotationMatrix(m);
+    // 세운 엄지는 조금 길게
+    arm.thumb.scale.set(1 + arm.thumbW * 0.9, 1, 1);
+    arm.thumb.position.x = -arm.side * (0.065 + arm.thumbW * 0.03);
   }
 
   update(dt: number) {
@@ -965,7 +974,8 @@ export class Chibi {
     });
 
     // 팔 목표 정하기
-    if (!this.manual) {
+    if (this.manual) this.arms[0].thumbUp = this.arms[1].thumbUp = false; // 손을 따로 움직일 때는 엄지를 접어요
+    else {
       this.actTargets(t);
       if (this.bounce > 0 && this.act === 'idle') {
         const s2 = Math.sin(t * 9) * 0.5;

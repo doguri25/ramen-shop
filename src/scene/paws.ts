@@ -18,6 +18,7 @@ export class Paw {
   target: THREE.Vector3;
   shoulder = V(); // 어깨 (카메라 기준, 매 프레임 몸에서 받아요)
   maxLen = 0.5; // 예전 값과 맞추려고 남겨 둬요 (팔은 이제 끊기지 않아요)
+  roll = 0; // 손목 돌리기 (+면 손등 위쪽이 화면 왼쪽으로 넘어가요: 오른손으로 국자를 왼쪽으로 기울일 때)
   private upper: THREE.Mesh;
   private fore: THREE.Mesh;
   private elbow: THREE.Mesh;
@@ -77,9 +78,12 @@ export class Paw {
     const fa = W.clone().sub(this.E).normalize();
     this.cuff.position.copy(W).addScaledVector(fa, -0.012);
     this.cuff.quaternion.setFromUnitVectors(V(0, 0, 1), fa);
-    const m = new THREE.Matrix4().lookAt(V(), fa.clone().negate(), UP);
+    // 앞발의 -z(발가락 쪽)가 아래팔 방향(앞)을 보게 해요. 그러면 엄지가 몸 안쪽에 와요
+    // (오른손은 화면에서 왼쪽, 왼손은 오른쪽). 손끝은 살짝 아래로 숙여요
+    const m = new THREE.Matrix4().lookAt(V(), fa, UP);
     this.paw.quaternion.setFromRotationMatrix(m);
     this.paw.rotateX(-0.25);
+    if (this.roll) this.paw.rotateZ(this.roll);
   }
   private bone(mh: THREE.Mesh, A: THREE.Vector3, B: THREE.Vector3) {
     const dir = B.clone().sub(A);

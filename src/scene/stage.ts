@@ -830,14 +830,20 @@ export class Stage {
     liquid.material = Mu(color, { rim: 0, flat: 0.3, spec: 0.5 });
     this.scene.add(ladle);
     this.scene.attach(liquid);
-    ladle.rotation.order = 'YXZ';
-    const grip = V(0, 0.16, -0.3), Rc = 0.055;
+    const grip = V(0, 0.16, -0.3), Rc = 0.055, TILT = 1.7; // TILT: 옆으로 기울이는 각(라디안). 손잡이가 비스듬해서 90°보다 조금 더 돌려야 다 흘러요
+    // 붓기: 국자를 앞으로 엎지 않고, 손목을 돌려 손잡이를 축으로 옆으로 기울여요.
+    // 오른손이라 손등이 왼쪽으로 넘어가며 국자의 왼쪽(내 쪽에서 볼 때) 테두리로 국물이 흘러요
+    const HANDLE = V(0, Math.cos(1.0), -Math.sin(1.0)); // 국자 속 → 손잡이 끝 (makeLadle 손잡이 기울기와 같아요)
+    const qYaw = new THREE.Quaternion(), qRoll = new THREE.Quaternion();
+    const UPV = V();
     let tilt = 0, vol = 0, pouring = true, fillTo = B.box.prof.floorAt(0), lastRip = 0;
     const follow = () => {
       const base = this.camPoint(0.3, -0.4, -0.28);
-      ladle.rotation.y = Math.atan2(-(base.x - ladle.position.x), -(base.z - ladle.position.z));
-      ladle.rotation.x = tilt;
+      qYaw.setFromAxisAngle(V(0, 1, 0), Math.atan2(-(base.x - ladle.position.x), -(base.z - ladle.position.z)));
+      qRoll.setFromAxisAngle(HANDLE, tilt);
+      ladle.quaternion.copy(qYaw).multiply(qRoll);
       ladle.updateMatrixWorld();
+      R.roll = tilt * 0.7;
       this.pawAt(R, ladle.localToWorld(grip.clone()));
     };
     const stream = new Stream(color, 0.0062);
@@ -863,11 +869,15 @@ export class Stage {
           vel.copy(low).sub(C).setY(0).normalize().multiplyScalar(Math.sqrt(2 * GRAV * ex) + 0.12).add(V(0, -0.05, 0));
         }
       }
-      liquid.visible = vol > 0.01;
+      // 국자 속 국물 면은 국자가 바로 서 있을 때만 보여요. 옆으로 많이 기울면 국물 면이 국자 밖으로 삐져나와 보이니,
+      // 기울수록 작아지다가 사라지고 흘러내리는 줄기만 보여요
+      const cupUp = UPV.set(0, 1, 0).applyQuaternion(ladle.quaternion).y;
+      const inCup = THREE.MathUtils.smoothstep(cupUp, 0.35, 0.8);
+      liquid.visible = vol > 0.01 && inCup > 0.02;
       if (liquid.visible) {
         liquid.position.set(C.x, surfY, C.z);
         liquid.rotation.set(-PI / 2, 0, 0);
-        liquid.scale.setScalar((Math.sqrt(Math.max(0, Rc * Rc - d * d)) / 0.05) * 0.95);
+        liquid.scale.setScalar((Math.sqrt(Math.max(0, Rc * Rc - d * d)) / 0.05) * 0.95 * inCup);
       }
       lastRip += dt;
       stream.update(dt, lip, vel, flow, () => bowlY(), (p) => {
@@ -891,14 +901,16 @@ export class Stage {
       PL.level -= 0.011;
       await tween(0.25, (k) => { vol = k; follow(); }, { ease: ease.linear });
       await tween(0.35, (k) => { ladle.position.lerpVectors(dip, above, k); follow(); });
-      const over = bowlTop().add(V(0.07, 0.15, 0.04));
+      // 왼쪽 테두리로 흘러 나오니, 국자는 그릇 가운데보다 오른쪽(내 쪽에서 볼 때)에 대요
+      const camRight = V(1, 0, 0).applyQuaternion(this.cam.getWorldQuaternion(new THREE.Quaternion())).setY(0).normalize();
+      const over = bowlTop().addScaledVector(camRight, 0.075).add(V(0, 0.15, 0));
       await tween(0.55, (k) => { ladle.position.lerpVectors(above, over, k); ladle.position.y += Math.sin(k * PI) * 0.05; follow(); });
       fillTo = lerp(empty, 0, s === 0 ? 0.5 : 1);
       sfx.pour();
-      await tween(0.7, (k) => { tilt = 1.3 * k; follow(); }, { ease: ease.outQuad });
+      await tween(0.7, (k) => { tilt = TILT * k; follow(); }, { ease: ease.outQuad });
       await this.until(() => vol < 0.02, 1.6);
       if (BL) BL.level = Math.max(BL.level, fillTo - 0.004);
-      await tween(0.3, (k) => { tilt = 1.3 * (1 - k); follow(); });
+      await tween(0.3, (k) => { tilt = TILT * (1 - k); follow(); });
     }
     pouring = false;
     const p0 = ladle.position.clone();
@@ -907,6 +919,7 @@ export class Stage {
     stream.dispose();
     liquid.removeFromParent(); disposeTree(liquid);
     ladle.removeFromParent(); disposeTree(ladle);
+    R.roll = 0;
   }
 
   // 긴 젓가락: 면은 두 번 나눠 집고(면발 물리), 건더기는 하나씩 놓아 떨어뜨려요
