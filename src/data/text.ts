@@ -22,17 +22,27 @@ export const TUTOR_STEP: Record<Step | 'name' | 'serve' | 'note', string> = {
 export const NAME_FRONT = ['슬픔', '그리움', '눈물', '외로움', '걱정', '떨림', '화', '짜증', '피곤함', '서운함', '미움', '기쁨', '웃음', '설렘'];
 export const NAME_VERB = ['날려', '녹여', '덜어', '식혀', '채워', '나눠', '키워'];
 export const NAME_ADJ = ['편안해', '따뜻해', '든든해', '가벼워', '시원해'];
-export const NAME_SPRING = ['사랑', '용기', '웃음', '기쁨', '힘'];
+// '○○ ○○맛 마음라면' 틀: 마음맛 낱말과 맛 낱말
+export const NAME_MAT = ['용기', '사랑', '기쁨', '웃음', '화해', '축하', '설렘', '추억', '위로', '응원'];
+export const NAME_TASTE = ['매콤', '얼큰', '달콤', '새콤', '새콤달콤', '짭짤', '단짠', '고소', '구수', '시원', '순한'];
+// 넣은 재료로 맛 낱말을 추천해요 (★)
+export const TASTE_OF: Record<string, string[]> = {
+  b_anchovy: ['시원'], b_bone: ['구수'], b_kimchi: ['매콤', '얼큰'], b_doenjang: ['구수'], b_seafood: ['시원', '얼큰'], b_feast: ['짭짤'], b_chicken: ['순한', '고소'],
+  s_sadness: ['순한'], s_calm: ['순한'], s_love: ['달콤'], s_cheer: ['매콤'], s_party: ['단짠'], s_cool: ['시원'], s_play: ['달콤'], s_apple: ['새콤달콤', '새콤'],
+  t_egg: ['고소'], t_dumpling: ['짭짤'], t_scallion: ['시원'], t_fishcake: ['짭짤'], t_gim: ['짭짤'], t_shiitake: ['구수'], t_corn: ['달콤'], t_chili: ['매콤', '얼큰'],
+  t_tofu: ['고소', '순한'], t_tteok: ['달콤'], t_sprout: ['시원'], t_yubu: ['단짠'], t_sausage: ['짭짤', '단짠'], t_quail: ['짭짤'],
+  f_sesame: ['고소'], f_giggle: ['달콤'], f_pepper: ['매콤'], f_oil: ['고소'], f_salt: ['짭짤'], f_cheese: ['고소', '단짠'], f_gimflake: ['짭짤', '고소'], f_butter: ['고소', '달콤'], f_stargim: ['짭짤'],
+};
 
-export const FAMILY_WORDS: Record<Family, { front: string[]; verb: string[]; adj: string[]; spring: string[] }> = {
-  comfort:   { front: ['슬픔', '그리움', '눈물'], verb: ['날려', '녹여', '덜어'], adj: ['따뜻해'], spring: ['사랑'] },
-  together:  { front: ['외로움'], verb: ['녹여', '날려'], adj: ['든든해'], spring: ['웃음', '기쁨'] },
-  rest:      { front: ['피곤함'], verb: ['덜어', '날려'], adj: ['편안해', '가벼워'], spring: ['힘'] },
-  courage:   { front: ['걱정', '떨림'], verb: ['덜어', '날려'], adj: ['든든해'], spring: ['용기', '힘'] },
-  calm:      { front: ['화', '짜증'], verb: ['식혀', '날려'], adj: ['시원해', '편안해'], spring: [] },
-  reconcile: { front: ['미움', '서운함'], verb: ['녹여'], adj: ['따뜻해'], spring: ['사랑'] },
-  love:      { front: ['서운함'], verb: ['녹여', '덜어'], adj: ['따뜻해'], spring: ['사랑'] },
-  joy:       { front: ['기쁨', '웃음', '설렘'], verb: ['나눠', '키워', '채워'], adj: ['가벼워'], spring: ['웃음', '기쁨'] },
+export const FAMILY_WORDS: Record<Family, { front: string[]; verb: string[]; adj: string[]; mat: string[] }> = {
+  comfort:   { front: ['슬픔', '그리움', '눈물'], verb: ['날려', '녹여', '덜어'], adj: ['따뜻해'], mat: ['위로', '추억'] },
+  together:  { front: ['외로움'], verb: ['녹여', '날려'], adj: ['든든해'], mat: ['웃음', '기쁨'] },
+  rest:      { front: ['피곤함'], verb: ['덜어', '날려'], adj: ['편안해', '가벼워'], mat: ['위로', '응원'] },
+  courage:   { front: ['걱정', '떨림'], verb: ['덜어', '날려'], adj: ['든든해'], mat: ['용기', '응원'] },
+  calm:      { front: ['화', '짜증'], verb: ['식혀', '날려'], adj: ['시원해', '편안해'], mat: ['위로'] },
+  reconcile: { front: ['미움', '서운함'], verb: ['녹여'], adj: ['따뜻해'], mat: ['화해', '사랑'] },
+  love:      { front: ['서운함'], verb: ['녹여', '덜어'], adj: ['따뜻해'], mat: ['사랑'] },
+  joy:       { front: ['기쁨', '웃음', '설렘'], verb: ['나눠', '키워', '채워'], adj: ['가벼워'], mat: ['기쁨', '축하', '설렘'] },
 };
 
 // 고운 말 지킴이 (공백·숫자·기호를 뺀 뒤 비교)

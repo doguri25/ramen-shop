@@ -1,23 +1,24 @@
 import { eulReul } from '../core/korean';
 import { FX } from '../data/effects';
-import { BADWORDS, FAMILY_WORDS, NAME_ADJ, NAME_FRONT, NAME_SPRING, NAME_VERB } from '../data/text';
+import { BADWORDS, FAMILY_WORDS, NAME_ADJ, NAME_FRONT, NAME_MAT, NAME_TASTE, NAME_VERB, TASTE_OF } from '../data/text';
 import type { Family } from '../data/types';
 import { pickedList } from './scoring';
 import type { Picks } from '../data/types';
 
-export type Template = 'blow' | 'heart' | 'spring' | 'free';
+export type Template = 'blow' | 'heart' | 'taste' | 'free';
 
 export const TEMPLATES: { id: Template; label: string }[] = [
   { id: 'blow', label: '○○을/를 ○○ 주는 마음라면' },
   { id: 'heart', label: '속이 ○○지는 마음라면' },
-  { id: 'spring', label: '○○ 가득 마음라면' },
+  { id: 'taste', label: '○○ ○○맛 마음라면' },
   { id: 'free', label: '내 마음대로 짓기' },
 ];
 
 export const buildName = (t: Template, a: string, b: string) => {
   if (t === 'blow') return a && b ? `${eulReul(a)} ${b} 주는 마음라면` : '';
   if (t === 'heart') return a ? `속이 ${a}지는 마음라면` : '';
-  if (t === 'spring') return a ? `${a} 가득 마음라면` : '';
+  // a: 마음맛(꼭), b: 맛 낱말(골라도 되고 안 골라도 돼요)
+  if (t === 'taste') return a ? `${b ? b + ' ' : ''}${a}맛 마음라면` : '';
   return '';
 };
 
@@ -25,16 +26,23 @@ export function wordPools(picks: Picks) {
   const fams = new Map<Family, number>();
   for (const it of pickedList(picks)) for (const e of it.effects) { const f = FX.get(e)!.family; fams.set(f, (fams.get(f) ?? 0) + 1); }
   const top = [...fams.entries()].sort((a, b) => b[1] - a[1]).map(([f]) => f);
-  const rec = { front: new Set<string>(), verb: new Set<string>(), adj: new Set<string>(), spring: new Set<string>() };
+  const rec = { front: new Set<string>(), verb: new Set<string>(), adj: new Set<string>(), mat: new Set<string>(), taste: new Set<string>() };
   for (const f of top.slice(0, 3)) {
     const w = FAMILY_WORDS[f];
     w.front.forEach((x) => rec.front.add(x)); w.verb.forEach((x) => rec.verb.add(x));
-    w.adj.forEach((x) => rec.adj.add(x)); w.spring.forEach((x) => rec.spring.add(x));
+    w.adj.forEach((x) => rec.adj.add(x)); w.mat.forEach((x) => rec.mat.add(x));
   }
+  // 맛 낱말은 넣은 재료에서 많이 나온 것 셋에 ★ (재료마다 첫 맛을 두 배로, 같으면 먼저 넣은 재료 맛부터)
+  const tc = new Map<string, { n: number; first: number }>();
+  pickedList(picks).forEach((it, k) => (TASTE_OF[it.id] ?? []).forEach((t, j) => {
+    const e = tc.get(t) ?? { n: 0, first: k };
+    e.n += j === 0 ? 2 : 1; tc.set(t, e);
+  }));
+  [...tc.entries()].sort((x, y) => y[1].n - x[1].n || x[1].first - y[1].first).slice(0, 3).forEach(([t]) => rec.taste.add(t));
   const order = (all: string[], r: Set<string>) => [...all.filter((x) => r.has(x)), ...all.filter((x) => !r.has(x))];
   return {
     front: order(NAME_FRONT, rec.front), verb: order(NAME_VERB, rec.verb),
-    adj: order(NAME_ADJ, rec.adj), spring: order(NAME_SPRING, rec.spring), rec,
+    adj: order(NAME_ADJ, rec.adj), mat: order(NAME_MAT, rec.mat), taste: order(NAME_TASTE, rec.taste), rec,
   };
 }
 

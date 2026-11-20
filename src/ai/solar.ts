@@ -2,6 +2,7 @@
 // 인터넷이 없거나, 늦거나, 이상한 답이 오면 null 을 돌려주고 게임은 원래대로 흘러가요.
 import { AI_URL } from '../config';
 import { FAMILY, FX } from '../data/effects';
+import { NAME_TASTE } from '../data/text';
 import type { Customer, Picks, RamenRecord } from '../data/types';
 import { isBad } from '../game/naming';
 import { pickedList } from '../game/scoring';
@@ -101,7 +102,7 @@ export interface ClassStats {
   topEffects: string[]; hardEffects: string[]; families: string[]; words: string[]; names: string[];
 }
 
-const STOP = new Set(['주는', '하는', '되는', '친구', '마음이', '마음을', '라면', '속이', '가득']);
+const STOP = new Set(['주는', '하는', '되는', '친구', '마음이', '마음을', '라면', '속이', '가득', ...NAME_TASTE]);
 // 도감 기록으로 학급 통계 만들기 (선생님 화면에서도 그대로 보여 줘요)
 export function classStats(owners: number, recs: RamenRecord[], doneOwners: number, need: (r: RamenRecord) => string | undefined): ClassStats {
   const byFx = new Map<string, { n: number; s3: number; sum: number }>();
@@ -118,7 +119,7 @@ export function classStats(owners: number, recs: RamenRecord[], doneOwners: numb
       if (fam) byFam.set(fam, (byFam.get(fam) ?? 0) + 1);
     }
     for (const w of r.name.split(/\s+/)) {
-      const k = w.replace(/(마음라면|친구라면|라면)$/, '').trim();
+      const k = w.replace(/(마음라면|친구라면|라면)$/, '').replace(/맛$/, '').trim();
       if (k.length >= 2 && !STOP.has(k)) words.set(k, (words.get(k) ?? 0) + 1);
     }
   }

@@ -422,7 +422,7 @@ export const UI = {
           h('div', { class: 'tpls' }, TEMPLATES.map((t) => h('button', { class: `tpl ${tpl === t.id ? 'on' : ''}`, onclick: () => { sfx.tap(); tpl = t.id; a = ''; b = ''; if (t.id === 'free') input.value = ''; render(); valid(); if (t.id === 'free') input.focus(); } }, t.label))),
           tpl === 'blow' ? [wordRow('무엇을', pools.front, pools.rec.front, a, (w) => { a = w; }), wordRow('어떻게', pools.verb, pools.rec.verb, b, (w) => { b = w; })] : null,
           tpl === 'heart' ? wordRow('속이 어떻게', pools.adj, pools.rec.adj, a, (w) => { a = w; }) : null,
-          tpl === 'spring' ? wordRow('무엇을 가득 담을까', pools.spring, pools.rec.spring, a, (w) => { a = w; }) : null,
+          tpl === 'taste' ? [wordRow('무슨 마음맛', pools.mat, pools.rec.mat, a, (w) => { a = w; }), wordRow('어떤 맛 (안 골라도 돼요)', pools.taste, pools.rec.taste, b, (w) => { b = w; })] : null,
           tpl === 'free' ? h('div', { class: 'muted', style: 'font-size:17px;margin:8px 0' }, '아래 칸에 직접 써요. 20글자까지 쓸 수 있어요.') : null,
           h('div', { class: 'name-preview' }, input, cnt),
           warn,
