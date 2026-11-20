@@ -117,6 +117,17 @@ export function drawCard(d: CardInput): HTMLCanvasElement {
     ls.forEach((l, i) => g.fillText(l, 440, y + i * 25));
     y += Math.max(1, ls.length) * 25 + 10;
   }
+  // 수업용: 곁들인 마음 김밥 (칸에 자리가 남을 때만)
+  const gim = d.rec.gimbap;
+  if (gim) {
+    g.font = `19px ${B}`;
+    const ls = wrap(g, `${gim.name}${gim.stamp ? ' · 정성 도장' : ''}`, 238).slice(0, 2);
+    if (y + ls.length * 25 <= py + 292) {
+      g.font = `18px ${H}`; g.fillStyle = ACC; g.textAlign = 'left'; g.textBaseline = 'top'; g.fillText('곁들임', 374, y + 2);
+      g.font = `19px ${B}`; g.fillStyle = INK;
+      ls.forEach((l, i) => g.fillText(l, 440, y + i * 25));
+    }
+  }
 
   // 끓이는 방법
   const my = 652;

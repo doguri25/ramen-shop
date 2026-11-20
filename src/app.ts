@@ -14,7 +14,8 @@ import { ING, INGREDIENTS } from './data/ingredients';
 import { TUTOR_INTRO } from './data/text';
 import { BODY, LATER, PROMISES, type BodyMood } from './data/later';
 import { FX } from './data/effects';
-import type { ChibiSpec, Customer, Owner, Picks, RamenRecord, Step, Treat } from './data/types';
+import type { ChibiSpec, Customer, GimbapRec, Owner, Picks, RamenRecord, Step, Treat } from './data/types';
+import { GIMBAP, judgeGimbap } from './data/gimbap';
 import { catchUpOrder, customerForRound, makeOrder } from './game/schedule';
 import { fiveStars, hasHeart, isBackward, score } from './game/scoring';
 import { faceAtlas, paperCanvas, tex } from './paint/textures';
@@ -322,7 +323,6 @@ export class App {
     const look = tutorial || EVENT ? undefined : async () => { body = await this.lookCloser(c); };
     await UI.dialog(view, story, { onLine: (i, w) => say(i, w, story), final: { label: '라면 끓이러 가기!', replay: true }, look });
     this.stage.talk(0, false);
-    let attempt = 0;
     let picks: Picks = JSON.parse(JSON.stringify(EMPTY));
     let rec: RamenRecord | null = null;
     let saved = false;
@@ -363,20 +363,20 @@ export class App {
       await UI.reaction(c, shown, heart, (i, w) => say(i, w, lines), lines, r.stars);
       gauge?.remove();
       this.stage.talk(0, false);
-      // 행사용은 대회라 다시 끓일 기회가 없어요
-      const canRetry = !tutorial && !EVENT && attempt === 0 && r.stars === 1;
       // 수업용: 마음 쪽지 끝에서 오늘의 마음 한 그릇 약속을 골라요 (안 골라도 돼요)
       let promise: string | null = null;
-      const pledge = tutorial || EVENT ? undefined : { options: PROMISES[c.needs.effect] ?? [], onPick: (p: string | null) => { promise = p; } };
-      const choice = await UI.note(c, picks, r, heart, canRetry, tutorial, !heart && isBackward(name), pledge);
-      this.serving = false;
-      if (choice === 'retry') {
-        attempt++;
-        this.stage.mood(this.moodFor(c));
-        this.stage.guests.forEach((g) => { g.bounce = 0; });
-        this.stage.clearBowls();
-        continue;
+      const pledge = tutorial || EVENT ? undefined : { options: PROMISES[c.needs.effect] ?? [], onPick: (p: string | null) => { promise = p; }, initial: null as string | null };
+      // 수업용: 별 하나를 받으면 다시 끓이는 대신, 손님에게 꼭 필요했던 마음을 담은 김밥을 한 번 곁들여 줄 수 있어요
+      // (별은 그대로, 그 마음 묶음 재료를 넣으면 정성 도장). 행사용은 대회라 곁들이기가 없어요
+      let gimbap: GimbapRec | null = null;
+      let choice: 'gimbap' | 'save' | 'skip';
+      for (;;) {
+        if (pledge) pledge.initial = promise;
+        choice = await UI.note(c, picks, r, heart, !tutorial && !EVENT && r.stars === 1 && !gimbap, tutorial, !heart && isBackward(name), pledge, gimbap);
+        if (choice !== 'gimbap') break;
+        gimbap = await this.gimbap(c, view, say);
       }
+      this.serving = false;
       // 행사용: 내어 드린 라면의 별을 이번 판에 더해요 (도감에 넣지 않아도 별은 받아요)
       if (!tutorial && o.ev) {
         o.ev.total += shown;
@@ -393,6 +393,7 @@ export class App {
         saved = true;
         rec = { id: uid(), ownerId: o.id, round: o.round, customerId: c.id, picks, name, stars: shown, heart, photoKey: '', createdAt: Date.now() };
         if (promise) rec.promise = promise;
+        if (gimbap) rec.gimbap = gimbap;
         rec.photoKey = rec.id;
         // 그래픽이 끊긴 동안 찍으면 빈 사진이 돼서 그때는 사진을 건너뛰어요
         const photo = this.ctxLost ? null : this.stage.photo(picks, 512);
@@ -403,7 +404,7 @@ export class App {
         o.round++;
         await this.saveOwner();
         sfx.camera();
-        toast(ok ? `📖 '${name}'${eulReul(name).slice(-1)} 도감에 담았어요${rec.promise ? ' · 🤝 약속도 함께 담았어요' : ''}` : '⚠️ 태블릿에 저장하지 못했어요. 선생님께 알려 주세요');
+        toast(ok ? `📖 '${name}'${eulReul(name).slice(-1)} 도감에 담았어요${rec.gimbap ? ' · 🍙 김밥도 함께' : ''}${rec.promise ? ' · 🤝 약속도 함께 담았어요' : ''}` : '⚠️ 태블릿에 저장하지 못했어요. 선생님께 알려 주세요');
       }
       if (!tutorial && o.ev) this.sendRun(o);
       break;
@@ -413,6 +414,39 @@ export class App {
     this.stage.resetPot();
     this.inRound = false;
     return saved;
+  }
+
+  // 수업용: 마음 김밥 곁들이기. 김발에 김·밥·속재료·마무리를 올리고 말아서 썰어 손님 앞에 놓으면, 손님이 한 조각 먹고 한마디 해요
+  private gThumbs = new Map<string, string>();
+  private async gimbap(c: Customer, view: Customer, say: ReturnType<App['say']>): Promise<GimbapRec> {
+    const st = this.stage;
+    this.serving = true;
+    document.querySelectorAll('.dialog').forEach((d) => d.remove());
+    window.speechSynthesis?.cancel();
+    st.talk(0, false);
+    const start = st.gimbapStart();
+    // 재료 그림은 처음 한 번만 그려요 (카메라가 조리대로 가는 동안)
+    let i = 0;
+    for (const g of GIMBAP) {
+      if (this.gThumbs.has(g.id)) continue;
+      this.gThumbs.set(g.id, st.gimThumb(g, 192).toDataURL('image/webp', 0.9));
+      if (++i % 5 === 0) await new Promise((r) => setTimeout(r, 0));
+    }
+    await start;
+    const picks = await UI.gimbap({ thumbs: this.gThumbs, need: c.needs.effect, onSet: (p) => st.gimbapSet(p) });
+    st.showPaws(true);
+    await st.gimbapRoll(picks);
+    await st.gimbapSlice(picks);
+    await st.gimbapServe();
+    const j = judgeGimbap(c.needs.effect, picks);
+    await st.gimbapEat(j.stamp);
+    const lines = j.stamp && j.effect
+      ? [`(우물우물) ${j.name}… 김밥 속에 '${j.effect}' 마음이 꼭꼭 들어 있어요.`, '제 마음을 한 번 더 생각해 주셔서 고마워요. 마음이 한결 나아졌어요.']
+      : ['(우물우물) 김밥 맛있어요. 곁들여 주셔서 고마워요.', `그런데 제게 꼭 필요했던 건 '${FX.get(c.needs.effect)!.name}' 같은 마음이었어요.`];
+    if (j.stamp) { sfx.heart(); toast('🍙 정성 도장을 받았어요!'); }
+    await UI.dialog(view, lines, { onLine: (k, w) => say(k, w, lines), final: { label: '마음 쪽지 보기' } });
+    st.talk(0, false);
+    return { picks, name: j.name, stamp: j.stamp, effect: j.effect };
   }
 
   // 수업용: 두 그릇 전에 라면을 끓여 준 손님이 다음 손님보다 먼저 잠깐 들러 뒷이야기를 들려줘요 (두 그릇마다 한 번)

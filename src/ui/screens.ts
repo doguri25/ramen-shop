@@ -7,7 +7,9 @@ import { FAMILY, FX } from '../data/effects';
 import { AMOUNTS, ING, INGREDIENTS, STEPS } from '../data/ingredients';
 import { TUTOR_STEP } from '../data/text';
 import { ALLEY_LINKS, KIND_EMOJI, LATER, MAX_PROMISE, type Later, type TreatMood, TREAT_MOODS } from '../data/later';
-import type { Amount, Customer, Ingredient, Owner, Picks, RamenRecord, Step, Treat } from '../data/types';
+import type { Amount, Customer, GimbapRec, Ingredient, Owner, Picks, RamenRecord, Step, Treat } from '../data/types';
+import { EMPTY_G, GIMBAP, GING, GSTEPS, type GIng, type GPicks, type GStep } from '../data/gimbap';
+import { gimFaceCanvas } from '../scene/gimbap';
 import { buildName, isBad, MAX_NAME, TEMPLATES, wordPools, type Template } from '../game/naming';
 import type { ClassStats } from '../ai/solar';
 import type { ScoreResult } from '../game/scoring';
@@ -81,7 +83,7 @@ function rankSec(r: { open: () => Promise<void>; hasKey: () => boolean; forget: 
 let scrollTaught = false;
 
 // 마음 쪽지 끝: 오늘 우리 반 친구(또는 나)에게 해 볼 약속 하나 (안 골라도 돼요)
-function pledgeBox(c: Customer, pledge: { options: string[]; onPick: (p: string | null) => void }) {
+function pledgeBox(c: Customer, pledge: { options: string[]; onPick: (p: string | null) => void; initial?: string | null }) {
   let chosen: string | null = null;
   const chips = h('div', { class: 'pl-chips' });
   const own = h('input', { class: 'inp pl-own', maxLength: MAX_PROMISE, placeholder: '내가 직접 쓰기 (예: 짝꿍에게 먼저 인사하기)' }) as HTMLInputElement;
@@ -99,10 +101,28 @@ function pledgeBox(c: Customer, pledge: { options: string[]; onPick: (p: string 
     if (t) { chosen = null; chips.querySelectorAll('button').forEach((b) => b.classList.remove('on')); pledge.onPick(t); }
     else pick(null);
   });
+  // 김밥을 곁들이고 쪽지로 돌아오면 아까 고른 약속을 그대로 보여 줘요
+  const init = pledge.initial?.trim();
+  if (init) { if (pledge.options.includes(init)) { chosen = init; chips.querySelectorAll('button').forEach((b) => b.classList.toggle('on', b.textContent === init)); } else own.value = init; }
   return h('div', { class: 'pledge' },
     h('div', { class: 'pl-t' }, '🤝 오늘의 마음 한 그릇 약속'),
     h('div', { class: 'pl-sub' }, `${c.name}에게 건넨 마음을 우리 반 친구나 나에게도 건네 볼까요? 하나 골라요. (안 골라도 돼요)`),
     chips, own, warn);
+}
+
+// 곁들인 마음 김밥 (쪽지·도감): 단면 그림, 이름, 정성 도장
+const gimFace = new Map<string, string>();
+function gimBox(g: GimbapRec, famName: string) {
+  const key = JSON.stringify(g.picks);
+  let src = gimFace.get(key);
+  if (!src) { src = gimFaceCanvas(g.picks, 160).toDataURL('image/png'); gimFace.set(key, src); }
+  const names = [g.picks.gim, g.picks.rice, ...g.picks.fills, g.picks.top].filter((x): x is string => !!x).map((id) => GING.get(id)?.name).filter(Boolean).join(', ');
+  return h('div', { class: `gim-res ${g.stamp ? 'stamp' : ''}` },
+    h('img', { src, alt: '김밥 단면' }),
+    h('div', { class: 'gtx' },
+      h('div', { class: 'gnm' }, '🍙 ', g.name, g.stamp ? h('span', { class: 'gstamp' }, '정성 도장') : null),
+      h('div', { class: 'gsub' }, g.stamp && g.effect ? `김밥에 '${g.effect}' 마음을 담아 다시 마음을 전했어요.` : `다음에는 ${famName} 묶음 재료를 넣어 봐요.`),
+      h('div', { class: 'gings' }, names)));
 }
 
 // 도감: 두 그릇 뒤에 손님이 들려주는 뒷이야기 (아직이면 몇 그릇 남았는지)
@@ -466,6 +486,98 @@ export const UI = {
     });
   },
 
+  // ── 마음 김밥 (수업용): 별 하나 받은 손님에게 곁들여 줘요 ─────────────
+  gimbap(o: { thumbs: Map<string, string>; need: string; onSet: (p: GPicks) => Promise<void> }): Promise<GPicks> {
+    return new Promise((res) => {
+      const p = EMPTY_G();
+      let step = 0, busy = false;
+      const fx = FX.get(o.need)!, fam = FAMILY.get(fx.family)!;
+      document.body.classList.add('cooking');
+      const panel = h('div', { class: 'cook slide-up' });
+      const info = h('div', { class: 'info card fade-in' });
+      const ids = (s: GStep) => (s === 'fill' ? p.fills : [p[s]].filter((x): x is string => !!x));
+      const ok = (k: number) => !!GSTEPS[k].optional || ids(GSTEPS[k].id).length > 0;
+      const isOn = (g: GIng) => ids(g.step).includes(g.id);
+      const needLine = () => h('div', { class: 'gneed', style: `background:${fam.soft}` },
+        h('span', { class: 'dot', style: `background:${fam.color}` }), '손님에게 꼭 필요했던 마음: ', h('b', null, fx.name), ` (${fam.name} 묶음)`);
+      const showInfo = (g: GIng | null) => {
+        info.innerHTML = '';
+        if (!g) {
+          const st = GSTEPS[step];
+          info.append(h('div', { class: 'row' }, h('span', { class: 'nm' }, `🍙 ${st.label} 고르기`), st.optional ? h('span', { class: 'opt' }, '안 넣어도 돼요') : null),
+            h('div', { class: 'note' }, st.info + ' 한 번 더 누르면 빠져요.'), needLine());
+          return;
+        }
+        info.append(h('div', { class: 'row' }, h('span', { class: 'nm' }, g.name), h('span', { class: 'fx' }, g.effects.map(fxChip))), h('div', { class: 'note' }, g.note), needLine());
+        info.animate([{ transform: 'scale(.97)' }, { transform: 'scale(1)' }], { duration: 180 });
+      };
+      const setH = () => document.documentElement.style.setProperty('--cookH', panel.offsetHeight + 'px');
+      const ro = new ResizeObserver(setH); ro.observe(panel);
+      const finish = () => { ro.disconnect(); panel.remove(); info.remove(); document.body.classList.remove('cooking'); res(JSON.parse(JSON.stringify(p))); };
+      let shownStep = -1;
+      const render = () => {
+        const st = GSTEPS[step];
+        const keepX = shownStep === step ? (panel.querySelector('.cards') as HTMLElement | null)?.scrollLeft ?? 0 : 0;
+        shownStep = step;
+        panel.innerHTML = '';
+        const tabs = h('div', { class: 'tabs' }, GSTEPS.map((s, k) => {
+          const n = ids(s.id).length, done = n > 0;
+          return h('span', { class: `tab ${k === step ? 'on' : ''} ${done ? 'done' : ''} ${k < step ? 'past' : k > step ? 'later' : ''}` },
+            k < step ? (done ? '✓ ' : '– ') : done ? '✓ ' : '', s.label,
+            s.optional && !done && k >= step ? h('span', { class: 'n' }, '선택') : s.max > 1 && k >= step ? h('span', { class: 'n' }, `${n}/${s.max}`) : null);
+        }));
+        const last = step === GSTEPS.length - 1;
+        const label = last ? (p.top ? '돌돌 말기 ▶' : '마무리 없이 말기 ▶') : st.optional && !ids(st.id).length ? '건너뛰기 ▶' : `다음: ${GSTEPS[step + 1].label} ▶`;
+        const nextBtn = h('button', {
+          class: `btn next ${last ? 'pulse' : ''}`, disabled: !ok(step),
+          onclick: () => {
+            if (busy) return;
+            sfx.pop();
+            if (!last) { step++; showInfo(null); render(); return; }
+            finish();
+          },
+        }, label);
+        const cards = h('div', { class: 'cards' }, GIMBAP.filter((g) => g.step === st.id).map((g) => h('button', {
+          class: `icard ${isOn(g) ? 'on' : ''}`, onclick: () => tap(g),
+        }, h('img', { src: o.thumbs.get(g.id) ?? '', alt: '' }), h('div', { class: 'nm' }, g.name), h('div', { class: 'dots' }, g.effects.map(famDot)))));
+        const wrap = h('div', { class: 'cards-wrap seen' }, cards);
+        const arrow = (dir: -1 | 1) => h('button', {
+          class: `scr-arrow ${dir < 0 ? 'left' : 'right'}`, 'aria-label': dir < 0 ? '앞 재료 보기' : '다음 재료 보기',
+          onclick: (e: Event) => { e.stopPropagation(); sfx.tap(); cards.scrollBy({ left: dir * Math.max(240, cards.clientWidth * 0.8), behavior: 'smooth' }); },
+        }, h('span', { html: `<svg viewBox="0 0 24 24" width="30" height="30" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="${dir < 0 ? 'M15 5l-7 7 7 7' : 'M9 5l7 7-7 7'}"/></svg>` }));
+        wrap.append(arrow(-1), arrow(1));
+        const upd = () => { const max = cards.scrollWidth - cards.clientWidth; wrap.classList.toggle('more-left', cards.scrollLeft > 4); wrap.classList.toggle('more-right', cards.scrollLeft < max - 4); };
+        cards.addEventListener('scroll', upd, { passive: true });
+        new ResizeObserver(upd).observe(cards);
+        panel.append(h('div', { class: 'cook-top' }, tabs, nextBtn), wrap);
+        if (keepX) cards.scrollLeft = keepX;
+        requestAnimationFrame(upd);
+        setH();
+      };
+      const tap = async (g: GIng) => {
+        if (busy) return;
+        showInfo(g);
+        if (isOn(g)) {
+          if (g.step === 'fill') p.fills = p.fills.filter((x) => x !== g.id); else p[g.step] = null;
+          sfx.back();
+          render();
+          o.onSet(JSON.parse(JSON.stringify(p)));
+          return;
+        }
+        if (g.step === 'fill') {
+          if (p.fills.length >= 3) { sfx.back(); toast('속재료는 세 가지까지 넣을 수 있어요. 빼고 싶은 재료를 한 번 더 눌러요.'); return; }
+          p.fills.push(g.id);
+        } else p[g.step] = g.id;
+        busy = true; panel.classList.add('busy');
+        render();
+        try { await o.onSet(JSON.parse(JSON.stringify(p))); } finally { busy = false; panel.classList.remove('busy'); }
+      };
+      mount(panel); mount(info);
+      showInfo(null);
+      render();
+    });
+  },
+
   // ── 이름 짓기 ─────────────────────────────
   naming(picks: Picks, c: Customer, tutorial: boolean, check?: (name: string) => Promise<{ ok: boolean; why: string } | null>): Promise<string> {
     return new Promise((res) => {
@@ -686,12 +798,12 @@ export const UI = {
   },
 
   // ── 마음 쪽지 ─────────────────────────────
-  note(c: Customer, picks: Picks, r: ScoreResult, heartOn: boolean, canRetry: boolean, tutorial: boolean, backward = false,
-    pledge?: { options: string[]; onPick: (p: string | null) => void }): Promise<'retry' | 'save' | 'skip'> {
+  note(c: Customer, picks: Picks, r: ScoreResult, heartOn: boolean, canGimbap: boolean, tutorial: boolean, backward = false,
+    pledge?: { options: string[]; onPick: (p: string | null) => void; initial?: string | null }, gim?: GimbapRec | null): Promise<'gimbap' | 'save' | 'skip'> {
     return new Promise((res) => {
       const fx = FX.get(c.needs.effect)!, fam = FAMILY.get(fx.family)!, sub = FAMILY.get(c.needs.sub)!;
       const wrap = h('div', { class: 'modal-wrap fade-in' });
-      const close = (v: 'retry' | 'save' | 'skip') => { sfx.pop(); wrap.remove(); res(v); };
+      const close = (v: 'gimbap' | 'save' | 'skip') => { sfx.pop(); wrap.remove(); res(v); };
       // 도감에 넣지 않기는 잘못 누르지 않게 한 번 더 눌러야 해요
       // (빠른 연타로 두 번 눌리지 않게 0.5초는 기다리고, 5초 지나면 처음으로 돌아가요)
       let sure = 0, sureT = 0;
@@ -715,16 +827,17 @@ export const UI = {
         h('div', { class: 'sub' }, '더하면 좋은 마음: ', h('b', { style: `color:${sub.color}` }, `${sub.name} 묶음`)),
         h('div', { class: 'ings' }, pickedList(picks).map((ing) => h('span', { class: `ing ${r.glow.get(ing.id) ?? ''}` }, ing.effects.map(famDot).slice(0, 1), ing.name))),
         h('div', { class: 'legend' }, `노란 테두리는 꼭 필요한 마음(${fam.name})과 맞은 재료, 연한 테두리는 더하면 좋은 마음(${sub.name})과 맞은 재료예요.`),
-        r.stars < 3 ? h('div', { class: 'heartline' }, r.stars === 1 ? `💡 ${fam.name} 묶음 재료를 더 넣어 보면 어떨까요? 특히 '${fx.name}' 마음이 담긴 재료를 찾아봐요.` : starHint(r, fx.name, fam.name, sub.name))
+        r.stars < 3 ? h('div', { class: 'heartline' }, r.stars === 1 ? `💡 ${fam.name} 묶음 재료를 더 넣어 보면 어떨까요? 특히 '${fx.name}' 마음이 담긴 재료를 찾아봐요.${canGimbap ? ' 이 마음을 담은 김밥을 곁들여 줄 수도 있어요.' : ''}` : starHint(r, fx.name, fam.name, sub.name))
           : EVENT && !heartOn && !backward ? h('div', { class: 'heartline' }, '💡 라면 이름에 손님 마음을 나타내는 낱말을 넣으면 별 다섯 개!') : null,
         // 이름 뜻이 거꾸로라 하트를 못 받았으면 왜 그런지 알려 줘요
         backward ? h('div', { class: 'heartline' }, '💡 이름의 뜻이 거꾸로라서 하트를 받지 못했어요. 줄여야 할 마음(슬픔·걱정…)은 날려 주고, 키워야 할 마음(기쁨·용기…)은 채워 주는 이름으로 지어 봐요.') : null,
         heartOn ? h('div', { class: 'heartline' }, '❤️ 라면 이름에 손님 마음 낱말이 들어 있어서 하트 도장을 받았어요!') : null,
+        gim ? gimBox(gim, fam.name) : null,
         c.safetyNote ? h('div', { class: 'safety' }, '🙋 ', c.safetyNote) : null,
         tutorial ? h('div', { class: 'safety', style: 'background:#FFF6D6' }, '👴 ', TUTOR_STEP.note) : null,
         pledge ? pledgeBox(c, pledge) : null,
         h('div', { class: 'actions' },
-          canRetry ? h('button', { class: 'btn ghost', onclick: () => close('retry') }, '한 번 더 끓여 주기') : null,
+          canGimbap ? h('button', { class: 'btn soft', onclick: () => close('gimbap') }, '🍙 마음 김밥 곁들이기') : null,
           // 행사용은 끓인 라면을 모두 도감에 담아요 (넣지 않기 없음)
           tutorial || EVENT ? null : skip,
           h('button', { class: 'btn', onclick: () => close('save') }, tutorial ? '연습 끝! 가게 열기' : '도감에 담기')));
@@ -812,6 +925,7 @@ export const UI = {
             h('div', { style: 'flex:1;min-width:220px' }, h('h2', null, r.name), h('div', { class: 'sub' }, `${c?.name ?? ''}에게 · ${starText(r.stars)}${r.heart ? ' · ❤️' : ''}`))),
           h('div', { class: 'steps' }, methodLines(r.picks).map((l, i) => h('div', null, h('b', null, `${i + 1}. `), l))),
           r.promise ? h('div', { class: 'lib-pledge' }, h('b', null, '🤝 마음 한 그릇 약속 '), r.promise) : null,
+          r.gimbap && c ? gimBox(r.gimbap, FAMILY.get(FX.get(c.needs.effect)!.family)!.name) : null,
           c && !EVENT ? laterBox(owner, r, c) : null,
           h('div', { class: 'actions' },
             h('button', { class: 'btn ghost', onclick: () => savePic(r, im) }, '📷 사진 저장'),

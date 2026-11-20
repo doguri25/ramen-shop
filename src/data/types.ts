@@ -87,7 +87,10 @@ export interface RamenRecord {
   photoKey: string;
   createdAt: number;
   promise?: string;       // 수업용: 마음 쪽지에서 고른 '오늘의 마음 한 그릇 약속'
+  gimbap?: GimbapRec;     // 수업용: 별 하나 받은 손님에게 곁들여 준 마음 김밥
 }
+// 별은 그대로 두고, 손님에게 꼭 필요했던 마음 묶음 재료가 들어 있으면 정성 도장을 받아요
+export interface GimbapRec { picks: { rice: string | null; gim: string | null; fills: string[]; top: string | null }; name: string; stamp: boolean; effect: string | null }
 
 export interface Owner {
   id: string;
