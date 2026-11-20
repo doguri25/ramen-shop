@@ -32,6 +32,9 @@ export const TASTE_OF: Record<string, string[]> = {
   t_egg: ['고소'], t_dumpling: ['짭짤'], t_scallion: ['시원'], t_fishcake: ['짭짤'], t_gim: ['짭짤'], t_shiitake: ['구수'], t_corn: ['달콤'], t_chili: ['매콤', '얼큰'],
   t_tofu: ['고소', '순한'], t_tteok: ['달콤'], t_sprout: ['시원'], t_yubu: ['단짠'], t_sausage: ['짭짤', '단짠'], t_quail: ['짭짤'],
   f_sesame: ['고소'], f_giggle: ['달콤'], f_pepper: ['매콤'], f_oil: ['고소'], f_salt: ['짭짤'], f_cheese: ['고소', '단짠'], f_gimflake: ['짭짤', '고소'], f_butter: ['고소', '달콤'], f_stargim: ['짭짤'],
+  b_sprout: ['시원'], b_udon: ['순한', '구수'], b_pumpkin: ['달콤', '순한'], n_spinach: ['순한'], n_kalguksu: ['구수'], n_buckwheat: ['구수', '고소'],
+  s_sleep: ['순한'], s_brave: ['매콤', '얼큰'], s_flutter: ['달콤', '새콤달콤'], s_thanks: ['구수', '고소'],
+  t_potato: ['고소', '순한'], t_carrot: ['달콤'], t_broccoli: ['고소'], t_cucumber: ['시원'], t_peas: ['달콤'], f_honey: ['달콤'], f_chive: ['시원'], f_perilla: ['고소', '구수'],
 };
 
 export const FAMILY_WORDS: Record<Family, { front: string[]; verb: string[]; adj: string[]; mat: string[] }> = {

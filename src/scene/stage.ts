@@ -448,7 +448,7 @@ export class Stage {
   async toss(ing: Ingredient, picks: Picks) {
     const kind = ing.look.model;
     const model = kind === 'noodle' ? noodleBlock(ing) : itemModel(ing);
-    const type = kind === 'broth' ? 'pour' : ['sesame', 'pepper', 'salt', 'gimflake', 'giggle', 'oil', 'stargim', 'butter', 'cheese'].includes(kind) ? 'shake' : kind === 'packet' ? 'packet' : 'drop';
+    const type = kind === 'broth' ? 'pour' : ['sesame', 'pepper', 'salt', 'gimflake', 'giggle', 'oil', 'stargim', 'butter', 'cheese', 'honey', 'chive', 'perilla'].includes(kind) ? 'shake' : kind === 'packet' ? 'packet' : 'drop';
     // 건더기는 냄비 속에서와 같은 크기의 작은 접시에 담아 와요 (떨어뜨려도 크기가 그대로)
     const isTop = type === 'drop' && kind !== 'noodle';
     model.scale.setScalar(isTop ? (this.TOP * 1.55) / 1.4 : 0.75);

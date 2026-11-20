@@ -10,7 +10,9 @@ export type ModelKind =
   | 'broth' | 'noodle' | 'packet'
   | 'egg' | 'dumpling' | 'scallion' | 'fishcake' | 'gim' | 'shiitake' | 'corn' | 'chili' | 'tofu'
   | 'tteok' | 'woodear' | 'sprout' | 'yubu' | 'sausage' | 'quail'
-  | 'sesame' | 'giggle' | 'pepper' | 'oil' | 'salt' | 'cheese' | 'gimflake' | 'butter' | 'stargim';
+  | 'potato' | 'carrot' | 'broccoli' | 'cucumber' | 'peas'
+  | 'sesame' | 'giggle' | 'pepper' | 'oil' | 'salt' | 'cheese' | 'gimflake' | 'butter' | 'stargim'
+  | 'honey' | 'chive' | 'perilla';
 
 export interface Look { model: ModelKind; color: string; color2?: string; style?: string }
 

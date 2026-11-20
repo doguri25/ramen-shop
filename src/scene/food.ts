@@ -163,6 +163,51 @@ function topping(ing: Ingredient, s: number, rnd: Rnd): THREE.Group {
     case 'quail':
       for (let i = 0; i < 3; i++) add(sphereG(1), i === 1 ? c2 : c, [(i - 1) * 0.085, 0.05, (rnd() - 0.5) * 0.05], [0.055, 0.07, 0.055], [rnd() * 0.5, 0, rnd() - 0.5]);
       break;
+    case 'potato':
+      // 포슬포슬 둥근 감자 조각 셋, 겉에 옅은 점
+      for (let i = 0; i < 3; i++) {
+        const x = (i - 1) * 0.1, z = (rnd() - 0.5) * 0.07;
+        add(sphereG(1, 16, 12), mix(c, '#ffffff', rnd() * 0.15), [x, 0.045, z], [0.07, 0.055, 0.062], [rnd(), rnd() * 3, rnd()], { rim: 0.4 });
+        for (let k = 0; k < 2; k++) add(sphereG(1, 6, 4), c2, [x + (rnd() - 0.5) * 0.06, 0.09, z + (rnd() - 0.5) * 0.05], 0.009);
+      }
+      break;
+    case 'carrot':
+      // 꽃 모양으로 썬 당근 두 장: 가운데 동그라미 + 꽃잎 다섯
+      for (let f = 0; f < 2; f++) {
+        const fx = (f - 0.5) * 0.15, fz = (rnd() - 0.5) * 0.05, rot = rnd() * 6;
+        add(cylG(0.045, 0.045, 0.02, 18), c, [fx, 0.02, fz], 1, [0.15, rot, 0]);
+        for (let p = 0; p < 5; p++) {
+          const a = rot + (p / 5) * PI * 2;
+          add(cylG(0.026, 0.026, 0.02, 12), c, [fx + Math.cos(a) * 0.045, 0.02, fz + Math.sin(a) * 0.045], 1, [0.15, 0, 0]);
+        }
+        add(cylG(0.016, 0.016, 0.022, 12), c2, [fx, 0.022, fz], 1, [0.15, 0, 0]);
+      }
+      break;
+    case 'broccoli':
+      // 줄기 + 동글동글 송이 두 덩이
+      for (let b = 0; b < 2; b++) {
+        const bx = (b - 0.5) * 0.14, bz = (rnd() - 0.5) * 0.05;
+        add(cylG(0.022, 0.03, 0.08, 10), c2, [bx, 0.04, bz], 1, [0, 0, (b - 0.5) * 0.4]);
+        for (let k = 0; k < 6; k++) {
+          const a = (k / 6) * PI * 2 + rnd();
+          add(sphereG(1, 10, 8), k % 2 ? c : darken(c, 0.08), [bx + Math.cos(a) * 0.035, 0.1 + rnd() * 0.02, bz + Math.sin(a) * 0.035], 0.035 + rnd() * 0.01, [0, 0, 0], { rim: 0.5 });
+        }
+        add(sphereG(1, 10, 8), c, [bx, 0.125, bz], 0.04, [0, 0, 0], { rim: 0.5 });
+      }
+      break;
+    case 'cucumber':
+      // 가늘게 채 썬 오이: 초록 껍질과 연두 속살
+      for (let i = 0; i < 9; i++) {
+        const a = rnd() * 6.28, d = rnd() * 0.06;
+        add(boxG(0.16, 0.014, 0.014), i % 3 ? c2 : c, [Math.cos(a) * d, 0.02 + i * 0.004, Math.sin(a) * d], 1, [0, rnd() * PI, (rnd() - 0.5) * 0.3]);
+      }
+      break;
+    case 'peas':
+      for (let i = 0; i < 11; i++) {
+        const a = rnd() * 6.28, d = Math.sqrt(rnd()) * 0.12;
+        add(sphereG(1, 12, 8), mix(c, '#ffffff', rnd() * 0.18), [Math.cos(a) * d, 0.03 + rnd() * 0.03, Math.sin(a) * d], 0.03, [0, 0, 0], { rim: 0.5, spec: 0.4 });
+      }
+      break;
   }
   return g;
 }
@@ -240,6 +285,20 @@ function finishOn(g: THREE.Group, ing: Ingredient, amount: Amount, r: number, rn
       }
       break;
     }
+    case 'honey': {
+      // 빙글빙글 꿀 줄기 (많이 넣을수록 길게)
+      const pts: [number, number, number][] = [];
+      const turns = 1.2 + 0.6 * Math.min(2, k);
+      for (let t = 0; t <= 1; t += 0.02) {
+        const a = t * turns * PI * 2, d = (0.45 - t * 0.3) * r;
+        pts.push([Math.cos(a) * d, top + 0.012 * r + Math.sin(t * 9) * 0.004 * r, Math.sin(a) * d]);
+      }
+      const m = new THREE.Mesh(tube(pts, 0.012 * r, 90), M(c, { alpha: 0.85, rim: 0.8, spec: 0.8 }));
+      m.userData.ownGeo = true; g.add(m);
+      break;
+    }
+    case 'chive': scatter(g, cylG(1, 1, 1, 8), c, Math.round(26 * k), r * 0.5, [0.012 * r, 0.008 * r, 0.012 * r], rnd, top * 1.1, { rim: 0.4 }); break;
+    case 'perilla': scatter(g, sphereG(1, 5, 4), c, Math.round(55 * k), r * 0.55, [0.008 * r, 0.006 * r, 0.008 * r], rnd, top); break;
   }
 }
 
@@ -325,7 +384,7 @@ export function itemModel(ing: Ingredient): THREE.Group {
       g.add(m);
       break;
     }
-    case 'sesame': case 'pepper': case 'salt': case 'gimflake': case 'stargim': case 'butter': case 'cheese': {
+    case 'sesame': case 'pepper': case 'salt': case 'gimflake': case 'stargim': case 'butter': case 'cheese': case 'chive': case 'perilla': {
       mesh(cylG(0.14, 0.11, 0.04, 26), M('#FFF8EE'), [0, 0.02, 0], 1, [0, 0, 0], g);
       mesh(torusG(0.14, 0.008, 6, 28), M('#C2560E'), [0, 0.04, 0], 1, [PI / 2, 0, 0], g);
       const inner = new THREE.Group(); inner.position.y = 0.04; g.add(inner);
@@ -333,8 +392,8 @@ export function itemModel(ing: Ingredient): THREE.Group {
       else if (ing.look.model === 'butter') mesh(boxG(0.09, 0.07, 0.09), M(c, { rim: 0.4 }), [0, 0.035, 0], 1, [0, 0.5, 0], inner);
       else if (ing.look.model === 'stargim') for (let i = 0; i < 4; i++) mesh(starG(), M(i % 2 ? c : (ing.look.color2 ?? '#F7D560')), [Math.cos(i * 1.6) * 0.06, 0.005, Math.sin(i * 1.6) * 0.06], 0.04, [0, i, 0], inner);
       else {
-        const geo = ing.look.model === 'salt' ? boxG(1, 1, 1) : ing.look.model === 'gimflake' ? boxG(1, 1, 1) : sphereG(1, 6, 4);
-        const size: [number, number, number] = ing.look.model === 'gimflake' ? [0.06, 0.005, 0.016] : ing.look.model === 'sesame' ? [0.016, 0.008, 0.012] : [0.013, 0.013, 0.013];
+        const geo = ing.look.model === 'salt' ? boxG(1, 1, 1) : ing.look.model === 'gimflake' ? boxG(1, 1, 1) : ing.look.model === 'chive' ? cylG(1, 1, 1, 8) : sphereG(1, 6, 4);
+        const size: [number, number, number] = ing.look.model === 'gimflake' ? [0.06, 0.005, 0.016] : ing.look.model === 'sesame' ? [0.016, 0.008, 0.012] : ing.look.model === 'chive' ? [0.016, 0.01, 0.016] : [0.013, 0.013, 0.013];
         // 소복이 쌓인 더미
         for (let lay = 0; lay < 5; lay++) scatter(inner, geo, ing.look.model === 'sesame' ? mix(c, '#C9A26B', lay * 0.12) : ing.look.model === 'salt' ? mix('#FFFFFF', '#DDE7EE', lay * 0.15) : c, 70, 0.1 - lay * 0.018, size, rnd, 0.006 + lay * 0.012, { rim: 0.3 });
       }
@@ -344,6 +403,14 @@ export function itemModel(ing: Ingredient): THREE.Group {
       mesh(cylG(0.09, 0.09, 0.18, 24), M('#DDEFFA', { alpha: 0.45, rim: 1.5 }), [0, 0.09, 0], 1, [0, 0, 0], g);
       mesh(cylG(0.075, 0.08, 0.03, 20), M('#F0974A'), [0, 0.195, 0], 1, [0, 0, 0], g);
       for (let i = 0; i < 9; i++) mesh(sphereG(1, 12, 8), M(RAINBOW[i % 6], { rim: 1 }), [(rnd() - 0.5) * 0.1, 0.03 + rnd() * 0.12, (rnd() - 0.5) * 0.1], 0.025 + rnd() * 0.012, [0, 0, 0], g);
+      break;
+    }
+    case 'honey': {
+      // 통통한 꿀단지 + 나무 꿀 막대
+      mesh(sphereG(1, 22, 16), M(c, { alpha: 0.9, rim: 1.2, spec: 0.7 }), [0, 0.085, 0], [0.09, 0.085, 0.09], [0, 0, 0], g);
+      mesh(cylG(0.055, 0.06, 0.03, 18), M('#FFF4E6'), [0, 0.17, 0], 1, [0, 0, 0], g);
+      mesh(cylG(0.008, 0.008, 0.16, 8), M('#B9845A'), [0.03, 0.2, 0], 1, [0, 0, -0.35], g);
+      mesh(sphereG(1, 10, 8), M('#B9845A'), [0.065, 0.27, 0], [0.022, 0.03, 0.022], [0, 0, -0.35], g);
       break;
     }
     case 'oil': {
