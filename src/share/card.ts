@@ -1,4 +1,5 @@
 import { MAX_STARS } from '../config';
+import { EVENT } from '../event/flag';
 import { eulReul, gwaWa, listKo } from '../core/korean';
 import { FAMILY, FX } from '../data/effects';
 import { ING } from '../data/ingredients';
@@ -132,15 +133,16 @@ export function drawCard(d: CardInput): HTMLCanvasElement {
 
   // 고른 까닭
   const ry = 862;
-  box(g, 30, ry, 660, 138, '#FFFDF6'); label(g, d.rec.promise?.trim() ? '내가 고른 까닭과 약속' : '내가 고른 까닭', 50, ry + 12);
+  // 행사용 카드는 예전 크기 그대로 (약속 줄은 수업용에만 있어요)
+  box(g, 30, ry, 660, EVENT ? 132 : 138, '#FFFDF6'); label(g, d.rec.promise?.trim() ? '내가 고른 까닭과 약속' : '내가 고른 까닭', 50, ry + 12);
   g.fillStyle = INK; g.textBaseline = 'top';
   const why = d.reason.trim() ? `내가 이 라면을 고른 까닭은 ${d.reason.trim()} 때문이에요.` : '내가 이 라면을 고른 까닭은 ________ 때문이에요.';
   const whoLine = d.who.trim() ? `${d.who.trim()}에게 이 라면을 끓여 주고 싶어요.` : '';
   const pledge = d.rec.promise?.trim() ? `오늘의 마음 한 그릇 약속은 '${d.rec.promise.trim()}'예요.` : '';
   // 글이 길면 글자를 조금씩 줄여서 "때문이에요."까지 다 들어가게 해요
   let lines: string[] = [], lh = 27;
-  const room = 86;
-  for (const [fs, l] of [[20, 27], [18, 23], [16, 19], [14, 17]]) {
+  const room = EVENT ? 80 : 86;
+  for (const [fs, l] of EVENT ? [[20, 27], [18, 23], [16, 19]] : [[20, 27], [18, 23], [16, 19], [14, 17]]) {
     g.font = `${fs}px ${B}`; lh = l;
     lines = [...wrap(g, why, 620), ...(whoLine ? wrap(g, whoLine, 620) : []), ...(pledge ? wrap(g, pledge, 620) : [])];
     if (lines.length * l <= room) break;
