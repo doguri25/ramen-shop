@@ -76,6 +76,9 @@ function rankSec(r: { open: () => Promise<void>; hasKey: () => boolean; forget: 
       forget, state));
 }
 
+// 재료 줄을 한 번 옆으로 밀어 보면 '옆으로 밀면 더 있어요' 안내는 그만 보여 줘요 (화살표는 계속 있어요)
+let scrollTaught = false;
+
 export const UI = {
   clear() { root().querySelectorAll(':scope > :not(.hud):not(.toast)').forEach((e) => e.remove()); },
   clearAll() { root().innerHTML = ''; document.body.classList.remove('naming'); },
@@ -98,7 +101,34 @@ export const UI = {
         h('div', { class: 'credit' },
           h('span', { class: 'cr-item' }, h('span', { class: 'cr-ic' }, '🧑‍🏫'), h('span', { class: 'cr-k' }, '만든이'), h('b', null, CREDIT.name)),
           h('span', { class: 'cr-sep' }),
-          h('span', { class: 'cr-item' }, h('span', { class: 'cr-ic' }, '✉️'), h('span', { class: 'cr-k' }, '문의'), h('b', { class: 'cr-mail' }, CREDIT.contact)))));
+          h('span', { class: 'cr-item' }, h('span', { class: 'cr-ic' }, '✉️'), h('span', { class: 'cr-k' }, '문의'), h('b', { class: 'cr-mail' }, CREDIT.contact)),
+          h('span', { class: 'cr-sep' }),
+          h('button', { class: 'cr-item cr-btn', onclick: () => { sfx.tap(); UI.credits(); } }, h('span', { class: 'cr-ic' }, '📄'), h('b', null, '사용한 자료')))));
+    });
+  },
+
+  // ── 사용한 자료와 라이선스 ───────────────────
+  credits(): Promise<void> {
+    return new Promise((res) => {
+      const wrap = h('div', { class: 'modal-wrap fade-in' });
+      const close = () => { sfx.back(); wrap.remove(); res(); };
+      wrap.addEventListener('click', (e) => { if (e.target === wrap) close(); });
+      const row = (ic: string, title: string, items: (string | Node)[], lic: string) => h('div', { class: 'cr-card' },
+        h('div', { class: 'cr-ic2' }, ic),
+        h('div', null, h('h3', null, title), h('ul', null, items.map((x) => h('li', null, x))), h('span', { class: 'cr-lic' }, lic)));
+      wrap.appendChild(h('div', { class: 'modal card pop-in credits' },
+        h('h2', null, '사용한 자료'),
+        h('p', { class: 'sub' }, '손님, 재료, 가게 그림과 효과음은 게임 코드로 직접 그리고 만들었어요. 함께 쓴 다른 사람의 자료는 아래와 같아요.'),
+        h('div', { class: 'cr-grid' },
+          row('🔤', '글꼴', ['주아 (BM JUA) — 우아한형제들', '고운돋움 (Gowun Dodum) — 류양희'], 'SIL Open Font License 1.1'),
+          row('🏮', '3D 소품 (3dassets.dev)', ['둥근 종이 등, 벽시계, 그릇 선반, 손님 의자', '젓가락·양념 통, 작은 옹기, 메뉴판 이젤'], 'CC0 1.0 (퍼블릭 도메인)'),
+          row('🧩', '프로그램 부품', ['three.js, three-mesh-bvh (MIT)', 'idb-keyval (Apache 2.0)'], '오픈 소스 라이선스'),
+          row('✦', 'AI', ['업스테이지 Solar Pro 4 — 손님 맞춤 한마디, 고운 말 검사, 생각 도우미, 학급 요약', '학생 이름과 번호는 보내지 않아요'], '업스테이지 이용약관')),
+        h('p', { class: 'cr-who' }, `만든이 ${CREDIT.name} · 문의 ${CREDIT.contact}`),
+        h('div', { class: 'actions' },
+          h('a', { class: 'btn ghost', href: './LICENSES.txt', target: '_blank', rel: 'noopener', onclick: () => sfx.tap() }, '라이선스 전문 보기'),
+          h('button', { class: 'btn', onclick: close }, '닫기'))));
+      mount(wrap);
     });
   },
 
@@ -335,8 +365,23 @@ export const UI = {
         const amounts = st.id === 'finish' && picks.finish.length ? h('div', { class: 'amounts' }, picks.finish.map((f) => h('div', { class: 'amtrow' },
           h('span', { class: 'lbl' }, ING.get(f.id)!.name),
           AMOUNTS.map((a) => h('button', { class: `amt ${f.amount === a ? 'on' : ''}`, onclick: () => { if (busy) return; sfx.tap(); f.amount = a as Amount; o.onRemove(JSON.parse(JSON.stringify(picks))); render(); } }, a))))) : null;
-        panel.append(h('div', { class: 'cook-top' }, tabs, nextBtn), cards, amounts ?? '');
+        // 재료 줄은 옆으로 밀어 더 볼 수 있어요: 양쪽 끝에 화살표와 흐린 가장자리를 두고, 처음엔 '옆으로 밀면 더 있어요'를 보여 줘요
+        const wrap = h('div', { class: `cards-wrap ${scrollTaught ? 'seen' : ''}` }, cards);
+        const arrow = (dir: -1 | 1) => h('button', {
+          class: `scr-arrow ${dir < 0 ? 'left' : 'right'}`, 'aria-label': dir < 0 ? '앞 재료 보기' : '다음 재료 보기',
+          onclick: (e: Event) => { e.stopPropagation(); sfx.tap(); cards.scrollBy({ left: dir * Math.max(240, cards.clientWidth * 0.8), behavior: 'smooth' }); },
+        }, h('span', { html: `<svg viewBox="0 0 24 24" width="30" height="30" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="${dir < 0 ? 'M15 5l-7 7 7 7' : 'M9 5l7 7-7 7'}"/></svg>` }));
+        wrap.append(arrow(-1), arrow(1), h('span', { class: 'scr-tip' }, '옆으로 밀면 재료가 더 있어요 ▶'));
+        const updArrows = () => {
+          const max = cards.scrollWidth - cards.clientWidth;
+          wrap.classList.toggle('more-left', cards.scrollLeft > 4);
+          wrap.classList.toggle('more-right', cards.scrollLeft < max - 4);
+        };
+        cards.addEventListener('scroll', () => { updArrows(); if (cards.scrollLeft > 30 && !scrollTaught) { scrollTaught = true; wrap.classList.add('seen'); } }, { passive: true });
+        new ResizeObserver(updArrows).observe(cards);
+        panel.append(h('div', { class: 'cook-top' }, tabs, nextBtn), wrap, amounts ?? '');
         if (keepX) cards.scrollLeft = keepX;
+        requestAnimationFrame(updArrows);
         // 지금 단계 칸이 보이게 단계 줄을 밀어 줘요 (좁은 화면)
         (tabs.querySelector('.tab.on') as HTMLElement | null)?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
         document.documentElement.style.setProperty('--cookH', panel.offsetHeight + 'px');

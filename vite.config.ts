@@ -21,7 +21,8 @@ function precache(): Plugin {
         }
       };
       walk(outDir);
-      const list = files.filter((f) => f !== 'sw.js' && !f.endsWith('.txt') && !f.endsWith('.md')).sort();
+      // 사용한 자료(LICENSES.txt)는 인터넷이 끊겨도 열리게 함께 받아 둬요
+      const list = files.filter((f) => f !== 'sw.js' && (f === 'LICENSES.txt' || (!f.endsWith('.txt') && !f.endsWith('.md')))).sort();
       const h = createHash('sha1');
       for (const f of list) { h.update(f); h.update(readFileSync(join(outDir, f))); }
       const version = h.digest('hex').slice(0, 10);

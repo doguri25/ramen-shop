@@ -57,7 +57,7 @@ npm run dev        # 고치면서 볼 때
 - 띵커벨 주소나 암호를 바꾸려면 GitHub에서 `src/config.ts`를 바로 고쳐 저장(Commit)하면 다시 배포돼요.
 - 그 주소로 QR 코드를 만들어 태블릿에서 열어요.
 
-직접 올리고 싶을 때는 `npm run build`로 만든 `dist` 폴더 **안의 것 전부**(`index.html`, `assets`, `models`)를 올려야 해요. `index.html`만 올리면 화면이 하얗게 나와요.
+직접 올리고 싶을 때는 `npm run build`로 만든 `dist` 폴더 **안의 것 전부**(`index.html`, `assets`, `models`, `LICENSES.txt` 등)를 올려야 해요. `index.html`만 올리면 화면이 하얗게 나와요.
 `dist/index.html`을 컴퓨터에서 더블클릭해서 열면 동작하지 않아요. 꼭 웹 주소로 열어 주세요.
 
 ## 무료 3D 소품 (`public/models`)
@@ -126,3 +126,8 @@ ThreeRT(meshy-dev)는 전용 앱(맥·iOS 등)에서만 실시간 광선 추적�
 - `src/scene` 가게, 2등신 손님, 사장님 두 팔, 라면과 재료 모형, 국물 셰이더, CC0 모델 불러오기, 연출
 - `src/ui` 화면과 버튼
 - `src/share` 레시피 카드 그림과 띵커벨 올리기
+
+## 사용한 자료와 라이선스
+- 게임 첫 화면 아래 줄의 **사용한 자료** 버튼을 누르면 글꼴, 3D 소품, 프로그램 부품, AI를 누가 만들었고 어떤 조건으로 쓰는지 볼 수 있어요. 수업용과 행사용 모두 같아요.
+- 라이선스 전문은 `public/LICENSES.txt`(배포 파일에서는 `LICENSES.txt`)에, 요약 표는 `THIRD_PARTY_NOTICES.md`에 있어요.
+- 다시 배포할 때는 `LICENSES.txt`를 빼지 말고 함께 올려 주세요. 글꼴(OFL)과 프로그램 부품(MIT, Apache 2.0)은 라이선스 글을 함께 두는 조건으로 쓸 수 있어요.
