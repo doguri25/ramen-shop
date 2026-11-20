@@ -1,10 +1,10 @@
 import * as THREE from 'three';
-import { cylG, M, mesh, sphereG, torusG } from './geo';
+import { capsuleG, cylG, M, mesh, sphereG, torusG } from './geo';
 
-// 사장님(나)의 몸과 두 팔.
+// 사장님(나)의 몸과 두 팔 (사람 손).
 // 몸통은 카메라 아래에 서 있고(고개를 숙이면 화면 아래로 가슴과 앞치마가 살짝 보여요),
 // 팔은 어깨 → 팔꿈치 → 손목 두 마디로 이어져 어느 쪽을 보든 화면 가장자리에서 들어와요.
-const FUR = '#F3DFC1', PAD = '#E9A0A8', SLEEVE = '#C2560E', CUFF = '#FFF4E6', APRON = '#FFF4E6';
+const SKIN = '#F3D2B5', SLEEVE = '#C2560E', CUFF = '#FFF4E6', APRON = '#FFF4E6';
 const UP = new THREE.Vector3(0, 1, 0);
 const V = (x = 0, y = 0, z = 0) => new THREE.Vector3(x, y, z);
 const UPPER = 0.3, FORE = 0.29; // 위팔·아래팔 길이 (다 펴면)
@@ -29,11 +29,23 @@ export class Paw {
     this.cur = rest.clone();
     this.target = rest.clone();
     parent.add(this.paw);
-    const fur = M(FUR, { noise: 2 });
-    mesh(sphereG(1, 18, 14), fur, [0, 0, 0], [0.072, 0.06, 0.08], [0, 0, 0], this.paw);
-    for (let i = -1; i <= 1; i++) mesh(sphereG(0.024, 10, 8), fur, [i * 0.033, 0.018, -0.07], 1, [0, 0, 0], this.paw);
-    mesh(sphereG(0.026, 10, 8), fur, [-side * 0.062, 0.02, -0.03], 1, [0, 0, 0], this.paw);
-    mesh(sphereG(1, 12, 8), M(PAD, { rim: 0.2 }), [0, -0.05, -0.02], [0.032, 0.012, 0.028], [0, 0, 0], this.paw);
+    // 사람 손: 납작한 손바닥 + 앞(-z)으로 뻗은 손가락 넷 + 몸 안쪽의 엄지
+    const skin = M(SKIN, { noise: 1 });
+    mesh(sphereG(1, 18, 14), skin, [0, 0, -0.01], [0.054, 0.027, 0.058], [0, 0, 0], this.paw);
+    const FINGER = [0.042, 0.048, 0.044, 0.034]; // 검지·중지·약지·새끼 (엄지 쪽부터)
+    const tip = V(0, -Math.sin(0.3), -Math.cos(0.3)); // 손끝은 살짝 아래로
+    for (let i = 0; i < 4; i++) {
+      const x = (i - 1.5) * 0.026; // 엄지가 -side 쪽이라 오른손은 왼쪽(-x)부터 검지
+      const len = FINGER[side > 0 ? i : 3 - i];
+      const dir = tip.clone().add(V((i - 1.5) * 0.07, 0, 0)).normalize(); // 손가락이 살짝 벌어져요
+      const c = V(x, 0.002, -0.05).addScaledVector(dir, len * 0.5 + 0.004);
+      const f = mesh(capsuleG(0.0128, len), skin, [c.x, c.y, c.z], 1, [0, 0, 0], this.paw);
+      f.quaternion.setFromUnitVectors(UP, dir);
+    }
+    const tdir = V(-side * 0.5, -0.15, -0.85).normalize(); // 엄지는 앞쪽으로, 조금 바깥으로
+    const tc = V(-side * 0.046, -0.008, -0.02).addScaledVector(tdir, 0.02);
+    const thumb = mesh(capsuleG(0.015, 0.034), skin, [tc.x, tc.y, tc.z], 1, [0, 0, 0], this.paw);
+    thumb.quaternion.setFromUnitVectors(UP, tdir);
     this.paw.add(this.hold);
     this.hold.position.set(0, 0.02, -0.07);
     const sl = M(SLEEVE, { noise: 1.6 });
@@ -52,10 +64,10 @@ export class Paw {
   update(dt: number, speed = 12, lean = V()) {
     this.cur.lerp(this.target, 1 - Math.exp(-dt * speed));
     this.paw.position.copy(this.cur);
-    // 손목은 앞발 바로 뒤
+    // 손목은 손 바로 뒤
     const S = this.shoulder.clone().add(lean);
     const toS = S.clone().sub(this.cur);
-    const fdir = toS.clone().normalize(); // 앞발 → 어깨 쪽
+    const fdir = toS.clone().normalize(); // 손 → 어깨 쪽
     const W = this.cur.clone().addScaledVector(fdir, 0.055);
     // 두 마디 팔. 손이 가까우면 팔이 그만큼 짧아져서 팔꿈치가 크게 꺾이지 않고 살짝만 굽어요
     // (닿지 않으면 만화처럼 조금 늘어나요)
@@ -74,11 +86,11 @@ export class Paw {
     this.bone(this.fore, this.E, W);
     this.elbow.position.copy(this.E);
     this.ball.position.copy(S);
-    // 소맷부리와 앞발은 아래팔 방향을 따라요
+    // 소맷부리와 손은 아래팔 방향을 따라요
     const fa = W.clone().sub(this.E).normalize();
     this.cuff.position.copy(W).addScaledVector(fa, -0.012);
     this.cuff.quaternion.setFromUnitVectors(V(0, 0, 1), fa);
-    // 앞발의 -z(발가락 쪽)가 아래팔 방향(앞)을 보게 해요. 그러면 엄지가 몸 안쪽에 와요
+    // 손의 -z(손가락 쪽)가 아래팔 방향(앞)을 보게 해요. 그러면 엄지가 몸 안쪽에 와요
     // (오른손은 화면에서 왼쪽, 왼손은 오른쪽). 손끝은 살짝 아래로 숙여요
     const m = new THREE.Matrix4().lookAt(V(), fa, UP);
     this.paw.quaternion.setFromRotationMatrix(m);
@@ -105,13 +117,13 @@ function makeBody() {
   apron.userData.ownGeo = true;
   mesh(new THREE.BoxGeometry(0.14, 0.07, 0.02), M('#F6E3C8', { noise: 1.2 }), [0, -0.66, -0.2], 1, [0.12, 0, 0], g).userData.ownGeo = true;
   for (const sd of [-1, 1]) mesh(cylG(0.008, 0.008, 0.2, 6), M(APRON), [sd * 0.07, -0.33, -0.08], 1, [0.5, 0, -sd * 0.35], g);
-  // 목 언저리 털
-  mesh(sphereG(1, 16, 12), M(FUR, { noise: 2 }), [0, -0.26, 0.02], [0.13, 0.06, 0.11], [0, 0, 0], g);
+  // 목
+  mesh(sphereG(1, 16, 12), M(SKIN, { noise: 1 }), [0, -0.26, 0.02], [0.13, 0.06, 0.11], [0, 0, 0], g);
   return g;
 }
 
 export function makeOwnerPaws() {
-  const group = new THREE.Group(); // 카메라에 붙어요 (팔·앞발)
+  const group = new THREE.Group(); // 카메라에 붙어요 (팔·손)
   const body = makeBody(); // 장면에 놓여요 (몸통은 고개를 숙여도 똑바로 서 있어요)
   const L = new Paw(group, -1, V(-0.27, -0.33, -0.62));
   const R = new Paw(group, 1, V(0.27, -0.33, -0.62));
