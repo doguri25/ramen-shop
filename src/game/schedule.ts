@@ -1,7 +1,7 @@
 import { mulberry32, shuffle } from '../core/rng';
 import type { Customer } from '../data/types';
 
-// 학생마다 손님 순서를 새로 섞어요. 책 손님도 다른 손님과 똑같이 아무 자리에나 와요.
+// 학생마다 손님 순서를 새로 섞어요. 연습 손님(국숫집 할아버지)은 빼요.
 export function makeOrder(all: Customer[], seed: number): string[] {
   return shuffle(all.filter((c) => c.source !== 'tutorial'), mulberry32(seed)).map((c) => c.id);
 }
