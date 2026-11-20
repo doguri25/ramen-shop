@@ -15,7 +15,7 @@ import { makeOwnerPaws, type Paw } from './paws';
 import { bowlProfile, Drop, GRAV, Liquid, NoodleBundle, potProfile, Stream, type Container, type NoodleLook, type Profile } from './physics';
 import { makeProp } from './props';
 import { makeShop, makeSteam } from './shop';
-import { gimItemModel, makeGimPlate, makeGimRig, makeRoll, makeSlices, ROLL_L, ROLL_R, SLICES, type GimRig } from './gimbap';
+import { GIM_BOARD_H, gimItemModel, makeGimBoard, makeGimPlate, makeGimRig, makeRoll, makeSlices, ROLL_L, ROLL_R, SLICES, type GimRig } from './gimbap';
 import type { GIng, GPicks } from '../data/gimbap';
 
 const PI = Math.PI;
@@ -39,8 +39,8 @@ const VIEWS: Record<View, { pos: [number, number, number]; look: [number, number
   // 마음 돋보기: 손님 얼굴과 손이 한눈에 들어오게 가까이
   face: { pos: [0.1, 1.5, 0.88], look: [0.12, 1.2, -0.68], focus: 1.6, range: 0.7, dof: 0.6 },
   // 마음 김밥: 조리대 왼쪽 김발 (요리 판에 가리지 않게 냄비 볼 때처럼 위에서)
-  // 마음 김밥: 아래 요리 판과 위 안내 사이에 김발이 오게 (가까이 있어야 앞발이 닿아서 카메라가 앞으로 쏠리지 않아요)
-  gimbap: { pos: [-0.52, 1.36, 1.06], look: [-0.52, 0.88, 0.707], focus: 0.63, range: 0.36, dof: 1 },
+  // 마음 김밥: 냄비를 치우고 인덕션을 도마로 덮은 가운데 조리대. 아래 요리 판과 위 안내 사이에 김발이 오게 (가까이 있어야 앞발이 닿아서 카메라가 앞으로 쏠리지 않아요)
+  gimbap: { pos: [0, 1.4, 1.08], look: [0, 0.925, 0.727], focus: 0.63, range: 0.36, dof: 1 },
 };
 const MOOD_ACT: Partial<Record<Mood, Act>> = { sad: 'sad', worried: 'worry', angry: 'fist' };
 
@@ -1510,8 +1510,26 @@ export class Stage {
 
   // ── 마음 김밥 (수업용): 별 하나 받은 손님에게 곁들여 줘요 ─────────────
   private gim: { rig: GimRig; roll: THREE.Group | null; seeds: THREE.Group | null } | null = null;
-  private gimPlates: { plate: THREE.Group; slices: THREE.Mesh[]; who: number[] }[] = [];
-  private static GIM_AT = V(-0.52, 0.89, 0.64);
+  private gimPlates: { plate: THREE.Group; slices: THREE.Mesh[]; who: number[]; at: THREE.Vector3 }[] = [];
+  // 가운데 인덕션을 넓은 도마로 덮고 그 위에서 말아요. 인덕션을 숨기면 조리대에 구워 둔 그림자 자국이 드러나서 덮어요
+  private static GIM_AT = V(0, 0.915 + GIM_BOARD_H, 0.66);
+  private gimHid: { pot: boolean; board: THREE.Group } | null = null;
+  private gimClearStove() {
+    if (this.gimHid) return;
+    const board = makeGimBoard();
+    board.position.set(0, 0.915, 0.66);
+    this.scene.add(board);
+    this.gimHid = { pot: this.shop.pot.visible, board };
+    this.shop.pot.visible = false;
+    this.shop.flames.visible = false;
+  }
+  private gimRestoreStove(pot = true) {
+    if (!this.gimHid) return;
+    this.scene.remove(this.gimHid.board);
+    disposeTree(this.gimHid.board);
+    if (pot) this.shop.pot.visible = this.gimHid.pot;
+    this.gimHid = null;
+  }
   gimThumb(g: GIng, size = 192): HTMLCanvasElement {
     const m = gimItemModel(g);
     this.thumbScene.add(m);
@@ -1523,6 +1541,7 @@ export class Stage {
   // 조리대 왼쪽에 김발을 펼쳐요
   async gimbapStart() {
     this.gimbapClear();
+    this.gimClearStove();
     const rig = makeGimRig();
     rig.root.position.copy(Stage.GIM_AT);
     rig.root.scale.setScalar(0.01);
@@ -1584,88 +1603,40 @@ export class Stage {
       await wait(0.35);
     }
   }
-  // 칼로 여덟 조각을 썰어 접시에 담아요
+  // 썰기는 보여 주지 않아요 (칼이 나오니까). 다 만 김밥이 사라지면 바로 여덟 조각을 담은 접시가 나와요
   async gimbapSlice(p: GPicks) {
     const g = this.gim;
     if (!g || !g.roll) return;
-    this.phase = 'gimslice';
-    const root = g.rig.root, base = g.roll.position.clone();
-    const { slices, faceTex } = makeSlices(p);
-    const th = ROLL_L / SLICES;
-    slices.forEach((s, i) => { s.rotation.set(0, 0, PI / 2); s.position.set((i - (SLICES - 1) / 2) * th, base.y, base.z); root.add(s); });
-    if (g.seeds?.visible) { const sd = g.seeds; root.attach(sd); sd.userData.keep = true; }
-    root.remove(g.roll); disposeTree(g.roll); g.roll = null;
-    // 칼: 앞발이 손잡이를 쥐고 위에서 톡톡
-    const knife = new THREE.Group();
-    const blade = new THREE.Mesh(new THREE.BoxGeometry(0.003, 0.05, 0.13), M('#DDE6EE', { spec: 0.9, rim: 0.8 }));
-    blade.userData.ownGeo = true;
-    blade.position.set(0, 0.025, -0.01); knife.add(blade);
-    const handle = new THREE.Mesh(new THREE.BoxGeometry(0.012, 0.022, 0.08), M('#8A5A3B'));
-    handle.userData.ownGeo = true;
-    handle.position.set(0, 0.04, 0.09); knife.add(handle);
-    root.add(knife);
-    const R = this.paws.R;
-    const hold = () => { knife.updateMatrixWorld(); this.pawAt(R, knife.localToWorld(V(0.02, 0.05, 0.11))); };
-    const hiY = base.y + ROLL_R + 0.03, loY = base.y - ROLL_R - 0.004;
-    knife.position.set((1 - SLICES / 2) * th, hiY, base.z);
-    hold();
-    await wait(0.25);
-    for (let c = 1; c < SLICES; c++) {
-      const x = (c - SLICES / 2) * th;
-      const x0 = knife.position.x;
-      await tween(0.12, (k) => { knife.position.x = lerp(x0, x, k); knife.position.y = hiY; hold(); }, { ease: ease.linear });
-      await tween(0.11, (k) => { knife.position.y = lerp(hiY, loY, k); hold(); }, { ease: ease.inQuad });
-      sfx.tap();
-      slices.forEach((s, i) => { if (i >= c) s.position.x += 0.0045; });
-      await tween(0.1, (k) => { knife.position.y = lerp(loY, hiY, k); hold(); }, { ease: ease.outQuad });
-    }
-    this.pawAt(R, null);
-    knife.visible = false;
-    root.remove(knife); disposeTree(knife);
-    // 접시(손님이 둘이고 냄비째 냈으면 한 사람에 한 접시)를 놓고, 조각을 세워 단면이 위로 보이게 담아요
     this.phase = 'gimplate';
+    const { slices, faceTex } = makeSlices(p);
+    // 접시(손님이 둘이고 냄비째 냈으면 한 사람에 한 접시). 조각은 단면이 위로 보이게 세워 담아요
     const plans = this.gimSpots();
+    const per = Math.floor(SLICES / plans.length);
+    const rnd = (i: number) => Math.sin(i * 12.9898) * 0.5;
     const plates = plans.map((pl, pi) => {
       const { plate, spots } = makeGimPlate(plans.length > 1 ? 0.62 : 1);
-      plate.position.copy(Stage.GIM_AT).add(V(plans.length > 1 ? (pi ? 0.09 : -0.09) : 0, 0, plans.length > 1 ? 0.0 : 0.02));
+      plate.position.copy(Stage.GIM_AT).add(V(plans.length > 1 ? (pi ? 0.09 : -0.09) : 0, 0, 0.02));
       plate.scale.setScalar(0.01);
+      plate.visible = false;
+      const mine = slices.slice(pi * per, pi * per + per);
+      mine.forEach((s, j) => { s.position.copy(spots[j]); s.rotation.set(0, rnd(pi * per + j), 0); plate.add(s); });
       this.scene.add(plate);
       this.extras.push(plate);
-      return { plate, spots, who: pl.who, at: pl.at, slices: [] as THREE.Mesh[] };
+      return { plate, slices: mine, who: pl.who, at: pl.at };
     });
+    // 김발과 김밥은 반짝 사라져요
+    const w = g.roll.getWorldPosition(V()).add(V(0, ROLL_R, 0));
     sfx.pop();
-    // 김발은 접어서 치워요
-    await tween(0.35, (k) => { g.rig.mat.scale.setScalar(Math.max(0.01, 1 - k)); plates.forEach((P) => P.plate.scale.setScalar(Math.max(0.01, k))); }, { ease: ease.outBack });
-    g.rig.mat.visible = false;
-    const per = Math.floor(SLICES / plates.length);
-    const jobs = slices.map((s, i) => {
-      const P = plates[Math.min(plates.length - 1, Math.floor(i / per))];
-      const j = i - plates.indexOf(P) * per;
-      const from = s.getWorldPosition(V()), q0 = s.quaternion.clone();
-      P.plate.updateMatrixWorld();
-      const to = P.plate.localToWorld(P.spots[j].clone());
-      P.slices.push(s);
-      return { s, from, to, q0, delay: i * 0.06 };
-    });
-    const upQ = new THREE.Quaternion();
-    await tween(0.55 + SLICES * 0.06, (t) => {
-      const T = t * (0.55 + SLICES * 0.06);
-      for (const J of jobs) {
-        const k = Math.min(1, Math.max(0, (T - J.delay) / 0.55)), e = ease.inOutCubic(k);
-        const w = J.from.clone().lerp(J.to, e); w.y += Math.sin(k * PI) * 0.06;
-        J.s.parent?.worldToLocal(w);
-        J.s.position.copy(w);
-        J.s.quaternion.copy(J.q0).slerp(upQ, e);
-      }
-    }, { ease: ease.linear });
-    sfx.soft();
-    for (const J of jobs) { const P = plates.find((pl) => pl.slices.includes(J.s))!; P.plate.attach(J.s); }
-    if (g.seeds) { g.seeds.visible = false; }
-    this.gimPlates = plates.map(({ plate, slices: sl, who }) => ({ plate, slices: sl, who }));
-    (this.gimPlates as unknown as { at: THREE.Vector3 }[]).forEach((P, i) => { P.at = plates[i].at; });
-    this.gimTex = faceTex;
-    root.remove(g.rig.layers);
+    this.burst(w, '#FFF3C4', 16, 0.3);
+    const root = g.rig.root, s0 = root.scale.x;
+    await tween(0.22, (k) => root.scale.setScalar(Math.max(0.01, s0 * (1 - k))), { ease: ease.inQuad });
     this.scene.remove(root); g.rig.dispose(); this.gim = null;
+    sfx.soft();
+    plates.forEach((P) => { P.plate.visible = true; });
+    await tween(0.4, (k) => plates.forEach((P) => P.plate.scale.setScalar(Math.max(0.01, k))), { ease: ease.outBack });
+    this.gimPlates = plates;
+    this.gimTex = faceTex;
+    await wait(0.35);
   }
   private gimTex: THREE.Texture | null = null;
   // 접시 놓을 자리: 혼자면 젓가락 쥔 손 쪽, 둘이면 가운데 (냄비째면 저마다 앞에)
@@ -1677,7 +1648,7 @@ export class Stage {
   }
   // 앞발로 접시를 손님 앞에 놓아요 (자리에 있던 소품은 잠깐 치워요)
   async gimbapServe() {
-    const plates = this.gimPlates as (typeof this.gimPlates[number] & { at: THREE.Vector3 })[];
+    const plates = this.gimPlates;
     if (!plates.length) return;
     this.phase = 'gimserve';
     const L = this.paws.L, R = this.paws.R;
@@ -1707,6 +1678,7 @@ export class Stage {
     }, { ease: ease.linear });
     sfx.soft();
     await cam;
+    this.gimRestoreStove();
     await wait(0.15);
     this.showPaws(false);
     setTimeout(() => { L.maxLen = R.maxLen = 0.5; }, 700);
@@ -1802,6 +1774,7 @@ export class Stage {
   }
   gimbapClear() {
     if (this.gim) { this.scene.remove(this.gim.rig.root); this.gim.rig.dispose(); this.gim = null; }
+    this.gimRestoreStove(false);
     this.gimTex?.dispose(); this.gimTex = null;
     this.gimPlates = [];
   }

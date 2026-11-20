@@ -135,6 +135,17 @@ export function gimFaceCanvas(p: GPicks, size = 256): HTMLCanvasElement {
   return cv;
 }
 
+// 김밥 도마: 가운데 인덕션을 덮을 만큼 넓어요
+export const GIM_BOARD_H = 0.024;
+export function makeGimBoard(): THREE.Group {
+  const o = new THREE.Group();
+  mesh(boxG(0.7, GIM_BOARD_H, 0.54), M('#E9CC9C', { noise: 3, spec: 0.12 }), [0, GIM_BOARD_H / 2, 0], 1, [0, 0, 0], o);
+  mesh(boxG(0.7, 0.003, 0.54), M('#F2DDB6', { noise: 4 }), [0, GIM_BOARD_H + 0.0005, 0], [0.97, 1, 0.96], [0, 0, 0], o);
+  for (const z of [-0.272, 0.272]) mesh(boxG(0.7, GIM_BOARD_H * 0.9, 0.008), M('#C9A36E'), [0, GIM_BOARD_H * 0.45, z], 1, [0, 0, 0], o);
+  o.add(makeShadow(0.86, 0.68, 0.45));
+  return o;
+}
+
 // 김발과 그 위에 올라가는 재료 (조리대에 놓아요)
 export interface GimRig { root: THREE.Group; mat: THREE.Group; layers: THREE.Group; set: (p: GPicks) => THREE.Object3D | null; dispose: () => void }
 export function makeGimRig(): GimRig {
