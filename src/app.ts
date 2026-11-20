@@ -12,8 +12,9 @@ import { bandOf, keyOf, maskName, rank, type Best, type SendResult, type Who } f
 import { EV, rememberPaused, whoText } from './event/screens';
 import { ING, INGREDIENTS } from './data/ingredients';
 import { TUTOR_INTRO } from './data/text';
-import { LATER, PROMISES } from './data/later';
-import type { Customer, Owner, Picks, RamenRecord, Step } from './data/types';
+import { BODY, LATER, PROMISES, type BodyMood } from './data/later';
+import { FX } from './data/effects';
+import type { ChibiSpec, Customer, Owner, Picks, RamenRecord, Step, Treat } from './data/types';
 import { catchUpOrder, customerForRound, makeOrder } from './game/schedule';
 import { fiveStars, hasHeart, isBackward, score } from './game/scoring';
 import { faceAtlas, paperCanvas, tex } from './paint/textures';
@@ -189,6 +190,8 @@ export class App {
       while (keep) {
         const saved = await this.round(false);
         const n = this.records.length;
+        // 열 그릇째: 이번엔 손님들이 사장님에게 라면을 끓여 줘요 (한 번만)
+        if (saved && n >= ROUNDS && !this.owner!.treat) await this.treat();
         let first = true;
         for (;;) {
           const choice = await UI.between({ count: n, justTen: first && saved && n === ROUNDS, skipped: !saved });
@@ -315,14 +318,16 @@ export class App {
     this.stage.mood(this.moodFor(c));
     if (tutorial) await UI.dialog(c, TUTOR_INTRO, { onLine: (i, w) => say(i, w, TUTOR_INTRO) });
     const story = view.story;
-    await UI.dialog(view, story, { onLine: (i, w) => say(i, w, story), final: { label: '라면 끓이러 가기!', replay: true } });
+    let body: string | undefined;
+    const look = tutorial || EVENT ? undefined : async () => { body = await this.lookCloser(c); };
+    await UI.dialog(view, story, { onLine: (i, w) => say(i, w, story), final: { label: '라면 끓이러 가기!', replay: true }, look });
     this.stage.talk(0, false);
     let attempt = 0;
     let picks: Picks = JSON.parse(JSON.stringify(EMPTY));
     let rec: RamenRecord | null = null;
     let saved = false;
     for (;;) {
-      this.memo(view, say);
+      this.memo(view, say, body);
       await this.stage.setView('pot', 0.9);
       this.stage.showPaws(true);
       this.stage.restorePot(picks);
@@ -443,12 +448,30 @@ export class App {
     return 'sad' as const;
   }
 
-  private memo(c: Customer, say: ReturnType<App['say']>) {
+  // 마음 돋보기: 카메라가 손님 얼굴과 손으로 다가가고, 몸짓을 보고 마음을 골라요. 찾은 몸짓 단서는 메모에 남아요
+  private async lookCloser(c: Customer): Promise<string> {
+    const kind = this.moodFor(c) as BodyMood;
+    const b = BODY[kind];
+    this.stage.talk(0, false);
+    window.speechSynthesis?.cancel();
+    await this.stage.setView('face', 0.8);
+    this.stage.showBody(kind);
+    const others = Object.values(BODY).map((x) => x.answer).filter((a) => a !== b.answer);
+    const rnd = mulberry32(hashStr(c.id + (this.owner?.id ?? '')));
+    const two = others.sort(() => rnd() - 0.5).slice(0, 2);
+    const opts = [b.answer, ...two].sort(() => rnd() - 0.5);
+    await UI.bodyQuiz(c, b.cue, b.answer, opts);
+    this.stage.mood(this.moodFor(c));
+    await this.stage.setView('guest', 0.8);
+    return b.cue;
+  }
+
+  private memo(c: Customer, say: ReturnType<App['say']>, body?: string) {
     const open = window.innerWidth >= 1100 && window.innerHeight >= 700;
     UI.memo(c, () => {
       if (document.querySelector('.dialog')) return;
       UI.dialog(c, c.story, { onLine: (i, w) => say(i, w, c.story), final: { label: '알겠어요!' } });
-    }, open);
+    }, open, body);
   }
 
   private cook(c: Customer, start: Picks, tutorial: boolean): Promise<Picks> {
@@ -682,6 +705,91 @@ export class App {
   }
 
   // ── 도감과 카드 ─────────────────────────
+  private async treatPhoto(t: Treat) {
+    const b = await db.photo(t.photoKey);
+    return b ? URL.createObjectURL(b) : this.stage.photo(t.picks, 320).toDataURL('image/webp', 0.85);
+  }
+
+  // ── 손님들이 사장님에게 끓여 주는 라면 (수업용, 열 그릇째에 한 번) ──
+  // 학생이 오늘 마음을 고르면, 그동안 라면을 끓여 준 손님 다섯이 재료를 하나씩 넣으며 한마디씩 해요
+  private async treat() {
+    const o = this.owner!;
+    // 도와줄 손님: 별을 많이 받은 손님부터, 서로 다른 손님 다섯
+    const helpers: { c: Customer; rec: RamenRecord }[] = [];
+    for (const r of [...this.records].sort((a, b) => b.stars - a.stars || b.round - a.round)) {
+      const c = CUSX.get(r.customerId);
+      if (!c || c.source === 'tutorial' || helpers.some((x) => x.c.id === c.id)) continue;
+      helpers.push({ c, rec: r });
+      if (helpers.length === 5) break;
+    }
+    if (!helpers.length) return;
+    while (helpers.length < 5) helpers.push(helpers[helpers.length % Math.max(1, helpers.length)]);
+    let seated = helpers.filter((x) => !Array.isArray(x.c.chibi)).filter((x, i, a) => a.findIndex((y) => y.c.id === x.c.id) === i).slice(0, 2);
+    if (!seated.length) seated = helpers.slice(0, 1); // 둘이 같이 오는 손님뿐이면 그 손님들이 앉아요
+    const party: Customer = { ...seated[0].c, id: 'treat', chibi: seated.flatMap((x) => (Array.isArray(x.c.chibi) ? x.c.chibi : [x.c.chibi as ChibiSpec])).slice(0, 2), propModel: 'none' };
+    const names = seated.map((x) => x.c.name);
+    this.inRound = true;
+    this.drawHud(null);
+    this.stage.resetPot();
+    await this.stage.setView('door', 0.9);
+    const entering = this.stage.enter(party, { prop: false });
+    await wait(1.2);
+    this.stage.setView('guest', 1.4);
+    await entering;
+    this.stage.mood('happy');
+    const say = this.say(party);
+    const hello = [`${o.name} 사장님! 열 그릇이나 끓이느라 정말 수고 많았어요.`, `${seated.length > 1 ? '@1 ' : ''}그래서 오늘은 우리가 사장님께 라면을 끓여 드릴게요. 사장님, 오늘 마음은 어때요?`];
+    await UI.dialog(party, hello, { onLine: (i, w) => say(i, w, hello), final: { label: '마음 고르기' }, names: [names[0], names[names.length - 1]] });
+    this.stage.talk(0, false);
+    const mood = await UI.treatMood(o.name);
+    // 학생 마음에 맞는 재료를 단계마다 하나씩
+    const fam = FX.get(mood.effect)!.family;
+    const steps: Step[] = ['broth', 'noodle', 'soup', 'topping', 'finish'];
+    const ings = steps.map((st) => {
+      const list = INGREDIENTS.filter((i) => i.step === st);
+      return list.find((i) => i.effects.includes(mood.effect)) ?? list.find((i) => i.effects.some((e) => FX.get(e)?.family === fam)) ?? list[0];
+    });
+    const say1 = [
+      (r: string, g: string) => `사장님! 그때 끓여 준 '${r}' 덕분에 힘이 났어요. 이번엔 제가 ${eulReul(g)} 부을게요.`,
+      (r: string, g: string) => `'${r}', 아직도 생각나요. 이번엔 제가 ${eulReul(g)} 넣을게요.`,
+      (_r: string, g: string) => `사장님이 제 이야기를 끝까지 들어 줘서 고마웠어요. ${eulReul(g)} 솔솔 뿌릴게요.`,
+      (_r: string, g: string) => `이번엔 제 차례예요! ${eulReul(g)} 살짝 올릴게요.`,
+      (_r: string, g: string) => `마지막은 제가 할게요. ${eulReul(g)} 톡톡 뿌리면 완성!`,
+    ];
+    const picks: Picks = { broth: null, noodle: null, soup: null, toppings: [], finish: [] };
+    const lines: string[] = [];
+    await this.stage.setView('pot', 0.9);
+    for (let i = 0; i < 5; i++) {
+      const { c, rec } = helpers[i], ing = ings[i];
+      const line = say1[i](rec.name, ing.name);
+      lines.push(line);
+      const sayI = this.say(c);
+      await UI.dialog(c, [line], { onLine: () => sayI(0, 0, [line]), final: { label: i < 4 ? '고마워요!' : '완성!' } });
+      window.speechSynthesis?.cancel();
+      if (ing.step === 'broth') picks.broth = ing.id;
+      else if (ing.step === 'noodle') picks.noodle = ing.id;
+      else if (ing.step === 'soup') picks.soup = ing.id;
+      else if (ing.step === 'topping') picks.toppings.push(ing.id);
+      else picks.finish.push({ id: ing.id, amount: '한 꼬집' });
+      await this.stage.toss(ing, picks);
+    }
+    this.stage.setView('guest', 1.0);
+    const end = [mood.end];
+    await UI.dialog(party, end, { onLine: (i, w) => say(i, w, end), final: { label: '라면 받기' }, names: [names[0]] });
+    this.stage.talk(0, false);
+    const t: Treat = { mood: mood.id, name: mood.name, picks, helpers: helpers.map((x, i) => ({ id: x.c.id, ing: ings[i].name, line: lines[i] })), photoKey: 'treat-' + o.id, at: Date.now() };
+    const photo = this.ctxLost ? null : this.stage.photo(picks, 512);
+    const blob = photo ? await new Promise<Blob | null>((res) => photo.toBlob(res, 'image/webp', 0.86)) : null;
+    if (blob) await db.savePhoto(t.photoKey, blob);
+    o.treat = t;
+    await this.saveOwner();
+    sfx.fanfare();
+    await UI.treatCard(t, o.name, await this.treatPhoto(t), (id) => CUSX.get(id));
+    await this.stage.leave();
+    this.stage.resetPot();
+    this.inRound = false;
+  }
+
   private async photoUrl(r: RamenRecord) {
     let u = this.photoUrls.get(r.photoKey);
     if (u) return u;
@@ -695,8 +803,13 @@ export class App {
   async openLibrary() {
     if (!this.owner) return;
     const ev = EVENT ? this.owner.ev : undefined;
+    const o = this.owner;
+    const more = EVENT ? undefined : {
+      alley: () => UI.alley({ owner: o, recs: this.records, order: o.order, customer: (id) => CUSX.get(id) }),
+      treat: o.treat ? { label: o.treat.name, open: async () => UI.treatCard(o.treat!, o.name, await this.treatPhoto(o.treat!), (id) => CUSX.get(id)) } : undefined,
+    };
     const pick = await UI.library(this.owner, this.records, (r) => this.photoUrl(r), (id) => CUSX.get(id),
-      ev ? `${this.owner.name}의 ${ev.runNo}번째 판 도감` : undefined, ev ? ev.done : undefined);
+      ev ? `${this.owner.name}의 ${ev.runNo}번째 판 도감` : undefined, ev ? ev.done : undefined, more);
     if (!pick) return;
     const url = await this.photoUrl(pick);
     const img = new Image();

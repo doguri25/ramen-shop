@@ -264,3 +264,63 @@ export const PROMISES: Record<Effect, string[]> = {
   '뿌듯함': ['해낸 일 가족에게 자랑하기', '친구가 해낸 일 함께 기뻐하기', '끝까지 해낸 나에게 "잘했어"'],
 };
 export const MAX_PROMISE = 30;
+
+// ── 마음 돋보기: 말보다 몸짓으로 마음 찾기 ──
+// 손님 마음 모양(app.moodFor)마다 몸짓 단서와 그 마음
+export type BodyMood = 'sad' | 'worried' | 'angry' | 'happy' | 'neutral';
+export const BODY: Record<BodyMood, { cue: string; answer: string }> = {
+  sad: { cue: '눈꼬리가 축 처지고 어깨가 움츠러들었어요.', answer: '슬퍼요' },
+  worried: { cue: '두 손을 꼼지락거리고 눈썹이 팔(八) 자로 올라갔어요.', answer: '걱정돼요' },
+  angry: { cue: '주먹을 꽉 쥐고 눈썹이 세모로 섰어요.', answer: '화가 나요' },
+  happy: { cue: '두 팔을 번쩍 들고 입꼬리가 쑥 올라갔어요.', answer: '신나요' },
+  neutral: { cue: '어깨가 축 늘어지고 몸에 힘이 하나도 없어 보여요.', answer: '지쳤어요' },
+};
+
+// ── 마음 골목: 사장님에게 위로받은 손님끼리 이어지는 이야기 (둘 다 별 두 개 이상이면 열려요) ──
+export const ALLEY_LINKS: { a: string; b: string; text: string }[] = [
+  { a: 'bori', b: 'bamsongi', text: '보리와 밤송이가 쉬는 시간마다 같이 그네를 타요.' },
+  { a: 'horong', b: 'k_movedgrandma', text: '호롱이와 뭉게가 먼 곳에 사는 사람에게 편지 쓰기 모임을 만들었어요.' },
+  { a: 'grandpa', b: 'k_dinner', text: '뜨개질 할머니가 혼자 저녁을 먹던 꼬옥이에게 목도리를 떠 주었어요.' },
+  { a: 'dubu', b: 'k_ruler', text: '두부와 복실이가 "먼저 미안하다고 말하기" 약속을 같이 지켜요.' },
+  { a: 'eoreum', b: 'k_swing', text: '얼음이와 퐁퐁이가 차례 지키기 놀이를 만들었어요.' },
+  { a: 'pongdang', b: 'k_speech', text: '퐁당이와 똘똘이가 무대에 서기 전에 같이 연습해요.' },
+  { a: 'neighbors', b: 'kidari', text: '꽃집 사장님과 문구점 사장님이 이사 온 키다리에게 동네 길을 알려 주었어요.' },
+  { a: 'danpung', b: 'k_relay', text: '단풍이와 콩콩이가 실수해도 괜찮다며 같이 운동장을 달려요.' },
+  { a: 'mongsil', b: 'k_sickfriend', text: '몽실이와 엉금이가 서로의 걱정을 들어 주는 단짝이 되었어요.' },
+  { a: 'bana', b: 'k_meeting', text: '바나와 팔랑이가 모둠 회의에서 서로 말할 차례를 챙겨 줘요.' },
+  { a: 'kkotip', b: 'k_paperhouse', text: '꽃잎이와 뚝딱이가 서로 칭찬 쪽지를 주고받아요.' },
+  { a: 'jumeoni', b: 'k_umbrella', text: '주머니와 포실이가 "고마워" 말하기 대장이 되었어요.' },
+  { a: 'ttangkong', b: 'k_quietclass', text: '땅콩이와 갈기가 반 친구들과 다 같이 하는 새 놀이를 만들었어요.' },
+  { a: 'nabi', b: 'k_firstday', text: '나비와 보송이가 걱정을 종이에 써서 같이 접어 날려요.' },
+  { a: 'jolli', b: 'k_nightmare', text: '졸리와 꼬질이가 자기 전에 좋았던 일 하나씩 말해 주기를 해요.' },
+  { a: 'hapum', b: 'k_busy', text: '하품이와 길쭉이가 주말에 같이 쉬어 가는 날을 정했어요.' },
+  { a: 'doto', b: 'k_toy', text: '도토와 민준이가 동생이랑 사이좋게 노는 방법을 서로 알려 줘요.' },
+];
+
+// 골목 지도에 그릴 손님 얼굴 (생김새마다)
+export const KIND_EMOJI: Record<string, string> = {
+  rabbit: '🐰', cat: '🐱', bear: '🐻', squirrel: '🐿️', duck: '🦆', penguin: '🐧', fox: '🦊', panda: '🐼', raccoon: '🦝', dog: '🐶',
+  owl: '🦉', turtle: '🐢', sheep: '🐑', hedgehog: '🦔', elephant: '🐘', hippo: '🦛', giraffe: '🦒', monkey: '🐵', pig: '🐷',
+  hamster: '🐹', otter: '🦦', frog: '🐸', chick: '🐥', deer: '🦌', lion: '🦁', tiger: '🐯', koala: '🐨', kangaroo: '🦘', mole: '🐾',
+  alpaca: '🦙', goat: '🐐', mouse: '🐭', beaver: '🦫', human: '🧑',
+  capybara: '🐾', quokka: '🐾', redpanda: '🐾', fennec: '🦊', seal: '🦭', cow: '🐮', horse: '🐴', zebra: '🦓', bee: '🐝', axolotl: '🦎',
+  dino: '🦖', parrot: '🦜', sparrow: '🐦', bat: '🦇', wolf: '🐺', rhino: '🦏', sloth: '🦥', skunk: '🦨', meerkat: '🐾', walrus: '🦭',
+  crocodile: '🐊', gorilla: '🦍', unicorn: '🦄', crow: '🐦', peacock: '🦚', shark: '🦈', dragon: '🐲', cheetah: '🐆', rooster: '🐓',
+  boar: '🐗', moose: '🦌', eagle: '🦅', lynx: '🐱', badger: '🦡', yak: '🐂', pelican: '🐦',
+};
+
+// ── 손님들이 사장님에게 끓여 주는 라면 (열 그릇째) ──
+// 학생이 고른 오늘 마음 → 손님들이 넣을 재료의 마음, 라면 이름, 마지막 한마디
+export interface TreatMood { id: string; label: string; emoji: string; effect: Effect; name: string; end: string }
+export const TREAT_MOODS: TreatMood[] = [
+  { id: 'proud', label: '뿌듯해요', emoji: '😊', effect: '뿌듯함', name: '최고 사장님 마음라면', end: '열 그릇이나 끓인 사장님, 정말 대단해요!' },
+  { id: 'happy', label: '기뻐요', emoji: '😄', effect: '축하', name: '기쁨 두 배 마음라면', end: '사장님 기쁨을 우리도 함께 나눌게요!' },
+  { id: 'excited', label: '설레요', emoji: '🤩', effect: '설렘', name: '두근두근 응원 마음라면', end: '사장님의 내일도 신나게 응원할게요!' },
+  { id: 'tired', label: '지쳤어요', emoji: '😩', effect: '쉼', name: '푹 쉬어요 마음라면', end: '사장님, 오늘은 푹 쉬어요. 정말 수고했어요!' },
+  { id: 'worried', label: '걱정돼요', emoji: '😟', effect: '걱정 줄이기', name: '걱정을 덜어 주는 마음라면', end: '걱정은 우리가 반씩 나눠 들게요!' },
+  { id: 'sad', label: '속상해요', emoji: '😢', effect: '토닥임', name: '속이 따뜻해지는 마음라면', end: '속상한 마음, 우리가 토닥토닥해 줄게요.' },
+  { id: 'lonely', label: '외로워요', emoji: '🥺', effect: '곁에 있기', name: '늘 곁에 있어요 마음라면', end: '사장님 곁에는 우리 골목 친구들이 있어요!' },
+  { id: 'angry', label: '화가 나요', emoji: '😤', effect: '화 식히기', name: '화를 식혀 주는 마음라면', end: '후~ 숨 한 번 크게 쉬고, 천천히 드세요.' },
+  { id: 'soso', label: '그냥 그래요', emoji: '🙂', effect: '웃음', name: '까르르 웃음 마음라면', end: '사장님 얼굴에 웃음꽃이 피면 좋겠어요!' },
+  { id: 'skip', label: '말하고 싶지 않아요', emoji: '🤐', effect: '고마움', name: '사장님 고마워요 마음라면', end: '말하지 않아도 괜찮아요. 우리 마음만 받아 주세요!' },
+];

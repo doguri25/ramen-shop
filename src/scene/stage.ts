@@ -25,7 +25,7 @@ const WALL_Z = -1.75; // 문이 달린 뒷벽
 // back만큼 뒤로 물러서요. gap: 얼굴 앞과 벽 사이 틈. snoutTurn: 고개를 옆으로 돌린 긴 주둥이가 앞으로 나오는 비율
 const PULL = { x: -0.8, back: [0, 0.2], open: 0.33, dur: 0.85, snoutTurn: 0.825, gap: 0.06 } as const;
 const POT_SPOT_Z = -0.02, POT_SPOT_Z2 = -0.1; // 냄비째 내어 줄 때 냄비 자리: 혼자 온 손님, 두 손님 (그릇은 -0.24)
-type View = 'guest' | 'pot' | 'door' | 'wide' | 'serve' | 'eat' | 'eat2';
+type View = 'guest' | 'pot' | 'door' | 'wide' | 'serve' | 'eat' | 'eat2' | 'face';
 const VIEWS: Record<View, { pos: [number, number, number]; look: [number, number, number]; focus: number; range: number; dof: number }> = {
   guest: { pos: [0, 1.6, 1.6], look: [0, 1.32, -0.8], focus: 2.25, range: 1.1, dof: 0.6 },
   pot: { pos: [0, 1.78, 1.28], look: [0, 0.96, 0.52], focus: 0.95, range: 0.45, dof: 1 },
@@ -34,6 +34,8 @@ const VIEWS: Record<View, { pos: [number, number, number]; look: [number, number
   eat: { pos: [-0.5, 1.34, 0.64], look: [0.05, 1.2, -0.42], focus: 1.25, range: 0.55, dof: 0.9 },
   eat2: { pos: [0, 1.36, 0.95], look: [0, 1.2, -0.45], focus: 1.4, range: 0.6, dof: 0.8 },
   wide: { pos: [0, 1.75, 2.1], look: [0, 1.35, -0.8], focus: 2.9, range: 1.6, dof: 0.35 },
+  // 마음 돋보기: 손님 얼굴과 손이 한눈에 들어오게 가까이
+  face: { pos: [0.1, 1.5, 0.88], look: [0.12, 1.2, -0.68], focus: 1.6, range: 0.7, dof: 0.6 },
 };
 const MOOD_ACT: Partial<Record<Mood, Act>> = { sad: 'sad', worried: 'worry', angry: 'fist' };
 
@@ -383,6 +385,12 @@ export class Stage {
       if (!g.manual) g.play(g.talking ? 'talk' : this.baseAct[k] ?? 'idle');
     });
   }
+  // 마음 돋보기: 마음이 몸짓에 또렷이 드러나게 해요 (기쁨은 두 팔 번쩍, 지침은 어깨 축)
+  showBody(kind: 'sad' | 'worried' | 'angry' | 'happy' | 'neutral') {
+    const act: Act = kind === 'happy' ? 'cheer' : kind === 'angry' ? 'fist' : kind === 'worried' ? 'worry' : kind === 'neutral' ? 'tired' : 'sad';
+    this.guests.forEach((g) => { g.talking = false; g.play(act); });
+  }
+
   mood(m: Mood, i = -1) {
     this.guests.forEach((g, k) => {
       if (i >= 0 && i !== k) return;
@@ -1435,12 +1443,26 @@ export class Stage {
     spoon.scale.setScalar(0.01);
     await tween(0.25, (k) => spoon.scale.setScalar(Math.max(0.01, k)), { ease: ease.outBack });
     const L = B.liquid;
-    const DOWN = V(-0.1, -1, 0.3).normalize(), MOUTH = V(-0.15, 0.3, -0.94).normalize();
+    // 숟가락은 세우지 않고 옆으로 눕혀서 국물을 떠요 (오른손 쪽에서 냄비 가운데로, 25도쯤만 아래로)
+    // 앞쪽(카메라 쪽)으로 많이 향하면 화면에서 짧게 보여 숟가락이 서 있는 것처럼 보여서, 거의 옆으로 눕혀요
+    // 입으로 가져갈 때는 손이 입보다 조금 아래에서 비스듬히 올려 넣어요 (숟가락 머리는 위를 봐서 국물이 흐르지 않게)
+    const DOWN = V(-0.9, -0.42, 0.1).normalize(), MOUTH = V(-0.45, 0.3, -0.84).normalize();
+    // 숟가락은 기울기를 지켜요: 젓가락처럼 방향을 바꿔 가며 자리를 찾지 않고, 손이 냄비 테두리 위에 오도록 손잡이 쪽만 조금 길게 잡아요
+    const sc = ch.root.scale.x, L0 = 0.2 * sc;
+    const rimY = B.food.localToWorld(V(0, B.box.prof.rimY, 0)).y;
+    const placeSpoon = (tip: THREE.Vector3, aim: THREE.Vector3) => {
+      const a = aim.clone().normalize();
+      let L = L0;
+      if (a.y < -0.05) L = Math.min(L0 * 1.6, Math.max(L0, (rimY + 0.05 * sc - tip.y) / -a.y));
+      spoon.scale.z = spoon.scale.x * (L / L0);
+      ch.setHandWorld(1, tip.clone().addScaledVector(a, -L), a);
+    };
     for (let i = 0; i < 2; i++) {
-      const s = B.food.localToWorld(V(side * 0.09 + (Math.random() - 0.5) * 0.03, (L ? L.level : 0) + 0.002, 0.04));
+      // 오른손에 가까운 냄비 앞쪽(손님 쪽)에서 떠요. 그래야 손이 냄비 테두리 밖에 있고 숟가락이 비스듬히 들어가요
+      const s = B.food.localToWorld(V(side * 0.09 + 0.06 + (Math.random() - 0.5) * 0.02, (L ? L.level : 0) + 0.002, -0.05));
       const lean = 0.05 * Math.max(0.15, 1 - R * 4);
       ch.lean = lean; ch.look = s.clone().add(V(0, 0.1 + R * 1.2, 0)); ch.headExtra.x = -0.05;
-      placeTip(s, DOWN, 0.2, spoon, 1.4);
+      placeSpoon(s, DOWN);
       await wait(0.45);
       sl.visible = true;
       this.splash(B, s, 0.25, '#FFFFFF');
@@ -1448,7 +1470,7 @@ export class Stage {
       ch.look = null;
       await tween(0.6, (k) => {
         const e = ease.inOutCubic(k);
-        placeTip(s.clone().lerp(ch.mouthWorld().add(V(0.02, -0.02, 0.06 + R)), e), DOWN.clone().lerp(MOUTH, e), 0.2, spoon, 1.4);
+        placeSpoon(s.clone().lerp(ch.mouthWorld().add(V(0.02, -0.02, 0.06 + R)), e), DOWN.clone().lerp(MOUTH, e));
         ch.lean = lean * (1 - 0.875 * k); ch.headExtra.x = -0.05 - (0.22 + R * 0.6) * k;
       }, { ease: ease.linear });
       sfx.slurp();

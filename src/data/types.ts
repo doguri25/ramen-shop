@@ -98,7 +98,18 @@ export interface Owner {
   tutorialDone: boolean;
   createdAt: number;
   visits?: string[];      // 수업용: 다시 들러 뒷이야기를 들려준 기록 id
+  treat?: Treat;          // 수업용: 열 그릇째에 손님들이 사장님에게 끓여 준 라면 (이 기기에만 남아요)
   ev?: EventRun;          // 행사용 한 판 기록
+}
+
+// 손님들이 사장님에게 끓여 준 라면: 학생이 고른 오늘 마음과 손님마다 넣은 재료·한마디
+export interface Treat {
+  mood: string;           // TREAT_MOODS id
+  name: string;
+  picks: Picks;
+  helpers: { id: string; ing: string; line: string }[];
+  photoKey: string;
+  at: number;
 }
 
 // 행사용: 학생 한 명의 한 판 (10그릇)

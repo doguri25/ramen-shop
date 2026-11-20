@@ -6,8 +6,8 @@ import { sfx } from '../core/sound';
 import { FAMILY, FX } from '../data/effects';
 import { AMOUNTS, ING, INGREDIENTS, STEPS } from '../data/ingredients';
 import { TUTOR_STEP } from '../data/text';
-import { LATER, MAX_PROMISE, type Later } from '../data/later';
-import type { Amount, Customer, Ingredient, Owner, Picks, RamenRecord, Step } from '../data/types';
+import { ALLEY_LINKS, KIND_EMOJI, LATER, MAX_PROMISE, type Later, type TreatMood, TREAT_MOODS } from '../data/later';
+import type { Amount, Customer, Ingredient, Owner, Picks, RamenRecord, Step, Treat } from '../data/types';
 import { buildName, isBad, MAX_NAME, TEMPLATES, wordPools, type Template } from '../game/naming';
 import type { ClassStats } from '../ai/solar';
 import type { ScoreResult } from '../game/scoring';
@@ -275,9 +275,9 @@ export const UI = {
   hideHud() { root().querySelector('.hud')?.remove(); },
 
   // ── 손님 이야기 ─────────────────────────────
-  dialog(c: Customer, lines: string[], o: { onLine?: (i: number, who: number) => void; onEnd?: () => void; final?: { label: string; replay?: boolean }; extra?: HTMLElement | null }): Promise<'go'> {
+  dialog(c: Customer, lines: string[], o: { onLine?: (i: number, who: number) => void; onEnd?: () => void; final?: { label: string; replay?: boolean }; extra?: HTMLElement | null; look?: () => Promise<void>; names?: string[] }): Promise<'go'> {
     return new Promise((res) => {
-      let i = 0;
+      let i = 0, looked = false;
       const who = h('span', { class: 'who' });
       const text = h('div', { class: 'text' });
       const next = h('span', { class: 'next' }, '▼');
@@ -285,7 +285,7 @@ export const UI = {
       const box = h('div', { class: 'dialog card slide-up' }, o.extra ?? null, who, text, next, btns);
       const show = () => {
         const l = lines[i];
-        who.textContent = speakerName(c, l);
+        who.textContent = o.names?.[i] ?? speakerName(c, l);
         who.classList.toggle('two', speakerIdx(l) === 1);
         text.innerHTML = '';
         text.append(...richText(stripSpeaker(l)));
@@ -299,6 +299,19 @@ export const UI = {
           btns.style.pointerEvents = 'none';
           setTimeout(() => { btns.style.pointerEvents = ''; }, 400);
           if (o.final.replay) btns.append(h('button', { class: 'btn ghost small', onclick: (e: Event) => { e.stopPropagation(); sfx.tap(); i = 0; show(); } }, '다시 듣기'));
+          // 마음 돋보기: 말 대신 몸짓에서 마음 찾기 (한 번 하면 '찾았어요'로 바뀌어요)
+          if (o.look) {
+            const look = o.look;
+            const lb: HTMLButtonElement = h('button', { class: `btn ghost small look ${looked ? 'done' : ''}`, onclick: async (e: Event) => {
+              e.stopPropagation(); sfx.tap();
+              box.style.visibility = 'hidden';
+              await look();
+              looked = true;
+              box.style.visibility = '';
+              lb.classList.add('done'); lb.textContent = '👀 몸짓 단서 찾음';
+            } }, looked ? '👀 몸짓 단서 찾음' : '🔍 몸짓 보기') as HTMLButtonElement;
+            btns.append(lb);
+          }
           btns.append(h('button', { class: 'btn', onclick: (e: Event) => { e.stopPropagation(); sfx.pop(); o.onEnd?.(); box.remove(); res('go'); } }, o.final.label));
         }
       };
@@ -311,14 +324,14 @@ export const UI = {
     });
   },
 
-  memo(c: Customer, onReplay: () => void, open = false) {
+  memo(c: Customer, onReplay: () => void, open = false, body?: string) {
     root().querySelector('.memo')?.remove();
     const cl = clues(c.story);
     const el = h('div', { class: `memo card fade-in ${open ? 'open' : ''}` });
     const head = h('button', { class: 't', onclick: () => { sfx.tap(); el.classList.toggle('open'); } }, `📝 ${c.name}의 이야기`, h('span', { class: 'arrow' }, '▾'));
     // 단서 밑줄이 없는 손님(행사용 5~6학년)은 이야기를 그대로 보여 줘요. 단서는 스스로 찾아요
     el.append(head, h('div', { class: 'body' },
-      cl.length ? h('div', { class: 'cl' }, cl.map((x) => h('span', null, x)))
+      cl.length ? h('div', { class: 'cl' }, cl.map((x) => h('span', null, x)), body ? h('span', { class: 'body-cue' }, `👀 ${body}`) : null)
         : h('div', { class: 'cl-lines' }, h('div', { class: 'muted' }, '🔎 이 손님은 단서 밑줄이 없어요. 이야기에서 마음을 찾아봐요.'), c.story.map((l) => h('p', null, stripSpeaker(l)))),
       h('button', { class: 'btn soft small replay', onclick: () => { sfx.tap(); onReplay(); } }, '🔁 이야기 다시 듣기')));
     return mount(el);
@@ -515,6 +528,111 @@ export const UI = {
     });
   },
 
+  // 마음 돋보기: 몸짓 단서를 보고 손님 마음 고르기 (점수와 상관없어요. 틀리면 다시 골라요)
+  bodyQuiz(c: Customer, cue: string, answer: string, options: string[]): Promise<void> {
+    return new Promise((res) => {
+      const msg = h('div', { class: 'bq-msg' });
+      const done = h('button', { class: 'btn', style: 'display:none', onclick: () => { sfx.pop(); box.remove(); res(); } }, '이야기로 돌아가기');
+      const choices = h('div', { class: 'bq-opts' }, options.map((o) => {
+        const b: HTMLButtonElement = h('button', { class: 'word bq-opt', onclick: () => {
+          if (o === answer) {
+            sfx.star(2); b.classList.add('ok');
+            choices.querySelectorAll('button').forEach((x) => { (x as HTMLButtonElement).disabled = true; });
+            msg.innerHTML = '';
+            msg.append(h('b', null, '맞아요! '), `${cue} 말보다 몸짓이 먼저 마음을 알려 줄 때가 있어요.`);
+            done.style.display = '';
+          } else {
+            sfx.tap(); b.classList.add('no'); b.disabled = true;
+            msg.textContent = '다시 한번 손님 얼굴과 손을 살펴볼까요?';
+          }
+        } }, o) as HTMLButtonElement;
+        return b;
+      }));
+      const box = h('div', { class: 'body-quiz card slide-up' },
+        h('div', { class: 'bq-t' }, `🔍 ${c.name}의 몸짓을 살펴봐요`),
+        h('div', { class: 'bq-q' }, '얼굴과 손을 보니 손님은 지금 어떤 마음일까요?'),
+        choices, msg, h('div', { class: 'actions' }, done));
+      mount(box);
+    });
+  },
+
+  // ── 손님들이 사장님에게 끓여 주는 라면 ──
+  // 오늘 내 마음 고르기 (이 기기에만 남아요)
+  treatMood(ownerName: string): Promise<TreatMood> {
+    return new Promise((res) => {
+      const wrap = h('div', { class: 'modal-wrap fade-in' });
+      wrap.append(h('div', { class: 'modal card pop-in treat-mood' },
+        h('h2', null, `${ownerName} 사장님, 오늘 마음은 어때요?`),
+        h('p', { class: 'sub' }, '손님들이 사장님 마음에 맞는 라면을 끓여 줄 거예요. 고른 마음은 이 태블릿에만 남고 아무에게도 보이지 않아요.'),
+        h('div', { class: 'tm-grid' }, TREAT_MOODS.map((m) => h('button', { class: `tm ${m.id === 'skip' ? 'skip' : ''}`, onclick: () => { sfx.pop(); wrap.remove(); res(m); } },
+          h('span', { class: 'tm-e' }, m.emoji), h('span', { class: 'tm-l' }, m.label))))));
+      mount(wrap);
+    });
+  },
+
+  // 손님들이 끓여 준 라면 카드 (끓인 뒤 한 번, 도감에서 다시 보기)
+  treatCard(t: Treat, ownerName: string, photo: string, customer: (id: string) => Customer | undefined): Promise<void> {
+    return new Promise((res) => {
+      const m = TREAT_MOODS.find((x) => x.id === t.mood) ?? TREAT_MOODS[TREAT_MOODS.length - 1];
+      const wrap = h('div', { class: 'modal-wrap fade-in' });
+      const close = () => { sfx.pop(); wrap.remove(); res(); };
+      wrap.append(h('div', { class: 'modal card pop-in treat-show' },
+        h('div', { class: 'ts-top' },
+          photo ? h('img', { src: photo, alt: t.name }) : h('div', { class: 'ts-ph' }, '🍜'),
+          h('div', null, h('div', { class: 'ts-k' }, `🎁 손님들이 ${ownerName} 사장님께 끓여 준 라면`), h('h2', null, t.name),
+            h('div', { class: 'ts-mood' }, `그날 내 마음 ${m.emoji} ${m.label}`))),
+        h('div', { class: 'ts-list' }, t.helpers.map((x) => {
+          const c = customer(x.id);
+          return h('div', { class: 'ts-row' }, h('b', null, c?.name ?? ''), h('span', { class: 'ts-ing' }, x.ing), h('p', null, x.line));
+        })),
+        h('div', { class: 'ts-end' }, `“${m.end}”`),
+        // 무거운 마음을 고른 학생에게는 기댈 곳을 한 줄 알려 줘요
+        ['sad', 'worried', 'lonely', 'angry', 'tired'].includes(m.id) ? h('div', { class: 'ts-care' }, '💬 이런 마음이 오래가면 혼자 참지 말고 선생님이나 가족, 믿는 어른에게 이야기해요.') : null,
+        h('div', { class: 'actions' }, h('button', { class: 'btn', onclick: close }, '고마워요!'))));
+      mount(wrap);
+    });
+  },
+
+  // ── 마음 골목: 사장님이 라면을 끓여 준 손님의 집에 불이 켜져요 ──
+  alley(o: { owner: Owner; recs: RamenRecord[]; order: string[]; customer: (id: string) => Customer | undefined }): Promise<void> {
+    return new Promise((res) => {
+      const best = new Map<string, RamenRecord>();
+      for (const r of o.recs) { const b = best.get(r.customerId); if (!b || r.stars > b.stars || (r.stars === b.stars && r.round > b.round)) best.set(r.customerId, r); }
+      const ids = o.order.filter((id) => !!o.customer(id) && !!LATER[id]);
+      const lit = ids.filter((id) => best.has(id)).length;
+      const face = (c: Customer) => KIND_EMOJI[(Array.isArray(c.chibi) ? c.chibi[0] : c.chibi).kind] ?? '🏠';
+      const el = h('div', { class: 'alley fade-in' });
+      const close = () => { sfx.back(); el.remove(); res(); };
+      const news = ALLEY_LINKS.filter((l) => (best.get(l.a)?.stars ?? 0) >= 2 && (best.get(l.b)?.stars ?? 0) >= 2);
+      const open = (c: Customer, r: RamenRecord) => {
+        const later = LATER[c.id]!;
+        const fam = FAMILY.get(FX.get(c.needs.effect)!.family)!;
+        const wrap = h('div', { class: 'modal-wrap fade-in', onclick: (e: Event) => { if (e.target === wrap) wrap.remove(); } });
+        wrap.append(h('div', { class: 'modal card pop-in alley-pop' },
+          h('div', { class: 'ap-head' }, h('span', { class: 'ap-face', style: `background:${fam.soft}` }, face(c)), h('div', null, h('h2', null, c.name), h('div', { class: 'sub' }, `${fam.name} 묶음 · ${c.needs.effect}`))),
+          h('div', { class: 'ap-row' }, h('b', null, '사장님이 끓여 준 라면 '), `${r.name} ${starText(r.stars)}`),
+          h('div', { class: 'ap-row' }, h('b', null, '손님 마음 '), r.stars >= 2 ? `${later.from} → ${later.to}` : `${later.from} → 조금씩 나아지는 중`),
+          laterBox(o.owner, r, c),
+          h('div', { class: 'actions' }, h('button', { class: 'btn', onclick: () => { sfx.back(); wrap.remove(); } }, '닫기'))));
+        el.append(wrap);
+      };
+      const street = h('div', { class: 'street' }, ids.map((id) => {
+        const c = o.customer(id)!, r = best.get(id);
+        const fam = FAMILY.get(FX.get(c.needs.effect)!.family)!;
+        if (!r) return h('div', { class: 'house dark', 'aria-label': '아직 만나지 않은 손님의 집' }, h('i', { class: 'roof' }), h('span', { class: 'win' }, '?'));
+        return h('button', { class: `house lit s${Math.min(3, r.stars)}`, 'aria-label': `${c.name}의 집`, onclick: () => { sfx.tap(); open(c, r); } },
+          h('i', { class: 'roof', style: `color:${fam.color}` }), h('span', { class: 'win' }, face(c)), h('span', { class: 'nm' }, c.name));
+      }));
+      el.append(
+        h('header', null, h('h2', null, '🏘 마음 골목'), h('span', { class: 'chip' }, `불 켜진 집 ${lit} / ${ids.length}`), iconBtn(ICON.close, close, '닫기')),
+        h('div', { class: 'news' }, h('b', null, '📮 골목 소식 '),
+          news.length ? news.map((l) => h('div', { class: 'nw' }, h('span', null, `${face(o.customer(l.a)!)}${face(o.customer(l.b)!)}`), l.text))
+            : h('span', { class: 'muted' }, lit ? '비슷한 고민을 가진 두 손님을 모두 도우면 두 손님 사이에 새 이야기가 생겨요.' : '라면을 끓여 준 손님의 집에 불이 켜져요.')),
+        street);
+      mount(el);
+    });
+  },
+
   // 다시 들른 손님 대화창 위에 붙는 작은 표 (언제 끓여 준 라면인지)
   visitTag(ramenName: string) {
     return h('div', { class: 'visit-tag' }, '👋 다시 들른 손님', h('span', null, `'${ramenName}'을 먹은 손님이에요`));
@@ -632,7 +750,8 @@ export const UI = {
   },
 
   // ── 도감 ───────────────────────────────
-  library(owner: Owner, recs: RamenRecord[], photo: (r: RamenRecord) => Promise<string>, customer: (id: string) => Customer | undefined, title?: string, canPick?: boolean): Promise<RamenRecord | null> {
+  library(owner: Owner, recs: RamenRecord[], photo: (r: RamenRecord) => Promise<string>, customer: (id: string) => Customer | undefined, title?: string, canPick?: boolean,
+    more?: { alley?: () => void; treat?: { open: () => void; label: string } }): Promise<RamenRecord | null> {
     return new Promise((res) => {
       let choosing = false, chosen: RamenRecord | null = null;
       const el = h('div', { class: 'lib fade-in' });
@@ -659,11 +778,15 @@ export const UI = {
           choosing
             ? [h('button', { class: 'btn ghost small', onclick: () => { sfx.back(); choosing = false; chosen = null; render(); } }, '취소'),
                h('button', { class: 'btn small', disabled: !chosen, onclick: () => { sfx.pop(); done(chosen); } }, '이 라면으로 카드 만들기')]
-            : [h('button', { class: `btn small ${ready && n ? 'pulse' : ''}`, disabled: !ready || !n, onclick: () => { sfx.pop(); choosing = true; render(); } }, '대표 라면 고르기'),
+            : [more?.alley ? h('button', { class: 'btn soft small', onclick: () => { sfx.tap(); more.alley!(); } }, '🏘 마음 골목') : null,
+               h('button', { class: `btn small ${ready && n ? 'pulse' : ''}`, disabled: !ready || !n, onclick: () => { sfx.pop(); choosing = true; render(); } }, '대표 라면 고르기'),
                iconBtn(ICON.close, () => { sfx.back(); done(null); }, '닫기')]);
         const bar = h('div', { class: 'bar10' }, `${Math.min(n, ROUNDS)}/${ROUNDS}그릇`, h('span', { class: 'bar' }, h('i', { style: `width:${Math.min(100, (n / ROUNDS) * 100)}%` })),
           h('span', { class: 'muted', style: 'font-size:17px' }, ready ? (choosing ? '카드로 만들 라면을 눌러요' : `모두 ${n}그릇 · 대표 라면을 골라 띵커벨에 올려요`) : `${ROUNDS - n}그릇 더 끓이면 대표 라면을 고를 수 있어요`));
         const grid = h('div', { class: 'grid' });
+        // 손님들이 사장님에게 끓여 준 라면 (열 그릇째에 생겨요)
+        if (more?.treat && !choosing) grid.append(h('button', { class: 'rcard treat-card', onclick: () => { sfx.tap(); more.treat!.open(); } },
+          h('div', { class: 'tc-ic' }, '🎁'), h('div', { class: 'nm' }, more.treat.label), h('div', { class: 'meta' }, h('span', null, '손님들이 사장님께 끓여 준 라면'))));
         if (!sorted.length) grid.append(h('div', { class: 'empty-lib' }, '아직 끓인 라면이 없어요. 첫 손님을 맞이해 볼까요?'));
         for (const r of sorted) {
           let img = imgs.get(r.id);

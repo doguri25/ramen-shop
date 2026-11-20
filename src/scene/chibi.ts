@@ -44,7 +44,7 @@ function setCell(t: THREE.Texture, eye: boolean, i: number) {
   else t.offset.set((i % 8) * 0.125, 0.25 - Math.floor(i / 8) * 0.25);
 }
 
-export type Act = 'idle' | 'talk' | 'wave' | 'bow' | 'cheer' | 'clap' | 'scratch' | 'think' | 'fist' | 'worry' | 'sad' | 'full' | 'nod' | 'thumbs';
+export type Act = 'idle' | 'talk' | 'wave' | 'bow' | 'cheer' | 'clap' | 'scratch' | 'think' | 'fist' | 'worry' | 'sad' | 'full' | 'nod' | 'thumbs' | 'tired';
 interface Arm { side: number; shoulder: THREE.Vector3; upper: THREE.Mesh; fore: THREE.Mesh; elbow: THREE.Mesh; joint: THREE.Mesh; cuff: THREE.Mesh; hand: THREE.Group; thumb: THREE.Mesh; cur: THREE.Vector3; target: THREE.Vector3; aim: THREE.Vector3 | null; aimCur: THREE.Vector3; thumbUp: boolean; thumbW: number }
 const V = (x = 0, y = 0, z = 0) => new THREE.Vector3(x, y, z);
 const UP = V(0, 1, 0);
@@ -883,6 +883,14 @@ export class Chibi {
         break;
       case 'nod':
         this.headExtra.x = Math.max(0, Math.sin(t * 8)) * 0.25;
+        break;
+      case 'tired':
+        // 지친 몸짓: 팔은 축 늘어지고, 고개가 천천히 꾸벅꾸벅 옆으로 기울어요
+        // 팔은 카운터에 힘없이 올려 두고(손이 보이게), 몸은 앞으로 축
+        L.target.set(-0.17, 0.5, 0.36); R.target.set(0.17, 0.5, 0.36);
+        lean = 0.1;
+        this.headExtra.x = 0.12 + Math.max(0, Math.sin(t * 1.6)) * 0.12;
+        this.headExtra.z = Math.sin(t * 0.8) * 0.1;
         break;
     }
     this.lean = lean;
