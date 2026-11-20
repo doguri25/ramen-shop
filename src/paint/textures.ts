@@ -146,7 +146,7 @@ export function signCanvas() {
   wash(g, () => { g.beginPath(); g.roundRect(14, 14, w - 28, h - 28, 26); }, '#FFF4E6', rnd, { layers: 3, alpha: 0.55, edge: 0.4 });
   g.fillStyle = '#C2560E';
   g.font = `150px ${FONT_H}`; g.textAlign = 'center'; g.textBaseline = 'middle';
-  g.globalAlpha = 0.92; g.fillText('친구라면', w / 2 + 30, h / 2 + 18);
+  g.globalAlpha = 0.92; g.fillText('마음라면', w / 2 + 30, h / 2 + 18);
   g.globalAlpha = 1;
   g.fillStyle = '#5A3A28'; g.font = `54px ${FONT_H}`;
   g.fillText('후루룩', 170, h / 2 + 10);

@@ -7,7 +7,7 @@ const R = (r3: string | string[], r2: string | string[], r1: string | string[]) 
 });
 
 export const TUTORIAL: Customer = {
-  id: 'tutor', name: '백발 할아버지', source: 'tutorial',
+  id: 'tutor', name: '국숫집 할아버지', source: 'tutorial',
   chibi: { kind: 'human', fur: '#F3D2B5', hair: '#FFFFFF', style: 'whitebeard', cloth: '#C98F5A' },
   greet: '어서 오게, 새 사장님!',
   story: [

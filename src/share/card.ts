@@ -74,7 +74,7 @@ export function drawCard(d: CardInput): HTMLCanvasElement {
   // 머리띠
   g.beginPath(); g.roundRect(30, 28, W - 60, 76, 38); g.fillStyle = ACC; g.fill();
   g.font = `42px ${H}`; g.fillStyle = '#FFFFFF'; g.textAlign = 'center'; g.textBaseline = 'middle';
-  g.fillText('친구라면 레시피 카드', W / 2, 68);
+  g.fillText('마음라면 레시피 카드', W / 2, 68);
 
   // 누구에게 / 손님의 마음
   const fx = FX.get(d.customer.needs.effect)!, fam = FAMILY.get(fx.family)!;
@@ -151,7 +151,7 @@ export function drawCard(d: CardInput): HTMLCanvasElement {
   const dt = new Date(d.rec.createdAt);
   g.fillText(`만든 사장님 ${d.author}`, 680, 1018);
   g.font = `17px ${B}`; g.fillStyle = SUB;
-  g.fillText(`${dt.getFullYear()}. ${dt.getMonth() + 1}. ${dt.getDate()}. · 후루룩 친구라면 가게`, 680, 1048);
+  g.fillText(`${dt.getFullYear()}. ${dt.getMonth() + 1}. ${dt.getDate()}. · 후루룩 마음라면 가게`, 680, 1048);
   return c;
 }
 

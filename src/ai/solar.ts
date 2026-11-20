@@ -118,7 +118,7 @@ export function classStats(owners: number, recs: RamenRecord[], doneOwners: numb
       if (fam) byFam.set(fam, (byFam.get(fam) ?? 0) + 1);
     }
     for (const w of r.name.split(/\s+/)) {
-      const k = w.replace(/(친구라면|라면)$/, '').trim();
+      const k = w.replace(/(마음라면|친구라면|라면)$/, '').trim();
       if (k.length >= 2 && !STOP.has(k)) words.set(k, (words.get(k) ?? 0) + 1);
     }
   }

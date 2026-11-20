@@ -85,7 +85,7 @@ export const UI = {
     return new Promise((res) => {
       const logo = h('div', { class: 'logo pop-in' },
         h('div', { class: 'l1' }, EVENT ? '어깨동무 마음 요리사 도전' : '마음을 채워 주는'),
-        h('div', { class: 'l2' }, '후루룩 친구라면 가게'),
+        h('div', { class: 'l2' }, '후루룩 마음라면 가게'),
         h('div', { class: 'l3' }, EVENT ? '손님 마음을 헤아려 라면 한 그릇에 별 다섯 개를 받아 보세요' : '손님 이야기를 듣고, 꼭 맞는 라면을 끓여 주세요'));
       longPress(logo, 2000, () => { sfx.tap(); onTeacher(); });
       // 업스테이지 AI가 어디에 쓰였는지 첫 화면에서 바로 보여요 (누르면 자세히)
@@ -301,7 +301,7 @@ export const UI = {
         const keepX = shownStep === step ? (panel.querySelector('.cards') as HTMLElement | null)?.scrollLeft ?? 0 : 0;
         if (shownStep !== step) o.onStep?.(st.id);
         shownStep = step;
-        if (guide) { guide.innerHTML = ''; guide.append(h('div', { class: 't' }, '👴 백발 할아버지'), h('div', { class: 'x' }, TUTOR_STEP[st.id])); }
+        if (guide) { guide.innerHTML = ''; guide.append(h('div', { class: 't' }, '👴 국숫집 할아버지'), h('div', { class: 'x' }, TUTOR_STEP[st.id])); }
         panel.innerHTML = '';
         // 단계 칸은 어디까지 왔는지 보여 주기만 해요. 냄비에 넣고 '다음'으로 넘어간 단계는 다시 바꿀 수 없어요
         const tabs = h('div', { class: 'tabs' }, STEPS.map((s, k) => {
@@ -593,7 +593,7 @@ export const UI = {
       const reason = h('textarea', { class: 'inp', maxLength: 60, placeholder: '예) 친구가 슬플 때 토닥여 주고 싶기' }) as HTMLTextAreaElement;
       const who = h('input', { class: 'inp', maxLength: 14, placeholder: '예) 우리 반 친구 (안 써도 돼요)' }) as HTMLInputElement;
       const author = h('input', { class: 'inp', maxLength: 10, value: o.author }) as HTMLInputElement;
-      const preview = h('img', { alt: '친구라면 레시피 카드' }) as HTMLImageElement;
+      const preview = h('img', { alt: '마음라면 레시피 카드' }) as HTMLImageElement;
       let canvas: HTMLCanvasElement | null = null;
       let tm = 0;
       // 생각 도우미: 글을 대신 써 주지 않고, 더 생각해 볼 질문만 하나 건네요 (한 카드에 다섯 번까지)
@@ -640,7 +640,7 @@ export const UI = {
       const el = h('div', { class: 'maker fade-in' },
         h('div', { class: 'left' },
           h('div', { style: 'display:flex;align-items:center;gap:10px' },
-            h('div', { style: 'flex:1' }, h('h2', null, '친구라면 레시피 카드'), h('div', { style: 'font-family:var(--head);font-size:20px;margin-top:2px' }, h('span', { style: 'color:var(--accent)' }, o.rec.name), h('span', { class: 'muted', style: 'font-size:16px' }, `  ·  ${o.customer.name}에게 ${'★'.repeat(o.rec.stars)}`))),
+            h('div', { style: 'flex:1' }, h('h2', null, '마음라면 레시피 카드'), h('div', { style: 'font-family:var(--head);font-size:20px;margin-top:2px' }, h('span', { style: 'color:var(--accent)' }, o.rec.name), h('span', { class: 'muted', style: 'font-size:16px' }, `  ·  ${o.customer.name}에게 ${'★'.repeat(o.rec.stars)}`))),
             iconBtn(ICON.close, () => { sfx.back(); el.remove(); res(); }, '닫기')),
           h('div', { class: 'q card' }, h('div', { class: 'ql' }, h('span', { class: 'qn' }, '1'), '내가 이 라면을 고른 까닭은? ', h('span', { class: 'muted', style: 'font-size:15px' }, '"…때문이에요."로 들어가요')), reason, hintBtn ? h('div', { class: 'hint-row' }, hintBtn, hintBox) : null),
           h('div', { class: 'q card' }, h('div', { class: 'ql' }, h('span', { class: 'qn' }, '2'), '누구에게 끓여 주고 싶나요? ', h('span', { class: 'muted', style: 'font-size:15px' }, '안 써도 돼요')), who),

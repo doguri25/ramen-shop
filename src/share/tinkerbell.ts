@@ -1,7 +1,7 @@
 import { dataURLtoBlob } from './card';
 
 // 파일 이름에 쓸 수 없는 글자를 빼고 알맞은 길이로
-const safeName = (s: string) => s.replace(/[\\/:*?"<>|]/g, '').replace(/\s+/g, ' ').trim().slice(0, 40) || '친구라면';
+const safeName = (s: string) => s.replace(/[\\/:*?"<>|]/g, '').replace(/\s+/g, ' ').trim().slice(0, 40) || '마음라면';
 
 // 태블릿 '다운로드' 폴더로 내려받기
 function download(blob: Blob, filename: string) {

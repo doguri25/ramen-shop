@@ -8,16 +8,16 @@ import type { Picks } from '../data/types';
 export type Template = 'blow' | 'heart' | 'spring' | 'free';
 
 export const TEMPLATES: { id: Template; label: string }[] = [
-  { id: 'blow', label: '○○을/를 ○○ 주는 친구라면' },
-  { id: 'heart', label: '마음이 ○○지는 친구라면' },
-  { id: 'spring', label: '○○이/가 샘솟는 친구라면' },
+  { id: 'blow', label: '○○을/를 ○○ 주는 마음라면' },
+  { id: 'heart', label: '마음이 ○○지는 마음라면' },
+  { id: 'spring', label: '○○이/가 샘솟는 마음라면' },
   { id: 'free', label: '내 마음대로 짓기' },
 ];
 
 export const buildName = (t: Template, a: string, b: string) => {
-  if (t === 'blow') return a && b ? `${eulReul(a)} ${b} 주는 친구라면` : '';
-  if (t === 'heart') return a ? `마음이 ${a}지는 친구라면` : '';
-  if (t === 'spring') return a ? `${iGa(a)} 샘솟는 친구라면` : '';
+  if (t === 'blow') return a && b ? `${eulReul(a)} ${b} 주는 마음라면` : '';
+  if (t === 'heart') return a ? `마음이 ${a}지는 마음라면` : '';
+  if (t === 'spring') return a ? `${iGa(a)} 샘솟는 마음라면` : '';
   return '';
 };
 

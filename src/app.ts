@@ -65,7 +65,7 @@ export class App {
   async boot(setStatus: (s: string) => void) {
     const canvas = document.getElementById('gl') as HTMLCanvasElement;
     setStatus('종이와 물감을 준비하는 중…');
-    await Promise.race([Promise.all([document.fonts.load('40px "Jua"', '친구라면'), document.fonts.load('20px "Gowun Dodum"', '친구라면')]), sleep(3000)]).catch(() => {});
+    await Promise.race([Promise.all([document.fonts.load('40px "Jua"', '마음라면'), document.fonts.load('20px "Gowun Dodum"', '마음라면')]), sleep(3000)]).catch(() => {});
     this.teacher = await db.teacher();
     ai.configure(this.teacher.aiUrl, this.teacher.ai !== false);
     setSound(this.settings.sound);
