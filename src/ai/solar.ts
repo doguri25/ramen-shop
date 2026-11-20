@@ -101,7 +101,7 @@ export interface ClassStats {
   topEffects: string[]; hardEffects: string[]; families: string[]; words: string[]; names: string[];
 }
 
-const STOP = new Set(['주는', '하는', '되는', '친구', '마음이', '마음을', '라면']);
+const STOP = new Set(['주는', '하는', '되는', '친구', '마음이', '마음을', '라면', '속이', '가득']);
 // 도감 기록으로 학급 통계 만들기 (선생님 화면에서도 그대로 보여 줘요)
 export function classStats(owners: number, recs: RamenRecord[], doneOwners: number, need: (r: RamenRecord) => string | undefined): ClassStats {
   const byFx = new Map<string, { n: number; s3: number; sum: number }>();

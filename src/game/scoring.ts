@@ -33,7 +33,7 @@ export const fiveStars = (r: ScoreResult, heart: boolean) =>
   r.stars === 3 ? (heart ? 5 : 4) : r.stars === 2 ? (r.match >= 3 ? 3 : 2) : 1;
 
 // 이름에 손님 마음 낱말이 들어 있으면 하트 도장
-// 이름 틀에 늘 들어 있는 말('친구', '마음이 …')은 빼고 봐요. 그래야 누구나 하트를 받지 않아요
+// 이름 틀에 늘 들어 있는 말('…마음라면', '속이 …', 예전 '친구')은 빼고 봐요. 그래야 누구나 하트를 받지 않아요
 // ── 뜻이 거꾸로인 이름 ('슬픔을 키워', '기쁨을 날리는', '용기 없는', '마음이 슬퍼지는') ──
 // 줄여야 할 마음(NEG)을 키우거나, 키워야 할 마음(POS)을 없애는 이름에는 하트를 주지 않아요.
 // 다만 바른 이름은 막지 않아요: 때를 말하는 말('걱정이 생길 때', '…하면'), 친구를 꾸미는 말('웃음을 잃은 친구에게'),
@@ -59,7 +59,7 @@ export const isBackward = (name: string) => {
     re.lastIndex = 0;
     for (let m = re.exec(t); m; m = re.exec(t)) {
       // 붙여 쓴 이름('…키워주는라면')은 끝의 '라면'을 떼고 봐요 ('면'으로 끝나는 조건 말과 헷갈리지 않게)
-      const tail = (m[1] ?? '').replace(/(친구)?라면.*$/, ''), next = m[2] ?? '';
+      const tail = (m[1] ?? '').replace(/(친구|마음)?라면.*$/, ''), next = m[2] ?? '';
       if (NOT_EFFECT_END.test(tail) || /^\s*(때|땐)/.test(next) || PERSON_NEXT.test(next)) continue;
       return true;
     }
@@ -71,7 +71,7 @@ const ONE = /^(.)(을|를|이|가|은|는|도|)$/;
 export const hasHeart = (c: Customer, name: string) => {
   const raw = name.replace(/\s/g, '');
   if (isBackward(name)) return false;
-  const n = raw.replace(/친구|만들어|다시마/g, '').replace(/^마음이/, ''); // '들어'·'다시'가 다른 낱말 속에 있을 때는 빼요
+  const n = raw.replace(/마음라면/g, '라면').replace(/친구|만들어|다시마/g, '').replace(/^(마음이|속이)/, ''); // '들어'·'다시'가 다른 낱말 속에 있을 때는 빼요
   const tokens = name.trim().split(/\s+/).map((t) => t.replace(/[^가-힣]/g, ''));
   return c.feelingWords.some((w0) => {
     const w = w0.replace(/\s/g, '');
