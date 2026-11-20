@@ -16,6 +16,7 @@ import { BODY, LATER, PROMISES, type BodyMood } from './data/later';
 import { FX } from './data/effects';
 import type { ChibiSpec, Customer, GimbapRec, Owner, Picks, RamenRecord, Step, Treat } from './data/types';
 import { GIMBAP, judgeGimbap } from './data/gimbap';
+import { openVillage, type World } from './ui/village';
 import { catchUpOrder, customerForRound, makeOrder } from './game/schedule';
 import { fiveStars, hasHeart, isBackward, score } from './game/scoring';
 import { faceAtlas, paperCanvas, tex } from './paint/textures';
@@ -145,10 +146,17 @@ export class App {
     try {
       updateTweens(dt);
       shared.uTime.value += dt;
-      this.stage.update(dt);
-      const d = this.stage.dof;
-      this.wcr.setDof(Math.max(0.2, d.focus - this.stage.focusShift), d.range, d.amount);
-      this.wcr.render(this.stage.scene, this.stage.cam);
+      if (this.world) {
+        this.world.update(raw);
+        const d = this.world.dof;
+        this.wcr.setDof(d.focus, d.range, d.amount);
+        this.wcr.render(this.world.scene, this.world.cam);
+      } else {
+        this.stage.update(dt);
+        const d = this.stage.dof;
+        this.wcr.setDof(Math.max(0.2, d.focus - this.stage.focusShift), d.range, d.amount);
+        this.wcr.render(this.stage.scene, this.stage.cam);
+      }
       this.probe.sample(raw);
     } catch (e) {
       if (this.loopErrors++ < 5) console.error('[loop]', e);
@@ -179,7 +187,7 @@ export class App {
       UI.clearAll();
       this.stage.setView('wide', 0);
       // 인터넷이 끊긴 것을 '선생님이 AI를 껐다'고 알리지 않게, 켜 두었는지만 넘기고 연결은 check가 알려 줘요
-      await UI.title(() => this.openTeacher(), ai.url ? { get on() { return ai.enabled; }, check: () => ai.check() } : undefined);
+      await UI.title(() => this.openTeacher(), ai.url ? { get on() { return ai.enabled; }, check: () => ai.check() } : undefined, () => this.alleyFromTitle());
       unlockAudio();
       await this.chooseOwner();
       if (!this.owner!.tutorialDone) {
@@ -203,6 +211,24 @@ export class App {
         }
       }
     }
+  }
+
+  // 수업용 첫 화면: 가게에 들어가지 않고 내 마음 골목 보기 (이 태블릿의 사장님 가운데 골라요)
+  private async alleyFromTitle() {
+    const owners = await db.owners();
+    if (!owners.length) { toast('아직 이 태블릿에 사장님이 없어요. 가게 문을 열고 첫 손님부터 맞아 봐요.'); return; }
+    const recs = new Map<string, RamenRecord[]>();
+    const lit = new Map<string, number>();
+    for (const o of owners) { const r = await db.records(o.id); recs.set(o.id, r); lit.set(o.id, new Set(r.filter((x) => LATER[x.customerId]).map((x) => x.customerId)).size); }
+    const o = owners.length === 1 ? owners[0] : await UI.pickAlleyOwner(owners, lit);
+    if (!o) return;
+    await this.openAlley(o, recs.get(o.id) ?? []);
+  }
+
+  // 3D 마음 골목: 열려 있는 동안은 가게 대신 골목을 그려요
+  private world: World | null = null;
+  private openAlley(o: Owner, recs: RamenRecord[]) {
+    return openVillage({ owner: o, recs, order: o.order, customer: (id) => CUSX.get(id), setWorld: (w) => { this.world = w; }, story: (c, r) => UI.alleyHouse(o, c, r, true) });
   }
 
   private async chooseOwner() {
@@ -839,7 +865,7 @@ export class App {
     const ev = EVENT ? this.owner.ev : undefined;
     const o = this.owner;
     const more = EVENT ? undefined : {
-      alley: () => UI.alley({ owner: o, recs: this.records, order: o.order, customer: (id) => CUSX.get(id) }),
+      alley: () => this.openAlley(o, this.records),
       treat: o.treat ? { label: o.treat.name, open: async () => UI.treatCard(o.treat!, o.name, await this.treatPhoto(o.treat!), (id) => CUSX.get(id)) } : undefined,
     };
     const pick = await UI.library(this.owner, this.records, (r) => this.photoUrl(r), (id) => CUSX.get(id),

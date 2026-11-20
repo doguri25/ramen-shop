@@ -10,6 +10,7 @@ import { ALLEY_LINKS, KIND_EMOJI, LATER, MAX_PROMISE, type Later, type TreatMood
 import type { Amount, Customer, GimbapRec, Ingredient, Owner, Picks, RamenRecord, Step, Treat } from '../data/types';
 import { EMPTY_G, GIMBAP, GING, GSTEPS, type GIng, type GPicks, type GStep } from '../data/gimbap';
 import { gimFaceCanvas } from '../scene/gimbap';
+import { faceImg, faceSrc, type FaceKind } from './faces';
 import { buildName, isBad, MAX_NAME, TEMPLATES, wordPools, type Template } from '../game/naming';
 import type { ClassStats } from '../ai/solar';
 import type { ScoreResult } from '../game/scoring';
@@ -141,7 +142,7 @@ export const UI = {
   clearAll() { root().innerHTML = ''; document.body.classList.remove('naming'); },
 
   // ── 제목 ───────────────────────────────
-  title(onTeacher: () => void, ai?: AiInfo): Promise<void> {
+  title(onTeacher: () => void, ai?: AiInfo, onAlley?: () => void): Promise<void> {
     return new Promise((res) => {
       const logo = h('div', { class: 'logo pop-in' },
         h('div', { class: 'l1' }, EVENT ? '어깨동무 마음 요리사 도전' : '마음을 채워 주는'),
@@ -154,13 +155,32 @@ export const UI = {
         h('span', { class: 'ai-feats' }, AI_USES.map((u) => h('span', { class: 'ai-chip' }, u.icon + ' ' + u.short))),
         h('span', { class: 'ai-more' }, '어떻게 쓰였나요? ›')) : null;
       const el = mount(h('div', { class: 'scr-title' }, logo,
-        h('button', { class: 'btn big pulse', onclick: () => { sfx.pop(); el.remove(); res(); } }, h('span', { class: 'gi-wrap', html: icon('bowl', 34) }), EVENT ? '도전하러 가기' : '가게 문 열기'), aiStrip,
+        h('button', { class: 'btn big pulse', onclick: () => { sfx.pop(); el.remove(); res(); } }, h('span', { class: 'gi-wrap', html: icon('bowl', 34) }), EVENT ? '도전하러 가기' : '가게 문 열기'),
+        // 수업용: 가게에 들어가지 않고도 내 마음 골목(지금까지 도운 손님)을 볼 수 있어요
+        onAlley ? h('button', { class: 'btn soft title-alley', onclick: () => { sfx.tap(); onAlley(); } }, '🏘 마음 골목 보기') : null,
+        aiStrip,
         h('div', { class: 'credit' },
           h('span', { class: 'cr-item' }, h('span', { class: 'cr-ic' }, '🧑‍🏫'), h('span', { class: 'cr-k' }, '만든이'), h('b', null, CREDIT.name)),
           h('span', { class: 'cr-sep' }),
           h('span', { class: 'cr-item' }, h('span', { class: 'cr-ic' }, '✉️'), h('span', { class: 'cr-k' }, '문의'), h('b', { class: 'cr-mail' }, CREDIT.contact)),
           h('span', { class: 'cr-sep' }),
           h('button', { class: 'cr-item cr-btn', onclick: () => { sfx.tap(); UI.credits(); } }, h('span', { class: 'cr-ic' }, '📄'), h('b', null, '사용한 자료')))));
+    });
+  },
+
+  // 첫 화면에서 마음 골목을 열 때: 누구의 골목인지 골라요
+  pickAlleyOwner(list: Owner[], lit: Map<string, number>): Promise<Owner | null> {
+    return new Promise((res) => {
+      const wrap = h('div', { class: 'modal-wrap fade-in' });
+      const close = (o: Owner | null) => { sfx.pop(); wrap.remove(); res(o); };
+      wrap.addEventListener('click', (e) => { if (e.target === wrap) close(null); });
+      wrap.append(h('div', { class: 'modal card pop-in alley-pick' },
+        h('h2', null, '🏘 누구의 마음 골목을 볼까요?'),
+        h('p', { class: 'sub' }, '내 이름을 누르면 지금까지 라면을 끓여 준 손님 집에 불이 켜져 있어요.'),
+        h('div', { class: 'ap-list' }, [...list].sort((a, b) => a.number - b.number).map((o) => h('button', { class: 'ap-owner', onclick: () => close(o) },
+          h('span', { class: 'no' }, `${o.number}번`), h('b', null, o.name), h('span', { class: 'cnt' }, `불 켜진 집 ${lit.get(o.id) ?? 0}채`)))),
+        h('div', { class: 'actions' }, h('button', { class: 'btn ghost', onclick: () => close(null) }, '닫기'))));
+      mount(wrap);
     });
   },
 
@@ -677,7 +697,7 @@ export const UI = {
         h('h2', null, `${ownerName} 사장님, 오늘 마음은 어때요?`),
         h('p', { class: 'sub' }, '손님들이 사장님 마음에 맞는 라면을 끓여 줄 거예요. 고른 마음은 이 태블릿에만 남고 아무에게도 보이지 않아요.'),
         h('div', { class: 'tm-grid' }, TREAT_MOODS.map((m) => h('button', { class: `tm ${m.id === 'skip' ? 'skip' : ''}`, onclick: () => { sfx.pop(); wrap.remove(); res(m); } },
-          h('span', { class: 'tm-e' }, m.emoji), h('span', { class: 'tm-l' }, m.label))))));
+          faceImg(m.id as FaceKind, '', 'tm-e'), h('span', { class: 'tm-l' }, m.label))))));
       mount(wrap);
     });
   },
@@ -692,7 +712,7 @@ export const UI = {
         h('div', { class: 'ts-top' },
           photo ? h('img', { src: photo, alt: t.name }) : h('div', { class: 'ts-ph' }, '🍜'),
           h('div', null, h('div', { class: 'ts-k' }, `🎁 손님들이 ${ownerName} 사장님께 끓여 준 라면`), h('h2', null, t.name),
-            h('div', { class: 'ts-mood' }, `그날 내 마음 ${m.emoji} ${m.label}`))),
+            h('div', { class: 'ts-mood' }, '그날 내 마음 ', faceImg(m.id as FaceKind, '', 'ts-face'), ` ${m.label}`))),
         h('div', { class: 'ts-list' }, t.helpers.map((x) => {
           const c = customer(x.id);
           return h('div', { class: 'ts-row' }, h('b', null, c?.name ?? ''), h('span', { class: 'ts-ing' }, x.ing), h('p', null, x.line));
@@ -705,43 +725,22 @@ export const UI = {
     });
   },
 
-  // ── 마음 골목: 사장님이 라면을 끓여 준 손님의 집에 불이 켜져요 ──
-  alley(o: { owner: Owner; recs: RamenRecord[]; order: string[]; customer: (id: string) => Customer | undefined }): Promise<void> {
+  // ── 마음 골목(3D)에서 불 켜진 집을 누르면 나오는 손님 이야기 ──
+  alleyHouse(owner: Owner, c: Customer, r: RamenRecord, side = false): Promise<void> {
     return new Promise((res) => {
-      const best = new Map<string, RamenRecord>();
-      for (const r of o.recs) { const b = best.get(r.customerId); if (!b || r.stars > b.stars || (r.stars === b.stars && r.round > b.round)) best.set(r.customerId, r); }
-      const ids = o.order.filter((id) => !!o.customer(id) && !!LATER[id]);
-      const lit = ids.filter((id) => best.has(id)).length;
-      const face = (c: Customer) => KIND_EMOJI[(Array.isArray(c.chibi) ? c.chibi[0] : c.chibi).kind] ?? '🏠';
-      const el = h('div', { class: 'alley fade-in' });
-      const close = () => { sfx.back(); el.remove(); res(); };
-      const news = ALLEY_LINKS.filter((l) => (best.get(l.a)?.stars ?? 0) >= 2 && (best.get(l.b)?.stars ?? 0) >= 2);
-      const open = (c: Customer, r: RamenRecord) => {
-        const later = LATER[c.id]!;
-        const fam = FAMILY.get(FX.get(c.needs.effect)!.family)!;
-        const wrap = h('div', { class: 'modal-wrap fade-in', onclick: (e: Event) => { if (e.target === wrap) wrap.remove(); } });
-        wrap.append(h('div', { class: 'modal card pop-in alley-pop' },
-          h('div', { class: 'ap-head' }, h('span', { class: 'ap-face', style: `background:${fam.soft}` }, face(c)), h('div', null, h('h2', null, c.name), h('div', { class: 'sub' }, `${fam.name} 묶음 · ${c.needs.effect}`))),
-          h('div', { class: 'ap-row' }, h('b', null, '사장님이 끓여 준 라면 '), `${r.name} ${starText(r.stars)}`),
-          h('div', { class: 'ap-row' }, h('b', null, '손님 마음 '), r.stars >= 2 ? `${later.from} → ${later.to}` : `${later.from} → 조금씩 나아지는 중`),
-          laterBox(o.owner, r, c),
-          h('div', { class: 'actions' }, h('button', { class: 'btn', onclick: () => { sfx.back(); wrap.remove(); } }, '닫기'))));
-        el.append(wrap);
-      };
-      const street = h('div', { class: 'street' }, ids.map((id) => {
-        const c = o.customer(id)!, r = best.get(id);
-        const fam = FAMILY.get(FX.get(c.needs.effect)!.family)!;
-        if (!r) return h('div', { class: 'house dark', 'aria-label': '아직 만나지 않은 손님의 집' }, h('i', { class: 'roof' }), h('span', { class: 'win' }, '?'));
-        return h('button', { class: `house lit s${Math.min(3, r.stars)}`, 'aria-label': `${c.name}의 집`, onclick: () => { sfx.tap(); open(c, r); } },
-          h('i', { class: 'roof', style: `color:${fam.color}` }), h('span', { class: 'win' }, face(c)), h('span', { class: 'nm' }, c.name));
-      }));
-      el.append(
-        h('header', null, h('h2', null, '🏘 마음 골목'), h('span', { class: 'chip' }, `불 켜진 집 ${lit} / ${ids.length}`), iconBtn(ICON.close, close, '닫기')),
-        h('div', { class: 'news' }, h('b', null, '📮 골목 소식 '),
-          news.length ? news.map((l) => h('div', { class: 'nw' }, h('span', null, `${face(o.customer(l.a)!)}${face(o.customer(l.b)!)}`), l.text))
-            : h('span', { class: 'muted' }, lit ? '비슷한 고민을 가진 두 손님을 모두 도우면 두 손님 사이에 새 이야기가 생겨요.' : '라면을 끓여 준 손님의 집에 불이 켜져요.')),
-        street);
-      mount(el);
+      const later = LATER[c.id]!;
+      const fam = FAMILY.get(FX.get(c.needs.effect)!.family)!;
+      const face = KIND_EMOJI[(Array.isArray(c.chibi) ? c.chibi[0] : c.chibi).kind] ?? '🏠';
+      const wrap = h('div', { class: `modal-wrap fade-in ${side ? 'side' : ''}` });
+      const close = () => { sfx.back(); wrap.remove(); res(); };
+      wrap.addEventListener('click', (e) => { if (e.target === wrap) close(); });
+      wrap.append(h('div', { class: 'modal card pop-in alley-pop' },
+        h('div', { class: 'ap-head' }, h('span', { class: 'ap-face', style: `background:${fam.soft}` }, face), h('div', null, h('h2', null, c.name), h('div', { class: 'sub' }, `${fam.name} 묶음 · ${c.needs.effect}`))),
+        h('div', { class: 'ap-row' }, h('b', null, '사장님이 끓여 준 라면 '), `${r.name} ${starText(r.stars)}`),
+        h('div', { class: 'ap-row' }, h('b', null, '손님 마음 '), r.stars >= 2 ? `${later.from} → ${later.to}` : `${later.from} → 조금씩 나아지는 중`),
+        laterBox(owner, r, c),
+        h('div', { class: 'actions' }, h('button', { class: 'btn', onclick: close }, '닫기'))));
+      mount(wrap);
     });
   },
 
@@ -753,7 +752,8 @@ export const UI = {
   // 손님이 먹는 동안: 처음 마음에서 나아진 마음 쪽으로 막대가 차올라요 (별이 많을수록 끝까지)
   moodGauge(later: Later, stars: number, dur = 4.2) {
     const goal = stars >= 3 ? 100 : stars === 2 ? 70 : 42;
-    const face = h('span', { class: 'mg-face' }, '😟');
+    // 얼굴은 손그림: 걱정 → 덤덤 → 살짝 웃음 → 활짝 (별이 많을수록 끝까지)
+    const face = faceImg('worried', '', 'mg-face');
     const fill = h('i', { class: 'mg-fill' });
     // 손님을 가리지 않게 화면 오른쪽에 세로 온도계로 세워요 (아래가 처음 마음, 위가 나아진 마음)
     const el = mount(h('div', { class: 'mood-gauge card fade-in', role: 'status', 'aria-label': `손님 마음이 ${later.from}에서 ${later.to} 쪽으로 바뀌고 있어요` },
@@ -767,9 +767,10 @@ export const UI = {
       fill.style.transitionDuration = face.style.transitionDuration = `${dur}s`;
       set(goal);
     }));
-    const faces = stars >= 3 ? ['😐', '🙂', '😊'] : stars === 2 ? ['😐', '🙂'] : ['😐'];
-    faces.forEach((f, i) => setTimeout(() => { face.textContent = f; }, ((i + 1) / (faces.length + 0.3)) * dur * 1000));
-    return { done: () => { set(goal); face.textContent = faces[faces.length - 1]; el.classList.add('end'); }, remove: () => el.remove() };
+    const faces: FaceKind[] = stars >= 3 ? ['flat', 'slight', 'smile'] : stars === 2 ? ['flat', 'slight'] : ['flat'];
+    faces.forEach((f) => faceSrc(f));
+    faces.forEach((f, i) => setTimeout(() => { face.src = faceSrc(f); }, ((i + 1) / (faces.length + 0.3)) * dur * 1000));
+    return { done: () => { set(goal); face.src = faceSrc(faces[faces.length - 1]); el.classList.add('end'); }, remove: () => el.remove() };
   },
 
   fastButton(onToggle: (on: boolean) => void) {
