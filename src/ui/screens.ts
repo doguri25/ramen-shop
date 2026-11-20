@@ -6,6 +6,7 @@ import { sfx } from '../core/sound';
 import { FAMILY, FX } from '../data/effects';
 import { AMOUNTS, ING, INGREDIENTS, STEPS } from '../data/ingredients';
 import { TUTOR_STEP } from '../data/text';
+import { LATER, MAX_PROMISE, type Later } from '../data/later';
 import type { Amount, Customer, Ingredient, Owner, Picks, RamenRecord, Step } from '../data/types';
 import { buildName, isBad, MAX_NAME, TEMPLATES, wordPools, type Template } from '../game/naming';
 import type { ClassStats } from '../ai/solar';
@@ -78,6 +79,42 @@ function rankSec(r: { open: () => Promise<void>; hasKey: () => boolean; forget: 
 
 // 재료 줄을 한 번 옆으로 밀어 보면 '옆으로 밀면 더 있어요' 안내는 그만 보여 줘요 (화살표는 계속 있어요)
 let scrollTaught = false;
+
+// 마음 쪽지 끝: 오늘 우리 반 친구(또는 나)에게 해 볼 약속 하나 (안 골라도 돼요)
+function pledgeBox(c: Customer, pledge: { options: string[]; onPick: (p: string | null) => void }) {
+  let chosen: string | null = null;
+  const chips = h('div', { class: 'pl-chips' });
+  const own = h('input', { class: 'inp pl-own', maxLength: MAX_PROMISE, placeholder: '내가 직접 쓰기 (예: 짝꿍에게 먼저 인사하기)' }) as HTMLInputElement;
+  const warn = h('div', { class: 'pl-warn' });
+  const pick = (p: string | null) => {
+    chosen = p;
+    chips.querySelectorAll('button').forEach((b) => b.classList.toggle('on', b.textContent === p));
+    pledge.onPick(p);
+  };
+  for (const o of pledge.options) chips.append(h('button', { class: 'word pl-chip', onclick: () => { sfx.tap(); own.value = ''; warn.textContent = ''; pick(chosen === o ? null : o); } }, o));
+  own.addEventListener('input', () => {
+    const t = own.value.trim();
+    if (t && isBad(t)) { warn.textContent = '고운 말로 써 주세요.'; pick(null); return; }
+    warn.textContent = '';
+    if (t) { chosen = null; chips.querySelectorAll('button').forEach((b) => b.classList.remove('on')); pledge.onPick(t); }
+    else pick(null);
+  });
+  return h('div', { class: 'pledge' },
+    h('div', { class: 'pl-t' }, '🤝 오늘의 마음 한 그릇 약속'),
+    h('div', { class: 'pl-sub' }, `${c.name}에게 건넨 마음을 우리 반 친구나 나에게도 건네 볼까요? 하나 골라요. (안 골라도 돼요)`),
+    chips, own, warn);
+}
+
+// 도감: 두 그릇 뒤에 손님이 들려주는 뒷이야기 (아직이면 몇 그릇 남았는지)
+function laterBox(owner: Owner, r: RamenRecord, c: Customer) {
+  const later = LATER[c.id];
+  if (!later) return null;
+  const left = r.round + 2 - owner.round;
+  if (left > 0) return h('div', { class: 'lib-later locked' }, `🔒 ${left}그릇 더 끓이면 ${c.name}의 뒷이야기를 들을 수 있어요`);
+  const lines = r.stars >= 3 ? later.good : later.okay;
+  return h('div', { class: 'lib-later' }, h('b', null, `👋 ${c.name}의 뒷이야기`),
+    lines.map((l) => h('p', null, Array.isArray(c.chibi) ? h('b', null, `${speakerName(c, l)} `) : '', stripSpeaker(l))));
+}
 
 export const UI = {
   clear() { root().querySelectorAll(':scope > :not(.hud):not(.toast)').forEach((e) => e.remove()); },
@@ -478,6 +515,33 @@ export const UI = {
     });
   },
 
+  // 다시 들른 손님 대화창 위에 붙는 작은 표 (언제 끓여 준 라면인지)
+  visitTag(ramenName: string) {
+    return h('div', { class: 'visit-tag' }, '👋 다시 들른 손님', h('span', null, `'${ramenName}'을 먹은 손님이에요`));
+  },
+
+  // 손님이 먹는 동안: 처음 마음에서 나아진 마음 쪽으로 막대가 차올라요 (별이 많을수록 끝까지)
+  moodGauge(later: Later, stars: number, dur = 4.2) {
+    const goal = stars >= 3 ? 100 : stars === 2 ? 70 : 42;
+    const face = h('span', { class: 'mg-face' }, '😟');
+    const fill = h('i', { class: 'mg-fill' });
+    // 손님을 가리지 않게 화면 오른쪽에 세로 온도계로 세워요 (아래가 처음 마음, 위가 나아진 마음)
+    const el = mount(h('div', { class: 'mood-gauge card fade-in', role: 'status', 'aria-label': `손님 마음이 ${later.from}에서 ${later.to} 쪽으로 바뀌고 있어요` },
+      h('div', { class: 'mg-t' }, '손님 마음'),
+      h('span', { class: 'mg-w to' }, later.to),
+      h('span', { class: 'mg-bar' }, fill, face),
+      h('span', { class: 'mg-w from' }, later.from)));
+    const set = (k: number) => { fill.style.height = `${k}%`; face.style.bottom = `${4 + k * 0.92}%`; };
+    set(8);
+    requestAnimationFrame(() => requestAnimationFrame(() => {
+      fill.style.transitionDuration = face.style.transitionDuration = `${dur}s`;
+      set(goal);
+    }));
+    const faces = stars >= 3 ? ['😐', '🙂', '😊'] : stars === 2 ? ['😐', '🙂'] : ['😐'];
+    faces.forEach((f, i) => setTimeout(() => { face.textContent = f; }, ((i + 1) / (faces.length + 0.3)) * dur * 1000));
+    return { done: () => { set(goal); face.textContent = faces[faces.length - 1]; el.classList.add('end'); }, remove: () => el.remove() };
+  },
+
   fastButton(onToggle: (on: boolean) => void) {
     let on = false;
     const b = h('button', { class: 'fast chip', onclick: () => { on = !on; b.classList.toggle('on', on); b.textContent = on ? '⏩ 빨리 보는 중' : '⏩ 빨리 보기'; onToggle(on); } }, '⏩ 빨리 보기');
@@ -504,7 +568,8 @@ export const UI = {
   },
 
   // ── 마음 쪽지 ─────────────────────────────
-  note(c: Customer, picks: Picks, r: ScoreResult, heartOn: boolean, canRetry: boolean, tutorial: boolean, backward = false): Promise<'retry' | 'save' | 'skip'> {
+  note(c: Customer, picks: Picks, r: ScoreResult, heartOn: boolean, canRetry: boolean, tutorial: boolean, backward = false,
+    pledge?: { options: string[]; onPick: (p: string | null) => void }): Promise<'retry' | 'save' | 'skip'> {
     return new Promise((res) => {
       const fx = FX.get(c.needs.effect)!, fam = FAMILY.get(fx.family)!, sub = FAMILY.get(c.needs.sub)!;
       const wrap = h('div', { class: 'modal-wrap fade-in' });
@@ -539,6 +604,7 @@ export const UI = {
         heartOn ? h('div', { class: 'heartline' }, '❤️ 라면 이름에 손님 마음 낱말이 들어 있어서 하트 도장을 받았어요!') : null,
         c.safetyNote ? h('div', { class: 'safety' }, '🙋 ', c.safetyNote) : null,
         tutorial ? h('div', { class: 'safety', style: 'background:#FFF6D6' }, '👴 ', TUTOR_STEP.note) : null,
+        pledge ? pledgeBox(c, pledge) : null,
         h('div', { class: 'actions' },
           canRetry ? h('button', { class: 'btn ghost', onclick: () => close('retry') }, '한 번 더 끓여 주기') : null,
           // 행사용은 끓인 라면을 모두 도감에 담아요 (넣지 않기 없음)
@@ -622,6 +688,8 @@ export const UI = {
             h('img', { src, style: 'width:180px;height:180px;border-radius:18px' }),
             h('div', { style: 'flex:1;min-width:220px' }, h('h2', null, r.name), h('div', { class: 'sub' }, `${c?.name ?? ''}에게 · ${starText(r.stars)}${r.heart ? ' · ❤️' : ''}`))),
           h('div', { class: 'steps' }, methodLines(r.picks).map((l, i) => h('div', null, h('b', null, `${i + 1}. `), l))),
+          r.promise ? h('div', { class: 'lib-pledge' }, h('b', null, '🤝 마음 한 그릇 약속 '), r.promise) : null,
+          c && !EVENT ? laterBox(owner, r, c) : null,
           h('div', { class: 'actions' },
             h('button', { class: 'btn ghost', onclick: () => savePic(r, im) }, '📷 사진 저장'),
             h('button', { class: 'btn', onclick: () => { sfx.back(); wrap.remove(); } }, '닫기'))));

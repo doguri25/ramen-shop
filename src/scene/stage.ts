@@ -220,7 +220,8 @@ export class Stage {
     await tween(dur, (k) => { ch.root.rotation.y = y0 + dy * k; });
   }
 
-  async enter(c: Customer) {
+  // prop: false 면 소품을 꺼내지 않아요 (잠깐 들른 손님)
+  async enter(c: Customer, o: { prop?: boolean } = {}) {
     this.clearGuests();
     const specs: ChibiSpec[] = Array.isArray(c.chibi) ? c.chibi : [c.chibi];
     specs.forEach((s, i) => {
@@ -250,7 +251,7 @@ export class Stage {
       }, { ease: ease.outQuad });
       ch.seated = true;
     }));
-    const p = c.propModel !== 'none' ? makeProp(c.propModel) : null;
+    const p = c.propModel !== 'none' && o.prop !== false ? makeProp(c.propModel) : null;
     if (p) {
       p.position.set(specs.length > 1 ? 0 : 0.42, 1.035, -0.12);
       if (['cane', 'broom'].includes(c.propModel)) p.position.set(0.36, 1.035, -0.3);

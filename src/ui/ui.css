@@ -569,3 +569,38 @@ body.cooking .prog .bar { display: none; }
   .scr-arrow { width: 44px; height: 44px; margin-top: -22px; }
   .scr-tip { right: 46px; height: 30px; margin-top: -15px; padding: 0 10px; font-size: 14px; }
 }
+
+/* ── 다시 들른 손님 ── */
+.dialog .visit-tag { display: inline-flex; align-items: center; gap: 10px; margin: 0 0 8px; padding: 4px 14px 4px 10px; border-radius: 999px; background: #E6F4EA; color: #2E6B3F; font-family: var(--head); font-size: 17px; }
+.dialog .visit-tag span { font-family: var(--body, inherit); font-size: 15px; color: #4F7A5B; }
+
+/* ── 손님 마음 온도계 (먹는 동안): 손님을 가리지 않게 오른쪽에 세로로 ── */
+.mood-gauge { position: absolute; right: 14px; top: 50%; transform: translateY(-58%); width: 96px; padding: 10px 8px 12px; z-index: 5; pointer-events: none; display: flex; flex-direction: column; align-items: center; gap: 6px; }
+.mood-gauge .mg-t { font-family: var(--head); font-size: 14px; color: var(--ink-2); text-align: center; }
+.mood-gauge .mg-w { font-family: var(--head); font-size: 16px; line-height: 1.15; text-align: center; word-break: keep-all; }
+.mood-gauge .mg-w.from { color: #6F7FA6; }
+.mood-gauge .mg-w.to { color: var(--accent); }
+.mood-gauge .mg-bar { position: relative; width: 18px; height: 190px; border-radius: 999px; background: #EEE4D6; }
+.mood-gauge .mg-fill { position: absolute; left: 0; right: 0; bottom: 0; height: 8%; border-radius: 999px; background: linear-gradient(0deg, #A9B8DA, #F6C36B 60%, #F08A3C); transition: height 4s ease-in-out; }
+.mood-gauge .mg-face { position: absolute; left: 50%; bottom: 8%; transform: translate(-50%, 50%); font-size: 30px; line-height: 1; transition: bottom 4s ease-in-out; filter: drop-shadow(0 2px 2px rgba(0,0,0,.15)); }
+.mood-gauge.end .mg-w.to { animation: mgPop .5s ease; }
+@keyframes mgPop { 0% { transform: scale(1); } 50% { transform: scale(1.18); } 100% { transform: scale(1); } }
+@media (max-height: 520px) { .mood-gauge { width: 84px; padding: 6px 6px 8px; transform: translateY(-50%); } .mood-gauge .mg-t { display: none; } .mood-gauge .mg-bar { height: 120px; } .mood-gauge .mg-w { font-size: 14px; } .mood-gauge .mg-face { font-size: 24px; } }
+
+/* ── 오늘의 마음 한 그릇 약속 (마음 쪽지) ── */
+.heartnote .pledge { margin: 14px 0 4px; padding: 14px 16px; border-radius: 18px; background: #EEF6FF; border: 2px dashed #A9C7EE; }
+.heartnote .pl-t { font-family: var(--head); font-size: 21px; color: #2E5E9E; }
+.heartnote .pl-sub { font-size: 16px; color: var(--ink-2); margin: 4px 0 10px; word-break: keep-all; }
+.heartnote .pl-chips { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 10px; }
+.heartnote .pl-chip.on { background: #2E5E9E; color: #fff; box-shadow: none; }
+.heartnote .pl-own { width: 100%; box-sizing: border-box; font-size: 17px; }
+.heartnote .pl-warn { color: #C0392B; font-size: 15px; min-height: 0; margin-top: 4px; }
+
+/* ── 도감 자세히 보기 ── */
+.lib-pledge { margin-top: 12px; padding: 10px 14px; border-radius: 14px; background: #EEF6FF; color: #234; font-size: 17px; }
+.lib-pledge b { color: #2E5E9E; font-family: var(--head); font-weight: normal; }
+.lib-later { margin-top: 10px; padding: 12px 14px; border-radius: 14px; background: #E6F4EA; font-size: 17px; line-height: 1.55; }
+.lib-later > b { display: block; font-family: var(--head); font-weight: normal; color: #2E6B3F; margin-bottom: 4px; }
+.lib-later p { margin: 0; word-break: keep-all; }
+.lib-later p b { font-weight: normal; color: #2E6B3F; }
+.lib-later.locked { background: #F3EEE6; color: var(--ink-2); }

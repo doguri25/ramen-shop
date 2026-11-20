@@ -86,6 +86,7 @@ export interface RamenRecord {
   heart: boolean;
   photoKey: string;
   createdAt: number;
+  promise?: string;       // 수업용: 마음 쪽지에서 고른 '오늘의 마음 한 그릇 약속'
 }
 
 export interface Owner {
@@ -96,6 +97,7 @@ export interface Owner {
   order: string[];        // 손님 순서 (학생마다 다름)
   tutorialDone: boolean;
   createdAt: number;
+  visits?: string[];      // 수업용: 다시 들러 뒷이야기를 들려준 기록 id
   ev?: EventRun;          // 행사용 한 판 기록
 }
 

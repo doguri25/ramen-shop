@@ -132,18 +132,20 @@ export function drawCard(d: CardInput): HTMLCanvasElement {
 
   // 고른 까닭
   const ry = 862;
-  box(g, 30, ry, 660, 132, '#FFFDF6'); label(g, '내가 고른 까닭', 50, ry + 12);
+  box(g, 30, ry, 660, 138, '#FFFDF6'); label(g, d.rec.promise?.trim() ? '내가 고른 까닭과 약속' : '내가 고른 까닭', 50, ry + 12);
   g.fillStyle = INK; g.textBaseline = 'top';
   const why = d.reason.trim() ? `내가 이 라면을 고른 까닭은 ${d.reason.trim()} 때문이에요.` : '내가 이 라면을 고른 까닭은 ________ 때문이에요.';
   const whoLine = d.who.trim() ? `${d.who.trim()}에게 이 라면을 끓여 주고 싶어요.` : '';
+  const pledge = d.rec.promise?.trim() ? `오늘의 마음 한 그릇 약속은 '${d.rec.promise.trim()}'예요.` : '';
   // 글이 길면 글자를 조금씩 줄여서 "때문이에요."까지 다 들어가게 해요
   let lines: string[] = [], lh = 27;
-  for (const [fs, l] of [[20, 27], [18, 23], [16, 19]]) {
+  const room = 86;
+  for (const [fs, l] of [[20, 27], [18, 23], [16, 19], [14, 17]]) {
     g.font = `${fs}px ${B}`; lh = l;
-    lines = [...wrap(g, why, 620), ...(whoLine ? wrap(g, whoLine, 620) : [])];
-    if (lines.length * l <= 80) break;
+    lines = [...wrap(g, why, 620), ...(whoLine ? wrap(g, whoLine, 620) : []), ...(pledge ? wrap(g, pledge, 620) : [])];
+    if (lines.length * l <= room) break;
   }
-  lines.slice(0, Math.floor(80 / lh)).forEach((l, i) => g.fillText(l, 50, ry + 46 + i * lh));
+  lines.slice(0, Math.floor(room / lh)).forEach((l, i) => g.fillText(l, 50, ry + 46 + i * lh));
 
   // 아랫줄
   starRow(g, d.rec.stars, 40, 1012, 34);

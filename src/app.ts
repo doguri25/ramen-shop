@@ -12,6 +12,7 @@ import { bandOf, keyOf, maskName, rank, type Best, type SendResult, type Who } f
 import { EV, rememberPaused, whoText } from './event/screens';
 import { ING, INGREDIENTS } from './data/ingredients';
 import { TUTOR_INTRO } from './data/text';
+import { LATER, PROMISES } from './data/later';
 import type { Customer, Owner, Picks, RamenRecord, Step } from './data/types';
 import { catchUpOrder, customerForRound, makeOrder } from './game/schedule';
 import { fiveStars, hasHeart, isBackward, score } from './game/scoring';
@@ -302,6 +303,7 @@ export class App {
     const c: Customer = tutorial ? TUTORIAL : CUSX.get(customerForRound(o.order, o.round, this.listFor(o), hashStr(o.id)))!;
     const view = this.clueView(c); // 이야기·메모에 보여 줄 모습 (행사용 5~6학년은 밑줄이 없을 수도 있어요)
     this.inRound = true;
+    if (!tutorial && !EVENT) await this.dropIn(o);
     this.drawHud(tutorial ? 0 : o.round + 1);
     this.stage.mood('neutral');
     await this.stage.setView('door', 0.9);
@@ -342,7 +344,11 @@ export class App {
       this.serving = true;
       const fast = UI.fastButton((on) => { this.timeScale = on ? 2.5 : 1; });
       await this.stage.serve(picks);
+      // 수업용: 먹는 동안 손님 마음이 처음 마음에서 나아진 마음 쪽으로 차올라요
+      const later = tutorial || EVENT ? undefined : LATER[c.id];
+      const gauge = later ? UI.moodGauge(later, r.stars) : null;
       await this.stage.eat(() => UI.yum());
+      gauge?.done();
       fast.remove();
       this.timeScale = 1;
       this.stage.celebrate(r.stars, heart);
@@ -350,10 +356,14 @@ export class App {
       const lines = [...c.reactions[r.stars]];
       if (extra) lines.splice(1, 0, extra);
       await UI.reaction(c, shown, heart, (i, w) => say(i, w, lines), lines, r.stars);
+      gauge?.remove();
       this.stage.talk(0, false);
       // 행사용은 대회라 다시 끓일 기회가 없어요
       const canRetry = !tutorial && !EVENT && attempt === 0 && r.stars === 1;
-      const choice = await UI.note(c, picks, r, heart, canRetry, tutorial, !heart && isBackward(name));
+      // 수업용: 마음 쪽지 끝에서 오늘의 마음 한 그릇 약속을 골라요 (안 골라도 돼요)
+      let promise: string | null = null;
+      const pledge = tutorial || EVENT ? undefined : { options: PROMISES[c.needs.effect] ?? [], onPick: (p: string | null) => { promise = p; } };
+      const choice = await UI.note(c, picks, r, heart, canRetry, tutorial, !heart && isBackward(name), pledge);
       this.serving = false;
       if (choice === 'retry') {
         attempt++;
@@ -377,6 +387,7 @@ export class App {
       } else if (!tutorial) {
         saved = true;
         rec = { id: uid(), ownerId: o.id, round: o.round, customerId: c.id, picks, name, stars: shown, heart, photoKey: '', createdAt: Date.now() };
+        if (promise) rec.promise = promise;
         rec.photoKey = rec.id;
         // 그래픽이 끊긴 동안 찍으면 빈 사진이 돼서 그때는 사진을 건너뛰어요
         const photo = this.ctxLost ? null : this.stage.photo(picks, 512);
@@ -387,7 +398,7 @@ export class App {
         o.round++;
         await this.saveOwner();
         sfx.camera();
-        toast(ok ? `📖 '${name}'${eulReul(name).slice(-1)} 도감에 담았어요` : '⚠️ 태블릿에 저장하지 못했어요. 선생님께 알려 주세요');
+        toast(ok ? `📖 '${name}'${eulReul(name).slice(-1)} 도감에 담았어요${rec.promise ? ' · 🤝 약속도 함께 담았어요' : ''}` : '⚠️ 태블릿에 저장하지 못했어요. 선생님께 알려 주세요');
       }
       if (!tutorial && o.ev) this.sendRun(o);
       break;
@@ -397,6 +408,30 @@ export class App {
     this.stage.resetPot();
     this.inRound = false;
     return saved;
+  }
+
+  // 수업용: 두 그릇 전에 라면을 끓여 준 손님이 다음 손님보다 먼저 잠깐 들러 뒷이야기를 들려줘요 (두 그릇마다 한 번)
+  private async dropIn(o: Owner) {
+    if (o.round < 2 || o.round % 2) return;
+    const rec = this.records.find((r) => r.round === o.round - 2);
+    if (!rec || o.visits?.includes(rec.id)) return;
+    const c = CUSX.get(rec.customerId), later = LATER[rec.customerId];
+    if (!c || !later) return;
+    const lines = rec.stars >= 3 ? later.good : later.okay;
+    this.drawHud(null);
+    await this.stage.setView('door', 0.9);
+    const entering = this.stage.enter(c, { prop: false });
+    await wait(1.2);
+    this.stage.setView('guest', 1.4);
+    await entering;
+    this.stage.mood(rec.stars >= 3 ? 'happy' : 'neutral');
+    const say = this.say(c);
+    await UI.dialog(c, lines, { onLine: (i, w) => say(i, w, lines), final: { label: '또 놀러 와요!' }, extra: UI.visitTag(rec.name) });
+    this.stage.talk(0, false);
+    window.speechSynthesis?.cancel();
+    o.visits = [...(o.visits ?? []), rec.id].slice(-60);
+    await this.saveOwner();
+    await this.stage.leave();
   }
 
   private moodFor(c: Customer) {
