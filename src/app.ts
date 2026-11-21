@@ -495,7 +495,7 @@ export class App {
   // 마음 골목 '가게 봐 주기' (수업용): 빵집·꽃집 주인이 잠깐 자리를 비운 동안 라면 손님 세 분을 맞아요.
   // 놀이는 라면과 같아요: 이야기 듣기 → 단계마다 재료 고르기 → 굽거나 묶어서 건네기 → 별과 마음 쪽지
   private cThumbs = new Map<string, string>();
-  private async shopSit(kind: CraftKind): Promise<{ stars: number[] }> {
+  private async shopSit(kind: CraftKind): Promise<{ stars: number[]; quit?: boolean }> {
     const S = CRAFT[kind], st = this.stage;
     document.body.classList.add('shop-sit');
     st.clearGuests();
@@ -520,43 +520,74 @@ export class App {
     const pool = CUSTOMERS_72.slice();
     for (let i = pool.length - 1; i > 0; i--) { const j = Math.floor(rnd() * (i + 1)); [pool[i], pool[j]] = [pool[j], pool[i]]; }
     const stars: number[] = [];
+    // 나가기: 언제든 물어보고 그만둘 수 있어요. 그만두면 별과 도장은 남기지 않고 골목으로 돌아가요.
+    // 고르기·대화처럼 기다리는 화면은 바로 닫고, 움직이는 장면은 그 동작이 끝난 뒤에 정리해요
+    const QUIT = Symbol('quit');
+    let quitting = false, quitNow: () => void = () => {};
+    const quitP = new Promise<never>((_, rej) => { quitNow = () => rej(QUIT); });
+    quitP.catch(() => {});
+    const ui = <T>(p: Promise<T>) => Promise.race([p, quitP]) as Promise<T>;
+    const go = async <T>(p: Promise<T>) => { const v = await p; if (quitting) throw QUIT; return v; };
+    const askQuit = () => {
+      if (quitting || document.querySelector('.sit-quit')) return;
+      sfx.tap();
+      const wrap = h('div', { class: 'modal-wrap fade-in craft-ok sit-quit', style: 'z-index:30' });
+      const close = () => wrap.remove();
+      wrap.append(h('div', { class: 'modal card pop-in', style: 'width:min(460px,100%)' },
+        h('h2', null, '가게 봐 주기를 그만둘까요?'),
+        h('p', { class: 'sub' }, '지금 나가면 이번에 받은 별과 마음 도장은 남지 않아요.'),
+        h('div', { class: 'actions' },
+          h('button', { class: 'btn ghost', onclick: () => { sfx.back(); close(); } }, '계속 봐 주기'),
+          h('button', { class: 'btn', onclick: () => {
+            sfx.pop(); close(); quitting = true;
+            window.speechSynthesis?.cancel();
+            document.querySelectorAll('#ui > .dialog, #ui > .memo, #ui > .cook, #ui > .info, #ui > .yum, #ui > .confetti, #ui > .stars, #ui > .modal-wrap.craft-ok').forEach((d) => d.remove());
+            document.body.classList.remove('cooking');
+            exitBtn.remove();
+            quitNow();
+          } }, '그만두고 나가기'))));
+      document.getElementById('ui')!.appendChild(wrap);
+    };
+    const exitBtn = h('button', { class: 'btn ghost small sit-exit craft-ok', onclick: askQuit }, '나가기');
+    document.getElementById('ui')!.appendChild(exitBtn);
     try {
       for (let i = 0; i < N; i++) {
         const c0 = pool[i], c: Customer = { ...c0, story: adaptStory(c0, kind) };
         setBanner(i);
         st.mood('neutral');
-        await st.setView('door', 0.9);
+        await go(st.setView('door', 0.9));
         const entering = st.enter(c0, { prop: false });
         st.craftStove(); // 손님을 들인 뒤에 냄비를 치워요 (enter가 가게를 라면 가게로 되돌려요)
-        await wait(1.2);
+        await go(wait(1.2));
         st.setView('guest', 1.4);
-        await entering;
+        await go(entering);
         const say = this.say(c);
         st.mood(this.moodFor(c));
-        await UI.dialog(c, c.story, { onLine: (k, w) => say(k, w, c.story), final: { label: S.go, replay: true } });
+        await ui(UI.dialog(c, c.story, { onLine: (k, w) => say(k, w, c.story), final: { label: S.go, replay: true } }));
         st.talk(0, false);
         this.memo(c, say);
-        await st.craftStart(kind);
-        const picks = await UI.craft({ kind, thumbs: this.cThumbs, onSet: (p) => st.craftSet(p) });
+        await go(st.craftStart(kind));
+        const picks = await ui(UI.craft({ kind, thumbs: this.cThumbs, onSet: (p) => st.craftSet(p) }));
         document.querySelectorAll('.dialog').forEach((d) => d.remove());
         window.speechSynthesis?.cancel();
         st.talk(0, false);
-        await st.craftFinish();
+        await go(st.craftFinish());
         document.querySelector('.memo')?.remove();
         const r = scoreCraft(c, picks), name = craftName(kind, picks);
-        await st.craftServe();
-        await st.craftReceive();
+        await go(st.craftServe());
+        await go(st.craftReceive());
         st.celebrate(r.stars, false);
         const lines = craftLines(c, kind, r.stars, name);
-        await UI.reaction(c, r.stars, false, (k, w) => say(k, w, lines), lines, r.stars);
+        await ui(UI.reaction(c, r.stars, false, (k, w) => say(k, w, lines), lines, r.stars));
         st.talk(0, false);
-        await UI.craftNote(c, kind, name, picks, r, N - 1 - i);
+        await ui(UI.craftNote(c, kind, name, picks, r, N - 1 - i));
         stars.push(r.stars);
         st.craftClear();
-        await st.leave();
+        await go(st.leave());
         st.clearGuests();
       }
-      // 주인이 돌아와서 고맙다고 해요
+      // 주인이 돌아와서 고맙다고 해요 (여기부터는 나가기 단추를 치워요)
+      exitBtn.remove();
       const total = stars.reduce((a, b) => a + b, 0);
       const ownerC: Customer = { id: `owner-${kind}`, name: S.owner.name, source: 'new', chibi: S.owner.spec, greet: '', story: [], needs: { effect: '고마움', sub: 'love' }, feelingWords: [], reactions: { 3: [], 2: [], 1: [] }, prop: '', propModel: '' };
       await st.setView('door', 0.9);
@@ -576,7 +607,12 @@ export class App {
       await UI.dialog(ownerC, lines, { onLine: (k, w) => say(k, w, lines), final: { label: '마음 골목으로 돌아가기' } });
       st.talk(0, false);
       await st.leave();
+    } catch (e) {
+      if (e !== QUIT) throw e;
+      // 움직이던 장면(카메라·손님 걸음)이 다 끝난 뒤에 가게를 정리해요
+      await wait(1.5);
     } finally {
+      exitBtn.remove(); document.querySelector('.sit-quit')?.remove();
       window.speechSynthesis?.cancel();
       document.querySelectorAll('.dialog, .memo').forEach((d) => d.remove());
       banner.remove();
@@ -587,7 +623,7 @@ export class App {
       st.setView('wide', 0);
       document.body.classList.remove('shop-sit');
     }
-    return { stars };
+    return { stars: quitting ? [] : stars, quit: quitting };
   }
 
   // 수업용: 두 그릇 전에 라면을 끓여 준 손님이 다음 손님보다 먼저 잠깐 들러 뒷이야기를 들려줘요 (두 그릇마다 한 번)

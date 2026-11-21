@@ -946,6 +946,10 @@ body.village-open #ui > .toast { top: auto; bottom: calc(184px + env(safe-area-i
 @media (max-height: 520px) and (min-width: 761px) { .modal-wrap.side { place-items: end end; padding: 62px 12px 12px; } .modal-wrap.side > .modal { width: min(380px, 48vw); max-height: calc(100vh - 74px); overflow: auto; } }
 /* 마음 골목 '가게 봐 주기': 가게 안에서는 첫 화면·골목·위쪽 단추를 숨기고 손님 맞이 화면만 보여요 */
 body.shop-sit #ui > *:not(.dialog):not(.memo):not(.cook):not(.info):not(.toast):not(.craft-ok):not(.yum):not(.confetti):not(.stars) { display: none !important; }
+/* 가게 봐 주기 나가기 단추: 왼쪽 위 (메모 위) */
+.sit-exit { position: absolute; top: max(12px, env(safe-area-inset-top)); left: 12px; z-index: 7; }
+@media (max-width: 640px), (max-height: 520px) { .btn.sit-exit { min-height: 38px; font-size: 15px; padding: 0 14px; } }
+.sit-quit h2, .sit-quit .sub { word-break: keep-all; }
 .sit-banner { position: absolute; top: max(12px, env(safe-area-inset-top)); right: 12px; z-index: 6; padding: 8px 18px; border-radius: 999px; font-family: var(--head); font-size: 18px; color: var(--accent); white-space: nowrap; box-shadow: var(--shadow-s); pointer-events: none; }
 @media (max-width: 640px), (max-height: 520px) { .sit-banner { font-size: 14px; padding: 5px 12px; } }
 /* 마음 도장 칩 = 마음 수첩 단추 */

@@ -59,7 +59,7 @@ const coarse = () => typeof matchMedia === 'function' && matchMedia('(pointer: c
 export function openVillage(o: {
   owner: Owner; recs: RamenRecord[]; order: string[]; customer: (id: string) => Customer | undefined;
   setWorld: (w: World | null) => void; story: (c: Customer, r: RamenRecord) => Promise<void>;
-  shopSit?: (kind: CraftKind) => Promise<{ stars: number[] }>;
+  shopSit?: (kind: CraftKind) => Promise<{ stars: number[]; quit?: boolean }>;
 }): Promise<void> {
   return new Promise((res) => {
     const loading = mount(h('div', { class: 'village-loading fade-in' }, h('div', { class: 'vl-in' }, doodleImg('village', '', 'dicon vl'), h('b', null, '마음 골목을 꾸미는 중…'))));
@@ -752,7 +752,7 @@ export function openVillage(o: {
         await new Promise((r2) => setTimeout(r2, 300));
         el.style.display = 'none'; document.body.classList.remove('village-open'); o.setWorld(null);
         fade.classList.remove('on');
-        let r: { stars: number[] } | null = null;
+        let r: { stars: number[]; quit?: boolean } | null = null;
         try { r = await o.shopSit(kind); } catch (e) { console.error('[shop-sit]', e); }
         o.setWorld(world); el.style.display = ''; document.body.classList.add('village-open');
         sitting = false; busy = false;
@@ -763,7 +763,7 @@ export function openVillage(o: {
           award(FOLKS[i], `${josa(CRAFT[kind].shop, '을', '를')} 잘 봐 주었어요`);
           toast(`${josa(CRAFT[kind].shop, '을', '를')} 봐 주고 별 ${total}개를 받았어요!`, 3200);
           refreshBadges();
-        }
+        } else if (r?.quit) toast(`${josa(CRAFT[kind].shop, '을', '를')} 봐 주다가 나왔어요. 주인에게 말을 걸면 다시 봐 줄 수 있어요.`, 3200);
       };
       const tapNpc = (i: number) => {
         if (talk !== null || busy) return;
