@@ -12,7 +12,7 @@ const PI = Math.PI;
 const G = () => new THREE.Group();
 
 // 아이스크림 그릇 높이 (맛이 얹히는 자리)
-const iceTop = (cup?: CItem) => (cup?.shape === 'cone' ? 0.13 : 0.075);
+const iceTop = (cup?: CItem) => (cup?.shape === 'cone' ? 0.13 : 0.062); // 컵은 테두리 바로 위 (뜬 틈 없이)
 function iceCup(it: CItem) {
   const g = G();
   if (it.shape === 'cone') {
@@ -38,11 +38,12 @@ function iceScoop(it: CItem, y: number) {
 }
 function iceTop2(it: CItem, y: number) {
   const g = G(), c = it.color, top = y + 0.066, rnd = mulberry32(it.id.length * 13);
+  const surf = (d: number) => y + 0.028 + 0.04 * Math.sqrt(Math.max(0, 1 - (d / 0.046) ** 2)); // 맛 공 겉면 높이 (가운데서 d만큼)
   switch (it.shape) {
     case 'puff': for (let i = 0; i < 4; i++) { const a = (i / 4) * PI * 2; mesh(cylG(0.011, 0.011, 0.014, 10), M(c), [Math.cos(a) * 0.018, top - 0.004, Math.sin(a) * 0.018], 1, [rnd(), 0, rnd()], g); } break;
     case 'ears': for (const sd of [-1, 1]) mesh(cylG(0.016, 0.016, 0.005, 14), M(c, { noise: 3 }), [sd * 0.017, top + 0.008, 0], 1, [PI / 2, 0, sd * 0.25], g); break;
-    case 'drizzle': for (let i = 0; i < 3; i++) mesh(torusG(0.03 - i * 0.008, 0.003, 5, 20), M(c, { spec: 0.6 }), [0, top - 0.012 + i * 0.006, 0], 1, [PI / 2 + 0.15, 0, i], g); break;
-    case 'sprinkle': for (let i = 0; i < 16; i++) { const a = rnd() * PI * 2, d = rnd() * 0.03; mesh(cylG(0.0018, 0.0018, 0.01, 4), M(['#F28CB8', '#6FB3E0', '#FFE07A', '#8DC26F', '#FFFFFF'][i % 5]), [Math.cos(a) * d, top - 0.004 - d * 0.3, Math.sin(a) * d], 1, [PI / 2, rnd() * 3, 0], g); } break;
+    case 'drizzle': for (let i = 0; i < 3; i++) { const rr = 0.03 - i * 0.008; mesh(torusG(rr, 0.003, 5, 20), M(c, { spec: 0.6 }), [0, surf(rr) + 0.0012, 0], 1, [PI / 2 + 0.05, 0, i], g); } break;
+    case 'sprinkle': for (let i = 0; i < 16; i++) { const a = rnd() * PI * 2, d = rnd() * 0.03; mesh(cylG(0.0018, 0.0018, 0.01, 4), M(['#F28CB8', '#6FB3E0', '#FFE07A', '#8DC26F', '#FFFFFF'][i % 5]), [Math.cos(a) * d, surf(d) + 0.0012, Math.sin(a) * d], 1, [PI / 2, rnd() * 3, 0], g); } break;
     case 'cherry': mesh(sphereG(0.014, 12, 10), M(c, { spec: 0.6 }), [0, top + 0.008, 0], 1, [0, 0, 0], g); mesh(cylG(0.0015, 0.0015, 0.03, 4), M('#6E4A30'), [0.004, top + 0.03, 0], 1, [0, 0, 0.3], g); break;
     case 'star': for (let i = 0; i < 4; i++) { const a = (i / 4) * PI * 2 + 0.3; mesh(new THREE.OctahedronGeometry(1), M(c, { spec: 0.4 }), [Math.cos(a) * 0.02, top - 0.003, Math.sin(a) * 0.02], [0.008, 0.005, 0.008], [rnd(), rnd(), rnd()], g); } break;
     default: mesh(sphereG(0.01, 8, 6), M(c), [0, top, 0], 1, [0, 0, 0], g);
@@ -71,7 +72,7 @@ function pen(it: CItem) {
   return g;
 }
 function sticker(it: CItem) {
-  const g = G(); g.position.set(-0.05, 0.004, 0.028);
+  const g = G(); g.position.set(0.05, 0.0042, 0.035); // 펜과 겹치지 않는 편지지 오른쪽 아래
   mesh(cylG(0.024, 0.024, 0.002, 20), M('#FFFFFF'), [0, 0, 0], 1, [0, 0, 0], g);
   const c = it.color, y = 0.0025;
   switch (it.shape) {
@@ -153,17 +154,17 @@ function teaCup(it: CItem) {
 function teaLiquid(it: CItem, cup?: CItem) {
   const g = G();
   if (cup?.shape === 'pot') mesh(cylG(0.021, 0.021, 0.002, 16), M(it.color, { spec: 0.7, alpha: 0.9 }), [0.065, 0.024, 0.03], 1, [0, 0, 0], g);
-  else { const r = cup?.shape === 'teacup' ? 0.039 : cup?.shape === 'glass' ? 0.031 : 0.033, y = cupTop(cup) - 0.008; mesh(cylG(r, r, 0.003, 20), M(it.color, { spec: 0.7, alpha: 0.92 }), [0, y, 0], 1, [0, 0, 0], g); }
+  else { const r = cup?.shape === 'teacup' ? 0.035 : cup?.shape === 'glass' ? 0.031 : 0.033, y = cupTop(cup) - 0.008; mesh(cylG(r, r, 0.003, 20), M(it.color, { spec: 0.7, alpha: 0.92 }), [0, y, 0], 1, [0, 0, 0], g); }
   return g;
 }
 function snack(it: CItem) {
-  const g = G(); g.position.set(-0.075, 0, 0.04);
+  const g = G(); g.position.set(-0.08, 0, 0.055); // 찻잔 받침과 떨어지게
   mesh(cylG(0.04, 0.034, 0.006, 20), M('#FFFFFF', { rim: 0.4 }), [0, 0.003, 0], 1, [0, 0, 0], g);
   const c = it.color, y = 0.006;
   switch (it.shape) {
     case 'mochi': for (let i = 0; i < 2; i++) mesh(sphereG(1, 14, 10), M(c, { rim: 0.3 }), [(i - 0.5) * 0.026, y + 0.01, 0], [0.014, 0.011, 0.014], [0, 0, 0], g); break;
     case 'cookie': for (let i = 0; i < 3; i++) mesh(cylG(0.013, 0.013, 0.005, 14), M(c, { noise: 3 }), [(i - 1) * 0.02, y + 0.003 + i * 0.002, (i % 2) * 0.008], 1, [0.2, 0, 0], g); break;
-    case 'cake': mesh(boxG(0.04, 0.025, 0.028), M(c, { noise: 2 }), [0, y + 0.0125, 0], 1, [0, 0.3, 0], g); mesh(boxG(0.04, 0.004, 0.028), M('#8A5A3B'), [0, y + 0.026, 0], 1, [0, 0.3, 0], g); break;
+    case 'cake': mesh(boxG(0.04, 0.025, 0.028), M(c, { noise: 2 }), [0, y + 0.0125, 0], 1, [0, 0.3, 0], g); mesh(boxG(0.0405, 0.004, 0.0285), M('#8A5A3B'), [0, y + 0.026, 0], 1, [0, 0.3, 0], g); break;
     case 'macaron': for (let i = 0; i < 2; i++) { const x = (i - 0.5) * 0.028; mesh(cylG(0.012, 0.012, 0.006, 14), M(i ? '#9FD8B8' : c), [x, y + 0.004, 0], 1, [0, 0, 0], g); mesh(cylG(0.011, 0.011, 0.004, 14), M('#FFF8EC'), [x, y + 0.009, 0], 1, [0, 0, 0], g); mesh(cylG(0.012, 0.012, 0.006, 14), M(i ? '#9FD8B8' : c), [x, y + 0.014, 0], 1, [0, 0, 0], g); } break;
     default: for (let i = 0; i < 3; i++) mesh(new THREE.OctahedronGeometry(1), M(c, { alpha: 0.85, spec: 0.6 }), [(i - 1) * 0.018, y + 0.008, (i % 2) * 0.01], [0.009, 0.007, 0.009], [0, i, 0], g);
   }
@@ -175,7 +176,7 @@ function basket(it: CItem) {
   const g = G(), c = it.color;
   if (it.shape === 'box') {
     for (const [x, z, w, d] of [[0, -0.05, 0.15, 0.008], [0, 0.05, 0.15, 0.008], [-0.071, 0, 0.008, 0.1], [0.071, 0, 0.008, 0.1]] as const) mesh(boxG(w, 0.05, d), M(c, { noise: 3 }), [x, 0.025, z], 1, [0, 0, 0], g);
-    mesh(boxG(0.15, 0.004, 0.1), M(darken(c, 0.15)), [0, 0.002, 0], 1, [0, 0, 0], g);
+    mesh(boxG(0.134, 0.004, 0.092), M(darken(c, 0.15)), [0, 0.002, 0], 1, [0, 0, 0], g); // 바닥은 벽 안쪽에 (벽 바깥면과 겹쳐 깜박이지 않게)
   } else {
     mesh(cylG(0.075, 0.058, 0.055, 22, true), M(c, { side: THREE.DoubleSide, noise: 4 }), [0, 0.0275, 0], 1, [0, 0, 0], g);
     mesh(cylG(0.058, 0.058, 0.004, 22), M(darken(c, 0.15)), [0, 0.002, 0], 1, [0, 0, 0], g);
@@ -204,8 +205,8 @@ function fruits(it: CItem) {
   });
   return g;
 }
-function fruitDeco(it: CItem) {
-  const g = G(), c = it.color;
+function fruitDeco(it: CItem, bas?: CItem | null) {
+  const g = G(), c = it.color, box = bas?.shape === 'box';
   switch (it.shape) {
     case 'cloth': mesh(boxG(0.07, 0.003, 0.07), M(c), [0.07, 0.04, 0.04], 1, [0.3, 0.6, 0.5], g); break;
     case 'note': case 'card': {
@@ -217,9 +218,10 @@ function fruitDeco(it: CItem) {
       break;
     }
     case 'sprig': { const s = G(); s.position.set(-0.05, 0.05, 0.02); s.rotation.z = 0.5; g.add(s); mesh(cylG(0.0015, 0.0015, 0.08, 4), M('#6FA35E'), [0, 0.04, 0], 1, [0, 0, 0], s); for (let i = 0; i < 7; i++) mesh(sphereG(0.005, 6, 4), M(i % 2 ? c : lighten(c, 0.15)), [0, 0.05 + i * 0.006, 0], 1, [0, 0, 0], s); break; }
-    case 'smile': { const s = G(); s.position.set(0, 0.03, 0.076); g.add(s); mesh(cylG(0.016, 0.016, 0.002, 18), M(c), [0, 0, 0], 1, [PI / 2, 0, 0], s); for (const sd of [-1, 1]) mesh(sphereG(0.0022, 6, 4), M('#5B3A29'), [sd * 0.005, 0.004, 0.002], 1, [0, 0, 0], s); mesh(torusG(0.006, 0.0012, 4, 10, PI), M('#5B3A29'), [0, 0, 0.002], 1, [0, 0, PI], s); break; }
+    case 'smile': { const s = G(); s.position.set(0, 0.03, box ? 0.0555 : 0.069); g.add(s); /* 바구니 앞면에 붙여요 */ mesh(cylG(0.016, 0.016, 0.002, 18), M(c), [0, 0, 0], 1, [PI / 2, 0, 0], s); for (const sd of [-1, 1]) mesh(sphereG(0.0022, 6, 4), M('#5B3A29'), [sd * 0.005, 0.004, 0.002], 1, [0, 0, 0], s); mesh(torusG(0.006, 0.0012, 4, 10, PI), M('#5B3A29'), [0, 0, 0.002], 1, [0, 0, PI], s); break; }
     default: { // ribbon
-      const b = G(); b.position.set(0, 0.11, 0); g.add(b);
+      // 둥근 바구니는 손잡이 꼭대기에, 손잡이 없는 상자는 앞 벽 위에 묶어요
+      const b = G(); if (box) { b.position.set(0, 0.052, 0.056); b.rotation.x = -0.5; } else b.position.set(0, 0.127, 0); g.add(b);
       for (const sd of [-1, 1]) mesh(torusG(0.014, 0.004, 6, 14), M(c), [sd * 0.015, 0, 0], [1, 0.7, 1], [PI / 2, 0, sd * 0.6], b);
       mesh(sphereG(0.006, 8, 6), M(darken(c, 0.1)), [0, 0, 0], 1, [0, 0, 0], b);
     }
@@ -236,7 +238,7 @@ function piece(kind: MiniKind, it: CItem, p: CPicks): THREE.Group {
     case 'pencil': return it.step === s0 ? paper(it) : it.step === s1 ? pen(it) : sticker(it);
     case 'book': return it.step === s0 ? bookM(it) : it.step === s1 ? bookmark(it) : bookWrap(it);
     case 'tea': return it.step === s0 ? teaCup(it) : it.step === s1 ? teaLiquid(it, first) : snack(it);
-    default: return it.step === s0 ? basket(it) : it.step === s1 ? fruits(it) : fruitDeco(it);
+    default: return it.step === s0 ? basket(it) : it.step === s1 ? fruits(it) : fruitDeco(it, first);
   }
 }
 

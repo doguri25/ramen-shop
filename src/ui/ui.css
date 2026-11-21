@@ -204,6 +204,9 @@ button { font-family: var(--head); border: 0; cursor: pointer; color: inherit; b
 .heartnote .need { display: flex; align-items: center; gap: 12px; margin: 14px 0 6px; padding: 14px 16px; border-radius: 18px; }
 .heartnote .need .big { font-family: var(--head); font-size: 28px; }
 .heartnote .need .fam { font-size: 16px; }
+/* 수업용: 꼭 필요했던 마음 낱말은 끊기지 않게 */
+body.cls .heartnote .need .big { flex: none; white-space: nowrap; }
+body.cls .heartnote .need .fam { min-width: 0; word-break: keep-all; }
 .heartnote .tip { font-size: 20px; line-height: 1.6; word-break: keep-all; margin: 6px 0 12px; }
 .heartnote .sub { font-size: 18px; }
 .heartnote .ings { display: flex; flex-wrap: wrap; gap: 8px; margin: 10px 0; }
@@ -218,6 +221,8 @@ button { font-family: var(--head); border: 0; cursor: pointer; color: inherit; b
 .lib { position: absolute; inset: 0; background: #F6EBDD; display: flex; flex-direction: column; }
 .lib header { display: flex; align-items: center; gap: 12px; padding: 14px 16px; flex-wrap: wrap; }
 .lib header h2 { margin: 0; font-family: var(--head); font-weight: normal; font-size: 30px; color: var(--accent); flex: 1; }
+/* 수업용: 좁은 화면에서 제목이 단추 옆에 짓눌려 한 글자씩 꺾이지 않게 */
+body.cls .lib header h2 { flex: 1 1 auto; min-width: min(100%, 11em); word-break: keep-all; }
 .lib .bar10 { display: flex; align-items: center; gap: 10px; padding: 0 18px 8px; font-family: var(--head); font-size: 20px; }
 .lib .bar10 .bar { flex: 1; max-width: 420px; height: 16px; border-radius: 99px; background: var(--line); overflow: hidden; }
 .lib .bar10 .bar i { display: block; height: 100%; background: linear-gradient(90deg, #F2B72D, #E07A2E); }
@@ -603,6 +608,13 @@ body.cooking .prog .bar { display: none; }
 .mood-gauge .mg-face { position: absolute; left: 50%; bottom: 8%; transform: translate(-50%, 50%); width: 40px; height: 40px; transition: bottom 4s ease-in-out; filter: drop-shadow(0 2px 2px rgba(0,0,0,.15)); }
 .mood-gauge.end .mg-w.to { animation: mgPop .5s ease; }
 @keyframes mgPop { 0% { transform: scale(1); } 50% { transform: scale(1.18); } 100% { transform: scale(1); } }
+/* 휴대폰: 반응 대화가 뜨면(end) 온도계를 위로 올리고 작게 해서 대화창에 가리지 않게 */
+@media (max-width: 640px), (max-height: 520px) {
+  .mood-gauge.end { top: 74px; transform: none; padding: 6px 6px 8px; }
+  .mood-gauge.end .mg-t, .mood-gauge.end .mg-w.from { display: none; }
+  .mood-gauge.end .mg-bar { height: 90px; }
+}
+@media (max-height: 520px) { .mood-gauge.end { top: 64px; } .mood-gauge.end .mg-bar { height: 60px; } }
 @media (max-height: 520px) { .mood-gauge { width: 84px; padding: 6px 6px 8px; transform: translateY(-50%); } .mood-gauge .mg-t { display: none; } .mood-gauge .mg-bar { height: 120px; } .mood-gauge .mg-w { font-size: 14px; } .mood-gauge .mg-face { width: 32px; height: 32px; } }
 
 /* ── 오늘의 마음 한 그릇 약속 (마음 쪽지) ── */
@@ -841,6 +853,11 @@ body.village-open #ui > *:not(.village):not(.modal-wrap):not(.toast):not(.villag
 .village .vi-guide { display: flex; flex-direction: column; overflow: hidden; }
 .village .vi-guide > ul { flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
 .village .vi-guide .vi-btns { flex: none; padding-bottom: 6px; }
+/* 낮은 화면: 글이 더 있으면 아래가 흐려져서 밀어 볼 수 있다는 걸 알려 줘요 */
+@media (max-height: 430px) { .village .vi-guide > ul { padding-bottom: 14px; -webkit-mask-image: linear-gradient(#000 calc(100% - 18px), transparent); mask-image: linear-gradient(#000 calc(100% - 18px), transparent); } }
+/* 마음 골목 알림은 할 일 칩·위쪽 단추를 가리지 않게 아래쪽에, 누르는 건 뒤로 지나가게 */
+body.village-open #ui > .toast { top: auto; bottom: calc(184px + env(safe-area-inset-bottom)); pointer-events: none; }
+@media (max-height: 520px) { body.village-open #ui > .toast { bottom: calc(136px + env(safe-area-inset-bottom)); padding: 10px 18px; font-size: 17px; } }
 @media (max-width: 640px), (max-height: 520px) {
   .village .vi-card { padding: 14px 16px 14px; border-radius: 22px; }
   .village .vi-head .vi-logo { width: 46px; height: 46px; }
@@ -924,6 +941,8 @@ body.village-open #ui > *:not(.village):not(.modal-wrap):not(.toast):not(.villag
 .modal-wrap.side { background: transparent; place-items: center end; padding-right: 24px; pointer-events: none; }
 .modal-wrap.side > .modal { pointer-events: auto; width: min(420px, 46vw); box-shadow: var(--shadow); }
 @media (max-width: 760px) { .modal-wrap.side { place-items: end center; padding: 12px; } .modal-wrap.side > .modal { width: 100%; max-height: 52vh; overflow: auto; } }
+/* 폰 가로(좁고 낮은 화면)도 옆에 띄워요: 아래에 띄우면 글이 한 줄만 보여요 */
+@media (max-height: 520px) and (max-width: 760px) { .modal-wrap.side { place-items: end end; padding: 56px 12px 12px; } .modal-wrap.side > .modal { width: min(400px, 58vw); max-height: calc(100vh - 68px); } }
 @media (max-height: 520px) and (min-width: 761px) { .modal-wrap.side { place-items: end end; padding: 62px 12px 12px; } .modal-wrap.side > .modal { width: min(380px, 48vw); max-height: calc(100vh - 74px); overflow: auto; } }
 /* 마음 골목 '가게 봐 주기': 가게 안에서는 첫 화면·골목·위쪽 단추를 숨기고 손님 맞이 화면만 보여요 */
 body.shop-sit #ui > *:not(.dialog):not(.memo):not(.cook):not(.info):not(.toast):not(.craft-ok):not(.yum):not(.confetti):not(.stars) { display: none !important; }

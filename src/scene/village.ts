@@ -19,7 +19,7 @@ export interface VHouse { id: string; name: string; family: string; lit: boolean
 export interface VTown { family: string; name: string; color: string }
 export interface VHouseSpot { h: VHouse; hit: THREE.Mesh; door: THREE.Vector3; out: THREE.Vector3; yaw: number; town: number }
 // 동네 주민: hold이면 멈춰 서고, faceTo가 있으면 그쪽을 봐요
-export interface VNpc { ch: Chibi; hit: THREE.Mesh; sh: THREE.Object3D; hold: boolean; faceTo: THREE.Vector3 | null; at: THREE.Vector3 | null }
+export interface VNpc { ch: Chibi; hit: THREE.Mesh; sh: THREE.Object3D; hold: boolean; faceTo: THREE.Vector3 | null; at: THREE.Vector3 | null; goHome?: boolean }
 // 불 켜진 집 손님: 자기 마을 골목을 산책해요
 export interface VWalker extends VNpc { house: number }
 export interface VShopSpot { hit: THREE.Mesh; kind: VShop['kind']; name: string; front: THREE.Vector3; yaw: number }
@@ -630,7 +630,7 @@ export function buildVillage(houses: VHouse[], towns: VTown[], villagers: ChibiS
     const py = heightAt(PLAZA.x, PLAZA.z);
     const fo = new THREE.Group(); fo.position.set(PLAZA.x, py, PLAZA.z);
     mesh(cylG(2.5, 2.7, 0.6, 24), M('#D6CFC4', { noise: 3 }), [0, 0.3, 0], 1, [0, 0, 0], fo);
-    mesh(cylG(2.2, 2.2, 0.05, 24), M('#86CDF0', { flat: 0.5, spec: 0.9 }), [0, 0.56, 0], 1, [0, 0, 0], fo);
+    mesh(cylG(2.2, 2.2, 0.02, 24), M('#86CDF0', { flat: 0.5, spec: 0.9 }), [0, 0.612, 0], 1, [0, 0, 0], fo); // 돌 수조 윗면(0.6) 위로 물이 보여요
     mesh(cylG(0.32, 0.42, 1.5, 12), M('#E9E2D6', { noise: 2 }), [0, 1.0, 0], 1, [0, 0, 0], fo);
     mesh(cylG(0.9, 0.5, 0.3, 16), M('#E2DBCF', { noise: 2 }), [0, 1.75, 0], 1, [0, 0, 0], fo);
     mesh(sphereG(0.55, 14, 10), M('#BFE6F7', { flat: 0.6, alpha: 0.75 }), [0, 2.1, 0], [1, 0.7, 1], [0, 0, 0], fo);
@@ -880,8 +880,8 @@ export function buildVillage(houses: VHouse[], towns: VTown[], villagers: ChibiS
   const railHit = (x: number, z: number) => {
     for (const br of bridges) {
       const abx = br.b.x - br.a.x, abz = br.b.z - br.a.z, L2 = abx * abx + abz * abz;
-      const u = ((x - br.a.x) * abx + (z - br.a.z) * abz) / L2;
-      if (u < 0.02 || u > 0.98) continue;
+      const u = ((x - br.a.x) * abx + (z - br.a.z) * abz) / L2, m = 0.3 / Math.sqrt(L2);
+      if (u < -m || u > 1 + m) continue;
       const lat = Math.abs((x - br.a.x) * abz - (z - br.a.z) * abx) / Math.sqrt(L2);
       if (lat > 0.95 && lat < 1.55) return true;
     }
@@ -919,13 +919,17 @@ export function buildVillage(houses: VHouse[], towns: VTown[], villagers: ChibiS
       // 멀리 있는 주민은 몸짓을 쉬고(75m), 더 멀면 작은 인형으로 바꿔 그려요(65m)
       const far = d2 > 75 * 75, tiny = d2 > 65 * 65;
       n.ch.body.visible = !tiny; n.pawn.visible = tiny;
-      if (n.at) {
-        // 모임 자리로: 가까우면 걸어가고, 멀거나 안 보이는 곳이면 바로 옮겨요
+      // 모임이 끝나면 걸어서 자기 길로 돌아가요 (말을 거는 동안은 멈춰요)
+      if (n.goHome && !n.at && !n.hold) n.at = n.p.getPointAt(n.t).clone();
+      if (n.at && !(n.goHome && n.hold)) {
+        // 모임 자리로: 걸어가요. 사장님 눈에서 멀리 떨어진 곳끼리만 바로 옮겨요 (눈앞에서 사라지지 않게)
         const dx = n.at.x - P.x, dz = n.at.z - P.z, d = Math.hypot(dx, dz);
         if (d > 0.25) {
-          if (d > 26 || far) P.set(n.at.x, standY(n.at.x, n.at.z, n.ch), n.at.z);
+          const tD2 = eye ? (n.at.x - eye.x) ** 2 + (n.at.z - eye.z) ** 2 : 1e9, lim = d > 26 ? 40 * 40 : 75 * 75;
+          if (d2 > lim && tD2 > lim) P.set(n.at.x, standY(n.at.x, n.at.z, n.ch), n.at.z);
           else {
-            const st = Math.min(d, dt * 2.4);
+            // 멀리서 오는 길은 빠르게: 사장님 눈에서 먼(40m 밖) 동안은 서둘러 오고, 가까워지면 걸어요
+            const st = Math.min(d, dt * (d > 26 ? (d2 > 40 * 40 ? 12 : 4) : 2.4));
             P.x += (dx / d) * st; P.z += (dz / d) * st; P.y = standY(P.x, P.z, n.ch);
             n.ch.root.rotation.y = Math.atan2(dx, dz); n.ch.walking = 1;
           }
@@ -933,6 +937,7 @@ export function buildVillage(houses: VHouse[], towns: VTown[], villagers: ChibiS
           if (!far) n.ch.update(dt);
           continue;
         }
+        if (n.goHome) { n.at = null; n.goHome = false; }
       }
       if (n.hold || n.at) {
         n.ch.walking = 0;

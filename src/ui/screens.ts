@@ -658,6 +658,7 @@ export const UI = {
         cards.addEventListener('scroll', upd, { passive: true });
         new ResizeObserver(upd).observe(cards);
         panel.append(h('div', { class: 'cook-top' }, tabs, nextBtn), wrap);
+        (tabs.querySelector('.tab.on') as HTMLElement | null)?.scrollIntoView({ block: 'nearest', inline: 'nearest' }); // 좁은 화면에서도 지금 단계가 보이게
         if (keepX) cards.scrollLeft = keepX;
         requestAnimationFrame(upd);
         setH();
@@ -1189,9 +1190,9 @@ export const UI = {
       const drawQ = () => { qsel.innerHTML = ''; [['auto', '자동'], ['high', '높게'], ['mid', '보통'], ['low', '낮게']].forEach(([k, l]) => qsel.append(h('button', { class: q === k ? 'on' : '', onclick: () => { q = k; drawQ(); } }, l))); };
       drawQ();
       // 골목과 가게 시간대 (이 기기의 기본값. 학생은 마음 골목에서 해·노을·달 단추로 바꿀 수 있어요)
-      let tod: Tod = todDefault();
+      let tod: Tod = todDefault(), todTouched = false;
       const todSel = h('div', { class: 'sel' });
-      const drawTod = () => { todSel.innerHTML = ''; TODS.forEach((k) => todSel.append(h('button', { class: tod === k ? 'on' : '', onclick: () => { tod = k; drawTod(); } }, TOD_NAME[k]))); };
+      const drawTod = () => { todSel.innerHTML = ''; TODS.forEach((k) => todSel.append(h('button', { class: tod === k ? 'on' : '', onclick: () => { tod = k; todTouched = true; drawTod(); } }, TOD_NAME[k]))); };
       drawTod();
       const list = h('div', { class: 't-list' });
       const drawList = () => {
@@ -1223,7 +1224,7 @@ export const UI = {
           sumBtn, sumBox),
         o.rank ? rankSec(o.rank, () => wrap) : null,
         h('div', { class: 'sec' }, h('h3', null, '사장님 기록'), EVENT ? h('div', { class: 'muted', style: 'font-size:15px;margin-bottom:6px' }, '이 기기에 남은 기록만 지워요. 랭킹 서버에 모인 기록은 그대로 남아요.') : null, list),
-        h('div', { class: 'actions' }, h('button', { class: 'btn', onclick: () => { o.onSave(url.value.trim(), q, aiOn, aiUrl.value.trim()); if (!EVENT) setTodDefault(tod); sfx.pop(); wrap.remove(); res(); } }, '저장하고 닫기'))));
+        h('div', { class: 'actions' }, h('button', { class: 'btn', onclick: () => { o.onSave(url.value.trim(), q, aiOn, aiUrl.value.trim()); if (!EVENT && todTouched) setTodDefault(tod); /* 시간대를 고른 때만 바꿔요 (학생이 바꾼 시간대를 괜히 되돌리지 않게) */ sfx.pop(); wrap.remove(); res(); } }, '저장하고 닫기'))));
       mount(wrap);
     });
   },

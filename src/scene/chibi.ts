@@ -3,6 +3,7 @@ import type { ChibiSpec } from '../data/types';
 import { darken, lighten } from '../paint/brush';
 import { EYES, faceAtlas, MOUTH, tex } from '../paint/textures';
 import { boxG, capsuleG, coneG, cylG, group, M, mesh, shellG, sphereG, torusG, tube } from './geo';
+import { FACE_TINT } from '../render/watercolor';
 
 export const HR = 0.34; // 머리 반지름
 const ARM_MAX = 0.52; // 팔(어깨~손) 길이: 이보다 멀면 곧게 펴지고 조금 늘어나요
@@ -139,7 +140,7 @@ export class Chibi {
 
     // 얼굴 (눈은 머리 앞쪽에 붙인 얇은 껍질에 그려요)
     this.eyeTex = cellTex(true, s.kind === 'panda' ? '#2E2E2E' : s.kind === 'raccoon' || s.kind === 'meerkat' || s.kind === 'sloth' ? (s.mark ?? '#4A403A') : '');
-    const faceMat = (t: THREE.Texture) => new THREE.MeshBasicMaterial({ map: t, transparent: true, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -4 });
+    const faceMat = (t: THREE.Texture) => { const fm = new THREE.MeshBasicMaterial({ map: t, transparent: true, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -4 }); fm.color = FACE_TINT; return fm; }; // 노을녘·밤에는 몸과 같이 어두워져요
     const eyeR = HR + 0.006 + (['penguin', 'owl', 'monkey'].includes(s.kind) ? 0.006 : 0);
     const eyes = mesh(shellG(eyeR, FRONT, 1.1, 1.35, 0.55), faceMat(this.eyeTex), [0, 0, 0], 1, [0, 0, 0], this.head);
     eyes.renderOrder = 3;

@@ -236,10 +236,16 @@ export class App {
 
   // 3D 마음 골목: 열려 있는 동안은 가게 대신 골목을 그려요
   private world: World | null = null;
+  private alleyOpen = false;
   private async openAlley(o: Owner, recs: RamenRecord[]) {
+    // 단추를 빠르게 두 번 눌러도 골목은 하나만 열어요
+    if (this.alleyOpen) return;
+    this.alleyOpen = true;
+    try {
     // 골목(주민·물리 소품)은 열 때 불러와요 (첫 화면을 가볍게)
     const { openVillage } = await import('./ui/village');
-    return openVillage({ owner: o, recs, order: o.order, customer: (id) => CUSX.get(id), setWorld: (w) => { this.world = w; }, story: (c, r) => UI.alleyHouse(o, c, r, true), shopSit: this.inRound ? undefined : (kind) => this.shopSit(kind) }); // 라면 손님이 있는 동안은 가게를 비울 수 없어요
+    return await openVillage({ owner: o, recs, order: o.order, customer: (id) => CUSX.get(id), setWorld: (w) => { this.world = w; }, story: (c, r) => UI.alleyHouse(o, c, r, true), shopSit: this.inRound ? undefined : (kind) => this.shopSit(kind) }); // 라면 손님이 있는 동안은 가게를 비울 수 없어요
+    } finally { this.alleyOpen = false; }
   }
 
   private async chooseOwner() {
@@ -518,10 +524,10 @@ export class App {
       for (let i = 0; i < N; i++) {
         const c0 = pool[i], c: Customer = { ...c0, story: adaptStory(c0, kind) };
         setBanner(i);
-        st.craftStove();
         st.mood('neutral');
         await st.setView('door', 0.9);
         const entering = st.enter(c0, { prop: false });
+        st.craftStove(); // 손님을 들인 뒤에 냄비를 치워요 (enter가 가게를 라면 가게로 되돌려요)
         await wait(1.2);
         st.setView('guest', 1.4);
         await entering;
@@ -553,9 +559,9 @@ export class App {
       // 주인이 돌아와서 고맙다고 해요
       const total = stars.reduce((a, b) => a + b, 0);
       const ownerC: Customer = { id: `owner-${kind}`, name: S.owner.name, source: 'new', chibi: S.owner.spec, greet: '', story: [], needs: { effect: '고마움', sub: 'love' }, feelingWords: [], reactions: { 3: [], 2: [], 1: [] }, prop: '', propModel: '' };
-      st.craftStove();
       await st.setView('door', 0.9);
       const entering = st.enter(ownerC, { prop: false });
+      st.craftStove();
       await wait(1.2);
       st.setView('guest', 1.4);
       await entering;
@@ -969,7 +975,14 @@ export class App {
     return u;
   }
 
+  private libOpen = false;
   async openLibrary() {
+    if (!this.owner) return;
+    // 수업용: 도감 칩을 빠르게 두 번 눌러도 도감은 하나만 열어요
+    if (!EVENT) { if (this.libOpen) return; this.libOpen = true; try { return await this.openLibraryNow(); } finally { this.libOpen = false; } }
+    return this.openLibraryNow();
+  }
+  private async openLibraryNow() {
     if (!this.owner) return;
     const ev = EVENT ? this.owner.ev : undefined;
     const o = this.owner;
@@ -1007,11 +1020,18 @@ export class App {
         return { stats: st, text: all.length ? await ai.summary(st) : null };
       },
       onSave: (url, q, aiOn, aiUrl) => {
+        const wasQ = this.teacher.quality ?? 'auto';
         this.teacher = { tinkerbell: url || undefined, quality: q as TeacherSettings['quality'], ai: aiOn, aiUrl: aiUrl || undefined };
         ai.configure(this.teacher.aiUrl, aiOn);
         db.saveTeacher(this.teacher);
         // 선생님이 화질을 고정하면 자동 측정이 나중에 바꾸지 않게 멈춰요
         if (q !== 'auto') { const t = q as Tier; this.wcr.setTier(TIERS[t]); PHYS.iters = t === 'low' ? 6 : t === 'mid' ? 8 : 10; this.probe.done = true; }
+        else if (!EVENT && wasQ !== 'auto') {
+          // 수업용: 고정했던 화질을 '자동'으로 되돌리면 처음처럼 높게 시작해서 다시 재요
+          const apply = (t: Tier) => { this.wcr.setTier(TIERS[t]); PHYS.iters = t === 'low' ? 6 : t === 'mid' ? 8 : 10; };
+          const t0: Tier = LOW_MEM_PHONE ? 'low' : 'high';
+          apply(t0); this.probe = new QualityProbe(t0, apply);
+        }
         toast('저장했어요');
       },
       onDelete: async (ow) => { await db.deleteOwner(ow.id); toast(`${ow.name} 사장님 기록을 지웠어요`); },

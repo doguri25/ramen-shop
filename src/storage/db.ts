@@ -40,6 +40,11 @@ export const db = {
     await safe(del('records:' + id), undefined);
     const owners = (await db.owners()).filter((o) => o.id !== id);
     await db.saveOwners(owners);
+    if (!EVENT) {
+      // 수업용: 손님들이 끓여 준 라면 사진과 마음 골목 기록도 함께 지워요
+      await db.delPhoto('treat-' + id);
+      try { for (const k of ['folk', 'shop', 'quest']) localStorage.removeItem(`ramen-alley-${k}:${id}`); } catch { /* 못 지워도 계속해요 */ }
+    }
   },
 };
 

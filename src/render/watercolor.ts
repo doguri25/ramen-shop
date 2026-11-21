@@ -97,7 +97,7 @@ void main(){
     sp = smoothstep(0.25, 0.65, sp + (nz - 0.5) * 0.25);
     col = mix(col, vec3(1.0, 0.98, 0.93), sp * uSpec);
   }
-  float own = smoothstep(0.84, 0.9, uFlat);
+  float own = smoothstep(0.76, 0.8, uFlat); // flat 0.8 이상(불 켜진 창문·간판·불꽃·하늘)은 시간대 빛깔을 받지 않아요
   col *= mix(uTint, vec3(1.0), own);
   col = mix(col, uHaze.rgb * (0.55 + 0.45 * w), uHaze.a * (1.0 - own));
   col += uGlowColor * uGlow * (0.35 + 0.65 * fres);
@@ -216,6 +216,8 @@ void main(){
 
 export interface Look { sat?: number; bright?: number; lift?: number; rays?: number; sunDir?: THREE.Vector3; skyD?: number; paper?: number; blot?: number; tint?: THREE.Color; lightW?: THREE.Vector3; sunCol?: THREE.Color; haze?: THREE.Vector4 }
 const WHITE = new THREE.Color(1, 1, 1), SUN = new THREE.Color('#FFE6B0'), NOHAZE = new THREE.Vector4(1, 1, 1, 0);
+// 캐릭터 얼굴(눈·입·볼터치)은 MeshBasicMaterial이라 따로 시간대 빛깔을 맞춰요 (재질의 color가 이 색을 같이 써요)
+export const FACE_TINT = new THREE.Color(1, 1, 1);
 
 export class WatercolorRenderer {
   renderer: THREE.WebGLRenderer;
@@ -291,7 +293,7 @@ export class WatercolorRenderer {
     const u = this.post.uniforms, L = this.look;
     u.uSat.value = L?.sat ?? 1.08; u.uBright.value = L?.bright ?? 1; shared.uLift.value = L?.lift ?? 0;
     u.uPaperK.value = L?.paper ?? 0.95; u.uBlot.value = L?.blot ?? 1;
-    shared.uTint.value.copy(L?.tint ?? WHITE); u.uSunCol.value.copy(L?.sunCol ?? SUN); shared.uHaze.value.copy(L?.haze ?? NOHAZE);
+    shared.uTint.value.copy(L?.tint ?? WHITE); u.uSunCol.value.copy(L?.sunCol ?? SUN); shared.uHaze.value.copy(L?.haze ?? NOHAZE); FACE_TINT.copy(L?.tint ?? WHITE);
     let rays = 0;
     if (L?.rays && L.sunDir) {
       // 해는 카메라에서 아주 먼 곳: 화면 위 자리를 구해요 (뒤에 있으면 빛줄기 없음)
@@ -330,21 +332,23 @@ export class WatercolorRenderer {
     this.tmp.copy(LIGHT_W).transformDirection(cam.matrixWorldInverse);
     shared.uLightV.value.copy(this.tmp);
     // 도감·카드 그림은 시간대와 상관없이 늘 낮 빛깔로 찍어요
-    const tintKeep = shared.uTint.value.clone(), hazeKeep = shared.uHaze.value.clone(); shared.uTint.value.copy(WHITE); shared.uHaze.value.copy(NOHAZE);
+    // 마음 골목에서 막 나왔을 때도 가게 기본 색감으로 찍어요 (밝기·채도·그늘 들기·종이 결)
+    const tintKeep = shared.uTint.value.clone(), hazeKeep = shared.uHaze.value.clone(), faceKeep = FACE_TINT.clone(), liftKeep = shared.uLift.value;
+    shared.uTint.value.copy(WHITE); shared.uHaze.value.copy(NOHAZE); FACE_TINT.copy(WHITE); shared.uLift.value = 0;
     this.renderer.setRenderTarget(rt);
     this.renderer.clear();
     this.renderer.render(scene, cam);
-    shared.uTint.value.copy(tintKeep); shared.uHaze.value.copy(hazeKeep);
+    shared.uTint.value.copy(tintKeep); shared.uHaze.value.copy(hazeKeep); FACE_TINT.copy(faceKeep); shared.uLift.value = liftKeep;
     const u = this.post.uniforms;
-    const keep = { c: u.tColor.value, d: u.tDepth.value, r: u.uRes.value.clone(), n: u.uNear.value, f: u.uFar.value, dof: u.uDof.value, px: u.uPx.value, rays: u.uRays.value };
-    u.uRays.value = 0;
+    const keep = { c: u.tColor.value, d: u.tDepth.value, r: u.uRes.value.clone(), n: u.uNear.value, f: u.uFar.value, dof: u.uDof.value, px: u.uPx.value, rays: u.uRays.value, sat: u.uSat.value, br: u.uBright.value, pk: u.uPaperK.value, bl: u.uBlot.value };
+    u.uRays.value = 0; u.uSat.value = 1.08; u.uBright.value = 1; u.uPaperK.value = 0.95; u.uBlot.value = 1;
     u.tColor.value = rt.texture; u.tDepth.value = rt.depthTexture; u.uRes.value.set(w, h); u.uNear.value = cam.near; u.uFar.value = cam.far; u.uDof.value = 0; u.uPx.value = 1;
     this.renderer.setRenderTarget(out);
     this.renderer.render(this.postScene, this.postCam);
     const px = new Uint8Array(w * h * 4);
     this.renderer.readRenderTargetPixels(out, 0, 0, w, h, px);
     this.renderer.setRenderTarget(null);
-    u.tColor.value = keep.c; u.tDepth.value = keep.d; u.uRes.value.copy(keep.r); u.uNear.value = keep.n; u.uFar.value = keep.f; u.uDof.value = keep.dof; u.uPx.value = keep.px; u.uRays.value = keep.rays;
+    u.tColor.value = keep.c; u.tDepth.value = keep.d; u.uRes.value.copy(keep.r); u.uNear.value = keep.n; u.uFar.value = keep.f; u.uDof.value = keep.dof; u.uPx.value = keep.px; u.uRays.value = keep.rays; u.uSat.value = keep.sat; u.uBright.value = keep.br; u.uPaperK.value = keep.pk; u.uBlot.value = keep.bl;
     this.renderer.setClearColor(prevClear, 1);
     const c = document.createElement('canvas'); c.width = w; c.height = h;
     const g = c.getContext('2d')!;

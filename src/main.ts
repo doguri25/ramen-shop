@@ -1,5 +1,9 @@
 import './ui/ui.css';
 import { App } from './app';
+import { EVENT } from './event/flag';
+
+// 수업용에만 쓰는 화면 고침(css)은 body.cls 아래에 둬요. 행사용 화면은 그대로예요
+if (!EVENT) document.body.classList.add('cls');
 
 const boot = document.getElementById('boot')!;
 const sub = boot.querySelector('.boot-sub') as HTMLElement;

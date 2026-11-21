@@ -45,10 +45,10 @@ const SKEY = (id: string) => `ramen-alley-shop:${id}`;
 function loadShop(id: string): ShopRec { try { const v = JSON.parse(localStorage.getItem(SKEY(id)) || '{}'); return v && typeof v === 'object' ? v : {}; } catch { return {}; } }
 function saveShop(id: string, r: ShopRec) { try { localStorage.setItem(SKEY(id), JSON.stringify(r)); } catch { /* 저장 못 해도 계속해요 */ } }
 // 이어지는 미션: 끝낸 미션과 하는 중인 미션(몇 번째 단계인지)
-type QState = { done: string[]; cur?: { id: string; step: number } };
+type QState = { done: string[]; cur?: { id: string; step: number; got?: string[] } };
 const QKEY = (id: string) => `ramen-alley-quest:${id}`;
 function loadQ(id: string): QState {
-  try { const v = JSON.parse(localStorage.getItem(QKEY(id)) || '{}'); return { done: Array.isArray(v?.done) ? v.done.filter((x: unknown) => typeof x === 'string' && QUEST.has(x as string)) : [], cur: v?.cur && QUEST.has(v.cur.id) ? { id: v.cur.id, step: Math.max(0, v.cur.step | 0) } : undefined }; } catch { return { done: [] }; }
+  try { const v = JSON.parse(localStorage.getItem(QKEY(id)) || '{}'); return { done: Array.isArray(v?.done) ? v.done.filter((x: unknown) => typeof x === 'string' && QUEST.has(x as string)) : [], cur: v?.cur && QUEST.has(v.cur.id) ? { id: v.cur.id, step: Math.max(0, v.cur.step | 0), got: Array.isArray(v.cur.got) ? v.cur.got.filter((x: unknown) => typeof x === 'string') : undefined } : undefined }; } catch { return { done: [] }; }
 }
 function saveQ(id: string, q: QState) { try { localStorage.setItem(QKEY(id), JSON.stringify(q)); } catch { /* 저장 못 해도 계속해요 */ } }
 // 지금 하는 일: 주민 심부름 또는 이어지는 미션의 한 단계
@@ -85,6 +85,15 @@ export function openVillage(o: {
       { const sp = vil.shopDoor.clone().add(V(0, 0, 3)); fp.pos.set(sp.x, 0, sp.z); fp.y = vil.walkY(sp.x, sp.z); }
       let goal: THREE.Vector3 | null = null;
       let onArrive: (() => void) | null = null;
+      // 멀리 있는 주민을 눌러 걸어가는 동안 그 주민은 기다려 줘요. 걸어가기를 그만두면 다시 다니게 해요
+      let waitNpc = -1;
+      const cancelGoal = () => {
+        goal = null; onArrive = null;
+        const i = waitNpc; waitNpc = -1;
+        if (i < 0 || i === talk) return;
+        const n = people[i];
+        if (!n.at && !(i < NN && holdFor(i))) n.hold = false;
+      };
       let faceYaw: number | null = null, facePitch: number | null = null; // 말 걸 때 주민 쪽으로 고개를 돌려요
       // 전체 보기에서 내가 있는 곳 표시
       const texCache = new Map<DoodleKind, THREE.Texture>();
@@ -148,6 +157,7 @@ export function openVillage(o: {
       let guest: { chs: Chibi[]; shadows: THREE.Object3D[] } | null = null;
       let busy = false;
       const popGuest = async (k: number) => {
+        if (guest) return;
         const s = vil.houses[k], c = o.customer(s.h.id)!, r = best.get(s.h.id)!;
         busy = true;
         const specs = Array.isArray(c.chibi) ? c.chibi : [c.chibi];
@@ -187,12 +197,14 @@ export function openVillage(o: {
         restoreView();
       };
       const tapHouse = (k: number) => {
+        if (busy || guest) return;
         const s = vil.houses[k];
         if (!s.h.lit) { sfx.back(); toast('아직 만나지 않은 손님의 집이에요. 라면을 끓여 주면 불이 켜져요.'); return; }
         sfx.tap();
         if (mode === 'all') {
           saveView();
           all.target.copy(s.out); all.dist = 14; all.yaw = s.yaw;
+          busy = true; // 다가가는 동안 다른 집을 누르거나 닫으면 이야기 창이 겹치지 않게
           setTimeout(() => popGuest(k), 650);
         } else {
           const stand = s.out.clone().addScaledVector(V(Math.sin(s.yaw), 0, Math.cos(s.yaw)), 2.2);
@@ -247,12 +259,12 @@ export function openVillage(o: {
         const c = meetSpot(q);
         (q.group ?? []).map(folkIndex).forEach((i, k) => {
           const n = npcs[i];
-          if (!on) { n.at = null; n.faceTo = null; meetFace.delete(i); if (!pinned.has(i)) n.hold = false; return; }
+          if (!on) { n.at = null; n.faceTo = null; meetFace.delete(i); if (!pinned.has(i)) { n.hold = false; n.goHome = true; } return; }
           const a = (k / 3) * Math.PI * 2;
-          n.at = c.clone().add(V(Math.cos(a) * 1.5, 0, Math.sin(a) * 1.5)); n.faceTo = c.clone(); meetFace.set(i, c.clone());
+          n.at = c.clone().add(V(Math.cos(a) * 1.5, 0, Math.sin(a) * 1.5)); n.goHome = false; n.faceTo = c.clone(); meetFace.set(i, c.clone());
         });
       };
-      if (qs.cur) { const q = QUEST.get(qs.cur.id)!; if (qs.cur.step < q.tasks.length) { task = questTask(q, qs.cur.step); if (q.kind === 'mood') gather(q, true); } else qs.cur = undefined; }
+      if (qs.cur) { const q = QUEST.get(qs.cur.id)!; if (qs.cur.step < q.tasks.length) { task = questTask(q, qs.cur.step); const t0 = task; t0.got = (qs.cur.got ?? []).filter((k): k is ShopKind => t0.gets.includes(k as ShopKind)); if (q.kind === 'mood') gather(q, true); } else qs.cur = undefined; }
       if (qDone.has('q-festival')) vil.festival.visible = true;
       const badgeKind = (i: number): DoodleKind => {
         const f = FOLKS[i];
@@ -291,6 +303,7 @@ export function openVillage(o: {
       let hintTimer = 0;
       const PC = !coarse();
       const setMode = (m: 'all' | 'walk') => {
+        if (busy) return; // 잔치·집 손님 이야기처럼 막아 둔 동안에는 보기를 바꾸지 않아요 (닫기·걷기가 멈춰 버리지 않게)
         if (talk !== null) closeTalk();
         const prev = mode;
         mode = m;
@@ -306,7 +319,7 @@ export function openVillage(o: {
         zoom.style.display = m === 'all' ? '' : 'none';
         stickGhost.hidden = !(m === 'walk' && coarse() && !stickUsed);
         el.classList.toggle('walk', m === 'walk');
-        goal = null; onArrive = null;
+        cancelGoal();
       };
       seg.append(
         h('button', { 'data-m': 'all', onclick: () => { sfx.tap(); setMode('all'); } }, doodleImg('map'), h('span', null, '전체 보기')),
@@ -340,6 +353,7 @@ export function openVillage(o: {
           fp.pos.set(p.x, 0, p.z); fp.y = vil.walkY(p.x, p.z);
           const look = hs.length ? hs[Math.floor(hs.length / 2)].hit.position : t.center;
           fp.yaw = Math.atan2(look.x - p.x, look.z - p.z); fp.pitch = -0.06;
+          faceYaw = facePitch = null; faceBack = false;
           cur.pos.copy(eye()); blend = 1;
           fade.classList.remove('on');
         }, 260);
@@ -361,6 +375,7 @@ export function openVillage(o: {
       document.body.classList.add('village-open');
       loading.remove();
       mount(el);
+      el.addEventListener('click', (e) => { if (e.detail > 0) (e.target as Element).closest?.('button')?.blur(); });
       let stickUsed = false;
       setMode('all');
       // ── 처음 열면 짧은 안내 ──
@@ -424,6 +439,7 @@ export function openVillage(o: {
         const t = nearTo();
         return t !== null ? npcs[t].ch.root.position : null;
       };
+      drawGoal(); // 하던 미션을 이어서 열면 '지금 할 일'과 가게 표시를 바로 보여 줘요
 
       // ── 마음 도장 ──
       const popStamp = (k: DoodleKind, title: string, line: string) => {
@@ -564,7 +580,7 @@ export function openVillage(o: {
       // 동네 잔치: 모두 광장에 모여 깃발과 초롱을 달고 함께 춤춰요
       let partyT = 0, danceT = 0;
       const festival = async (q: Quest) => {
-        busy = true; goal = null; onArrive = null; keys.clear();
+        busy = true; cancelGoal(); keys.clear();
         fade.classList.add('on');
         await new Promise((r2) => setTimeout(r2, 320));
         vil.festival.visible = true;
@@ -572,12 +588,15 @@ export function openVillage(o: {
         const crowd = people.map((_, i) => i).filter((i) => i !== folkIndex(q.giver));
         // 사장님이 서는 쪽(남쪽)은 비워 두고 반원보다 넓게 둘러서요
         crowd.forEach((i, k) => {
-          const a = Math.PI / 2 + 0.7 + (k / Math.max(1, crowd.length - 1)) * (Math.PI * 2 - 1.4), r = vil.plazaR - 1.2 - (k % 2) * 1.8;
-          const n = people[i]; n.at = c.clone().add(V(Math.cos(a) * r, 0, Math.sin(a) * r)); n.faceTo = c.clone(); n.hold = true;
+          const a = Math.PI / 2 + 0.7 + (k / Math.max(1, crowd.length - 1)) * (Math.PI * 2 - 1.4);
+          let r = vil.plazaR - 1.2 - (k % 2) * 1.8;
+          // 긴 의자·분수 자리는 비켜서요 (의자 속에 서지 않게)
+          while (r > 3.6 && vil.blocked(c.x + Math.cos(a) * r, c.z + Math.sin(a) * r)) r -= 0.6;
+          const n = people[i]; n.at = c.clone().add(V(Math.cos(a) * r, 0, Math.sin(a) * r)); n.goHome = false; n.faceTo = c.clone(); n.hold = true;
           n.ch.root.position.copy(n.at).setY(vil.standY(n.at.x, n.at.z, n.ch));
         });
         const hi = folkIndex(q.giver), host = npcs[hi];
-        host.at = c.clone().add(V(0, 0, 4.2)); host.faceTo = c.clone().add(V(0, 0, 12)); host.hold = true;
+        host.at = c.clone().add(V(0, 0, 4.2)); host.goHome = false; host.faceTo = c.clone().add(V(0, 0, 12)); host.hold = true;
         host.ch.root.position.copy(host.at).setY(vil.standY(host.at.x, host.at.z, host.ch));
         if (mode === 'walk') { fp.pos.set(c.x, 0, c.z + 9.2); fp.y = vil.walkY(fp.pos.x, fp.pos.z); fp.yaw = Math.PI; fp.pitch = -0.06; cur.pos.copy(eye()); faceYaw = facePitch = null; }
         else { all.target.copy(c); all.dist = 30; all.yaw = 0; }
@@ -632,7 +651,7 @@ export function openVillage(o: {
       const openTalk = (i: number) => {
         if (busy || talk !== null) return;
         const n = people[i];
-        goal = null; onArrive = null;
+        cancelGoal();
         talk = i; n.hold = true;
         const meP = mode === 'walk' ? eye() : cur.pos.clone();
         n.faceTo = V(meP.x, 0, meP.z); n.ch.look = meP;
@@ -714,6 +733,8 @@ export function openVillage(o: {
         if (!k || !need().includes(k)) return;
         const sh = shopOf(k);
         task.got.push(k); sfx.pop();
+        // 골목을 닫았다 열어도 받은 물건은 그대로예요
+        if (task.src === 'quest' && qs.cur && qs.cur.id === task.qid) { qs.cur.got = [...task.got]; saveQ(o.owner.id, qs); }
         const left = need().length;
         const item = task.gets.length > 1 ? `${sh?.name.split(' ').pop() ?? ''} 준비물` : task.item;
         const t = nearTo();
@@ -725,7 +746,7 @@ export function openVillage(o: {
       const sit = async (i: number, kind: CraftKind) => {
         if (!o.shopSit || sitting) return;
         closeTalk();
-        sitting = true; busy = true; keys.clear(); goal = null; onArrive = null;
+        sitting = true; busy = true; keys.clear(); cancelGoal();
         sfx.door();
         fade.classList.add('on');
         await new Promise((r2) => setTimeout(r2, 300));
@@ -750,7 +771,8 @@ export function openVillage(o: {
         if (mode === 'all') { openTalk(i); return; }
         const p = people[i].ch.root.position;
         if (Math.hypot(p.x - fp.pos.x, p.z - fp.pos.z) <= TALK_R + 0.6) { openTalk(i); return; }
-        people[i].hold = true; // 걸어가는 동안 기다려 줘요
+        cancelGoal();
+        people[i].hold = true; waitNpc = i; // 걸어가는 동안 기다려 줘요
         goal = p.clone(); onArrive = () => openTalk(i);
       };
       const tapShop = (hit: THREE.Object3D) => {
@@ -835,7 +857,7 @@ export function openVillage(o: {
           stick.hidden = false; stick.style.left = `${e.clientX}px`; stick.style.top = `${e.clientY}px`;
           (stick.firstChild as HTMLElement).style.transform = 'translate(-50%, -50%)';
           if (!stickUsed) { stickUsed = true; stickGhost.hidden = true; }
-          goal = null; onArrive = null;
+          cancelGoal();
         }
         const looks = [...pts.values()].filter((p) => !p.stick);
         if (looks.length === 1 && !isStick) moved = false;
@@ -906,11 +928,11 @@ export function openVillage(o: {
           e.preventDefault();
           if (talk !== null) return;
           if (mode === 'all') setMode('walk');
-          keys.add(e.code); goal = null; onArrive = null;
+          keys.add(e.code); cancelGoal();
         } else if ((e.code === 'Space' || e.code === 'Enter') && !e.repeat) {
           if (talk !== null) { const b = talkBox.querySelector<HTMLButtonElement>('.vt-btns button:last-child'); if (b && talkBox.querySelectorAll('.vt-btns button').length === 1) { e.preventDefault(); b.click(); } return; }
           if (mode === 'walk' && promptAct && !prompt.hidden) { e.preventDefault(); promptAct(); }
-        } else if (e.code === 'Escape' && talk !== null) closeTalk();
+        } else if (e.code === 'Escape' && talk !== null && !busy) closeTalk();
       };
       const onBlur = () => keys.clear();
       window.addEventListener('keydown', onKey);
@@ -950,7 +972,9 @@ export function openVillage(o: {
           if (keys.has('ArrowRight') || keys.has('KeyD')) t -= 1;
           if (stickV.id >= 0) { const dz = (v: number) => (Math.abs(v) < 0.15 ? 0 : v); f += -dz(stickV.y); t += -dz(stickV.x) * 0.85; }
           f = Math.max(-1, Math.min(1, f)); t = Math.max(-1, Math.min(1, t));
-          if (f || t) { goal = null; onArrive = null; faceYaw = facePitch = null; }
+          if (f || t) { cancelGoal(); faceYaw = facePitch = null; faceBack = false; }
+          // 대화 뒤 고개를 되돌리는 중에 어딘가로 걸어가기 시작하면 되돌리기는 그만둬요 (걷는 쪽과 서로 당기지 않게)
+          if (goal && faceBack) { faceYaw = facePitch = null; faceBack = false; }
           fp.yaw += t * TURN * dt;
           if (f) {
             const step = f * (f > 0 ? WALK : BACK) * dt;
@@ -960,7 +984,7 @@ export function openVillage(o: {
           if (goal) {
             const d = V(goal.x - fp.pos.x, 0, goal.z - fp.pos.z), L = d.length();
             const stopAt = onArrive ? 1.9 : 0.35;
-            if (L < stopAt) { goal = null; const fn = onArrive; onArrive = null; fn?.(); }
+            if (L < stopAt) { goal = null; waitNpc = -1; const fn = onArrive; onArrive = null; fn?.(); }
             else {
               const step = Math.min(L, Math.max(3.4, Math.min(WALK, L * 0.8)) * dt);
               if (tryMove(fp.pos.x + (d.x / L) * step, fp.pos.z + (d.z / L) * step)) {
@@ -968,7 +992,7 @@ export function openVillage(o: {
                 fp.yaw += angDiff(Math.atan2(d.x, d.z), fp.yaw) * Math.min(1, dt * 6);
                 fp.pitch += (-0.06 - fp.pitch) * Math.min(1, dt * 3);
               } else {
-                goal = null; onArrive = null;
+                cancelGoal();
                 if (vil.inWater(fp.pos.x + (d.x / L), fp.pos.z + (d.z / L))) toast('냇물은 다리로 건너요');
                 people.forEach((n, i) => { if (n.hold && !n.at && talk !== i && !holdFor(i)) n.hold = false; });
               }
@@ -1048,8 +1072,17 @@ export function openVillage(o: {
         // 심부름 방향
         const gp = goalPos();
         if (gp && !goalChip.hidden) {
-          tmp.copy(gp).sub(cam.position).applyQuaternion(cam.quaternion.clone().invert());
-          arrow.style.transform = `rotate(${Math.atan2(tmp.x, -tmp.z)}rad)`;
+          if (mode === 'all') {
+            // 전체 보기는 내려다보는 시점이라 화면에 비친 자리로 방향을 재요
+            const a = tmp.copy(gp).project(cam), ax = a.x, ay = a.y, behind = a.z > 1;
+            const c = tmp.copy(all.target).project(cam);
+            let dx = (ax - c.x) * cam.aspect, dy = ay - c.y;
+            if (behind) { dx = -dx; dy = -dy; }
+            arrow.style.transform = `rotate(${Math.atan2(dx, dy)}rad)`;
+          } else {
+            tmp.copy(gp).sub(cam.position).applyQuaternion(cam.quaternion.clone().invert());
+            arrow.style.transform = `rotate(${Math.atan2(tmp.x, -tmp.z)}rad)`;
+          }
           goalDist.textContent = `${Math.round(Math.hypot(gp.x - (mode === 'walk' ? fp.pos.x : all.target.x), gp.z - (mode === 'walk' ? fp.pos.z : all.target.z)))}m`;
         }
         if (mode === 'walk') {

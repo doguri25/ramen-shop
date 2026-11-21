@@ -4,7 +4,7 @@ import { CITEM, type CItem, type CPicks, type CraftKind } from '../data/craft';
 import { darken, lighten } from '../paint/brush';
 import { buildMini, isMini, miniItemModel, miniShelf } from './craftMini';
 import { makeShadow } from './fx';
-import { boxG, coneG, cylG, disposeTree, M, mesh, sphereG, torusG } from './geo';
+import { boxG, coneG, cylG, disposeTree, M, Mu, mesh, sphereG, torusG } from './geo';
 
 // 가게 봐 주기 (수업용): 빵집은 쟁반 위에 반죽·속·토핑·마무리를 올려 구워요.
 // 꽃집은 주인공 꽃·곁들일 꽃·잎을 모아 포장지로 감싸고 리본을 묶어요.
@@ -13,13 +13,25 @@ const V = (x = 0, y = 0, z = 0) => new THREE.Vector3(x, y, z);
 const LOAF = { rx: 0.085, ry: 0.05, rz: 0.065, y: 0.03 };
 const topY = (x: number, z: number) => LOAF.y + LOAF.ry * Math.sqrt(Math.max(0, 1 - (x / LOAF.rx) ** 2 - (z / LOAF.rz) ** 2));
 
+// 둥근 빵 윗면을 따라 붙는 띠 (곧은 막대는 빵 끝에서 떠 버려요)
+function strip(pts: [number, number][], w: number, h: number, mat: THREE.Material, lift: number, into: THREE.Object3D) {
+  for (let k = 0; k < pts.length - 1; k++) {
+    const [x0, z0] = pts[k], [x1, z1] = pts[k + 1];
+    const y0 = topY(x0, z0) + lift, y1 = topY(x1, z1) + lift;
+    const dx = x1 - x0, dy = y1 - y0, dz = z1 - z0, hz = Math.hypot(dx, dz), len = Math.hypot(hz, dy);
+    mesh(boxG(len + 0.0015, h, w), mat, [(x0 + x1) / 2, (y0 + y1) / 2, (z0 + z1) / 2], 1, [0, Math.atan2(-dz, dx), Math.atan2(dy, hz)], into);
+  }
+}
+
 // ── 빵 ──
 function loaf(it: CItem, into: THREE.Object3D) {
   const g = new THREE.Group(); into.add(g);
-  const m = mesh(sphereG(1, 28, 18), M(it.color, { noise: 2.5 }), [0, LOAF.y, 0], [LOAF.rx, LOAF.ry, LOAF.rz], [0, 0, 0], g);
+  // 굽는 동안 색을 바꾸니 빵마다 따로 만든 재질을 써요 (같은 색 빵이 다음에 처음부터 구운 색이 되지 않게)
+  const m = mesh(sphereG(1, 28, 18), Mu(it.color, { noise: 2.5 }), [0, LOAF.y, 0], [LOAF.rx, LOAF.ry, LOAF.rz], [0, 0, 0], g);
   m.userData.dough = true;
   // 칼집 세 줄
-  for (const x of [-0.035, 0, 0.035]) mesh(boxG(0.004, 0.003, 0.05), M(darken(it.color, 0.18)), [x, topY(x, 0) + 0.001, 0], 1, [0, 0.35, 0], g);
+  const cut = M(darken(it.color, 0.18)), dx = Math.sin(0.35) * 0.025, dz = Math.cos(0.35) * 0.025;
+  for (const x of [-0.035, 0, 0.035]) strip([0, 1, 2, 3, 4].map((k): [number, number] => { const s = k / 2 - 1; return [x + s * dx, s * dz]; }), 0.004, 0.003, cut, 0.0008, g);
   return g;
 }
 function topping(it: CItem, into: THREE.Object3D, seed: number) {
@@ -48,7 +60,15 @@ function finishLayer(it: CItem, into: THREE.Object3D) {
   const rnd = mulberry32(it.id.length * 7);
   if (it.shape === 'powder') for (let i = 0; i < 70; i++) { const a = rnd() * PI * 2, d = Math.sqrt(rnd()) * 0.85, x = Math.cos(a) * d * LOAF.rx, z = Math.sin(a) * d * LOAF.rz; mesh(sphereG(1, 5, 4), M(it.color, { flat: 0.4 }), [x, topY(x, z) + 0.001, z], 0.0028, [0, 0, 0], g); }
   else if (it.shape === 'glaze') mesh(sphereG(1, 28, 14, ), M(it.color, { alpha: 0.72, spec: 0.8, rim: 0.3 }), [0, LOAF.y + 0.004, 0], [LOAF.rx * 1.03, LOAF.ry * 1.02, LOAF.rz * 1.03], [0, 0, 0], g);
-  else for (let i = 0; i < 5; i++) { const z = (i / 4 - 0.5) * LOAF.rz * 1.3; const w = 2 * LOAF.rx * Math.sqrt(Math.max(0.05, 1 - (z / LOAF.rz) ** 2)); mesh(boxG(w * 0.95, 0.0035, 0.006), M(it.color), [0, topY(0, z) + 0.002, z], 1, [0, 0, (i % 2 ? 1 : -1) * 0.06], g); }
+  else {
+    // 줄무늬: 빵 둥근 면을 따라 살짝 비스듬히 그어요
+    const mat = M(it.color);
+    for (let i = 0; i < 5; i++) {
+      const z = (i / 4 - 0.5) * LOAF.rz * 1.3, tilt = (i % 2 ? 1 : -1) * 0.12;
+      const half = 0.9 * LOAF.rx * Math.sqrt(Math.max(0.05, 1 - (z / LOAF.rz) ** 2));
+      strip(Array.from({ length: 11 }, (_, k): [number, number] => { const x = -half + (k / 10) * 2 * half; return [x, z + x * tilt]; }), 0.006, 0.0035, mat, 0.002, g);
+    }
+  }
   return g;
 }
 function fillBlob(it: CItem, into: THREE.Object3D) {
@@ -125,12 +145,13 @@ function wrapCone(it: CItem): THREE.Group {
   void m;
   return g;
 }
-function bow(it: CItem): THREE.Group {
-  const g = new THREE.Group();
-  for (const sd of [-1, 1]) mesh(torusG(0.016, 0.005, 6, 16), M(it.color), [sd * 0.017, 0, 0.02], [1, 0.7, 1], [0, 0, sd * 0.6], g);
-  mesh(sphereG(1, 8, 6), M(darken(it.color, 0.08)), [0, 0, 0.022], 0.007, [0, 0, 0], g);
-  for (const sd of [-1, 1]) mesh(boxG(0.008, 0.04, 0.003), M(it.color), [sd * 0.01, -0.022, 0.022], 1, [0, 0, sd * 0.35], g);
-  mesh(torusG(0.033, 0.004, 5, 24), M(it.color), [0, 0, 0], 1, [PI / 2, 0, 0], g); // 줄기를 감는 띠
+// br: 감는 띠 반지름. 매듭과 고리는 띠 바깥 앞쪽에 달아요 (포장지 속에 묻히지 않게)
+function bow(it: CItem, br = 0.033): THREE.Group {
+  const g = new THREE.Group(), f = br + 0.006;
+  for (const sd of [-1, 1]) mesh(torusG(0.016, 0.005, 6, 16), M(it.color), [sd * 0.017, 0, f], [1, 0.7, 1], [0, 0, sd * 0.6], g);
+  mesh(sphereG(1, 8, 6), M(darken(it.color, 0.08)), [0, 0, f + 0.002], 0.007, [0, 0, 0], g);
+  for (const sd of [-1, 1]) mesh(boxG(0.008, 0.04, 0.003), M(it.color), [sd * 0.01, -0.022, f + 0.002], 1, [0, 0, sd * 0.35], g);
+  mesh(torusG(br, 0.004, 5, 28), M(it.color), [0, 0, 0], 1, [PI / 2, 0, 0], g); /* 줄기를 감는 띠 */
   return g;
 }
 
@@ -140,7 +161,7 @@ export function craftItemModel(it: CItem): THREE.Group {
   const o = new THREE.Group();
   const plate = (r = 0.15) => { mesh(cylG(r, r * 0.86, 0.02, 28), M('#FFFFFF', { rim: 0.4 }), [0, 0.01, 0], 1, [0, 0, 0], o); mesh(torusG(r * 0.98, 0.006, 6, 32), M('#E6DCCB'), [0, 0.02, 0], 1, [PI / 2, 0, 0], o); };
   if (it.kind === 'bread') {
-    if (it.step === 'dough') { plate(); const l = loaf(it, o); l.position.y = 0.02; l.scale.setScalar(1.4); }
+    if (it.step === 'dough') { plate(); const l = loaf(it, o); l.position.y = 0.02; l.scale.setScalar(1.15); }
     else if (it.step === 'fill') {
       mesh(cylG(0.1, 0.075, 0.07, 24, true), M('#FFFFFF', { side: THREE.DoubleSide, rim: 0.4 }), [0, 0.035, 0], 1, [0, 0, 0], o);
       mesh(sphereG(1, 18, 12), M(it.color, { noise: 2, spec: 0.3 }), [0, 0.06, 0], [0.09, 0.03, 0.09], [0, 0, 0], o);
@@ -155,7 +176,7 @@ export function craftItemModel(it: CItem): THREE.Group {
   }
   if (it.step === 'main' || it.step === 'side') {
     mesh(cylG(0.004, 0.005, 0.18, 6), M('#6FA35E'), [0, 0.09, 0], 1, [0, 0, 0.1], o);
-    const h = flowerHead(it, it.step === 'main' ? 2.4 : 2.1); h.position.set(0.009, 0.18, 0); h.rotation.x = 0.5; o.add(h);
+    const h = flowerHead(it, it.step === 'main' ? 2.0 : 2.1); h.position.set(0.009, it.step === 'main' ? 0.16 : 0.18, 0); h.rotation.x = 0.5; o.add(h);
     mesh(sphereG(1, 8, 6), M('#7DB86A'), [0.02, 0.07, 0], [0.022, 0.006, 0.01], [0, 0, 0.5], o);
   } else if (it.step === 'leaf') { const l = leafSprig(it, 1.5); l.rotation.z = 0.15; o.add(l); }
   else if (it.step === 'wrap') { const w = wrapCone(it); w.scale.setScalar(1.1); o.add(w); }
@@ -205,11 +226,11 @@ export function makeCraftRig(kind: CraftKind): CraftRig {
         return g;
       }));
       const l = CITEM.get(p.leaf?.[0] ?? '');
-      if (l) ensure('leaf:' + l.id, () => { const g = new THREE.Group(); content.add(g); for (let k = 0; k < 4; k++) { const a = (k / 4) * PI * 2 + 0.2; const s = leafSprig(l, 1.25); s.position.set(Math.cos(a) * 0.02, 0.07, Math.sin(a) * 0.02); s.rotation.set(Math.sin(a) * 0.45, 0, -Math.cos(a) * 0.45); g.add(s); } return g; });
+      if (l) ensure('leaf:' + l.id, () => { const g = new THREE.Group(); content.add(g); for (let k = 0; k < 4; k++) { const a = (k / 4) * PI * 2 + 0.2; const s = leafSprig(l, 1.25); s.position.set(Math.cos(a) * 0.012, 0.09, Math.sin(a) * 0.012); s.rotation.set(Math.sin(a) * 0.28, 0, -Math.cos(a) * 0.28); /* 포장지 안쪽으로 서서 위로만 삐죽 */ g.add(s); } return g; });
       const w = CITEM.get(p.wrap?.[0] ?? '');
       if (w) ensure('wrap:' + w.id, () => { const g = wrapCone(w); content.add(g); return g; });
       const r = CITEM.get(p.ribbon?.[0] ?? '');
-      if (r) ensure('ribbon:' + r.id, () => { const g = bow(r); g.position.y = 0.06; content.add(g); return g; });
+      if (r) ensure('ribbon:' + r.id, () => { const g = bow(r, 0.051); g.position.y = 0.09; content.add(g); return g; }); // 포장지 겉(이 높이에서 반지름 0.05)에 묶어요
     }
     for (const [k, o] of parts) if (!keys.has(k)) { o.parent?.remove(o); disposeTree(o); parts.delete(k); }
     return fresh;

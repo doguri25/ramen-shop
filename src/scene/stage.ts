@@ -1986,7 +1986,8 @@ export class Stage {
       if (g) {
         g.head.getWorldPosition(head);
         const sc = g.root.scale.y, faceZ = head.z + (HR + g.faceReach) * sc; // 얼굴(주둥이·부리) 앞쪽 끝
-        to = V(this.guests.length > 1 ? pos.x : head.x, 1.035 + 0.05, faceZ + 0.15);
+        // 혼자 온 손님은 두 손으로 들어 올려 잡고(카운터 위 5cm), 여럿이면 카운터 위에 바로 놓아요
+        to = V(this.guests.length > 1 ? pos.x : head.x, this.guests.length > 1 ? 1.035 : 1.035 + 0.05, faceZ + 0.15);
       }
       sfx.whoosh();
       // 위로 살짝 들렸다가 손님 앞에 내려앉아요 (윗부분은 얼굴 반대쪽으로 살짝 기울여요)
@@ -2000,7 +2001,7 @@ export class Stage {
         if (this.craftKind !== 'flower') {
           P.updateMatrixWorld(true);
           const bb = new THREE.Box3().setFromObject(P), c = bb.getCenter(V()), hw = (bb.max.x - bb.min.x) / 2, hd = (bb.max.z - bb.min.z) / 2;
-          side = (sd: number) => V(c.x + sd * (hw + 0.025), bb.min.y + 0.035, c.z - hd * 0.5);
+          side = (sd: number) => V(c.x + sd * (hw + 0.06), bb.min.y + 0.02, c.z - hd * 0.4);
         }
         const fl = this.craftKind === 'flower';
         g.setHandWorld(0, side(-1), fl ? V(1, 0.2, 0.3) : V(0.6, -0.2, 1)); g.setHandWorld(1, side(1), fl ? V(-1, 0.2, 0.3) : V(-0.6, -0.2, 1));
@@ -2009,7 +2010,12 @@ export class Stage {
       sfx.heart();
       this.guests.forEach((ch) => { ch.head.getWorldPosition(head); for (let k = 0; k < 3; k++) this.spawn(this.texHeart, head.clone().add(V(0.2 + k * 0.05, 0.3, 0.2)), V(0.05 * (k - 1), 0.35, 0), 2, 0.1, 0); });
       await wait(1.1);
-      if (hold) { g.manual = false; g.play('cheer'); }
+      if (hold) {
+        g.manual = false; g.play('cheer');
+        // 손을 놓으면 카운터 위에 내려놓아요 (공중에 떠 있지 않게)
+        const y0 = P.position.y, rx0 = P.rotation.x;
+        await tween(0.3, (k) => { P.position.y = lerp(y0, 1.035, k); P.rotation.x = rx0 * (1 - k); });
+      }
     }
     await this.setView('guest', 0.8);
   }

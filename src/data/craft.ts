@@ -1,5 +1,6 @@
 import { MINI, type MiniKind } from './craftMini';
 import { FX } from './effects';
+import { josa } from './text';
 import type { ChibiSpec, Customer, Effect, Family } from './types';
 
 // 마음 골목 '가게 봐 주기' (수업용): 빵집·꽃집 주인이 잠깐 자리를 비운 동안 손님 세 분을 맞아요.
@@ -176,8 +177,8 @@ export function adaptStory(c: Customer, kind: CraftKind): string[] {
     const m = line.match(/^(@\d+\s+)?(.*)$/)!, sp = m[1] ?? '', body = m[2];
     if (ORDER.test(body) && ORDER_LINE.test(body)) {
       // 라면을 주문하는 말 → 가게 주문으로 (한 번만, 둘이 온 손님의 투정은 짧게 바꿔요)
-      if (!ordered) { out.push(sp + (sp ? `${word}은 따로따로 주세요!` : shop.order)); ordered = true; }
-      else out.push(sp + `${word}은 따로따로 주세요!`);
+      if (!ordered) { out.push(sp + (sp ? `${josa(word, '은', '는')} 따로따로 주세요!` : shop.order)); ordered = true; }
+      else out.push(sp + `${josa(word, '은', '는')} 따로따로 주세요!`);
       continue;
     }
     out.push(sp + swapWords(body, kind));
@@ -191,8 +192,9 @@ function swapWords(s: string, kind: CraftKind) {
 }
 export function craftLines(c: Customer, kind: CraftKind, stars: 1 | 2 | 3, name: string): string[] {
   const fx = FX.get(c.needs.effect)!;
-  const tail = (c.reactions[1][0] ?? '').split(/그런데\s*|그래도\s*/)[1]?.trim();
   const sh = CRAFT[kind];
+  const tail0 = (c.reactions[1][0] ?? '').split(/그런데\s*|그래도\s*/)[1]?.trim();
+  const tail = tail0 && (kind === 'pencil' || kind === 'book' || kind === 'flower') ? tail0.replace(/ 맛이 /g, ' 선물이 ') : tail0;
   if (sh.mini && sh.taste) {
     const lines = sh.taste[3 - stars].map((l) => l.replace('{name}', name).replace('{fx}', fx.name));
     if (stars === 1 && tail) lines[1] = `그런데 ${tail}`;
