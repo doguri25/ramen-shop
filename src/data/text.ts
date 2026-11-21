@@ -58,3 +58,13 @@ export const BADWORDS = [
   '씹새', '씹할', '미췬', '급식충', '맘충', '틀딱', 'tlqkf', 'qudtls', 'wlfkf', 'fxck',
   'ㅗㅗ', '새꺄', '시이발', '빙신', '싸가지', '개쉐', '좇같', 'sibal',
 ];
+
+// 받침에 맞는 조사: josa('카드', '을', '를') → '카드를', josa('책', '을', '를') → '책을'
+export function josa(word: string, withB: string, without: string): string {
+  const core = word.replace(/[^가-힣0-9A-Za-z]+$/u, '');
+  const ch = core.charCodeAt(core.length - 1);
+  let has = false;
+  if (ch >= 0xac00 && ch <= 0xd7a3) has = (ch - 0xac00) % 28 !== 0;
+  else if (/[0-9]$/.test(core)) has = /[013678]$/.test(core);
+  return word + (has ? withB : without);
+}

@@ -135,7 +135,7 @@ export const setColor = (m: THREE.Material, c: string) => (m as THREE.ShaderMate
 const POST_FRAG = /* glsl */ `
 uniform sampler2D tColor; uniform sampler2D tDepth; uniform sampler2D tPaper; uniform vec2 uRes; uniform float uNear; uniform float uFar; uniform float uEdge; uniform float uTime;
 uniform float uFocus; uniform float uFocusRange; uniform float uDof; uniform float uWarm; uniform float uPx;
-uniform float uSat; uniform float uBright; uniform float uRays; uniform vec2 uSun; uniform vec3 uSunCol; uniform float uSkyD;
+uniform float uSat; uniform float uBright; uniform float uRays; uniform vec2 uSun; uniform vec3 uSunCol; uniform float uSkyD; uniform float uPaperK; uniform float uBlot;
 varying vec2 vUv;
 float lum(vec3 c){ return dot(c, vec3(0.299, 0.587, 0.114)); }
 float h2(vec2 p){ return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
@@ -180,9 +180,9 @@ void main(){
   c = mix(c, vec3(0.353, 0.227, 0.157), edge * broken * 0.72 * uEdge);
   c = mix(c, c * vec3(0.72, 0.62, 0.55), smoothstep(0.1, 0.32, le) * broken * 0.35 * uEdge);
   vec3 paper = texture2D(tPaper, gl_FragCoord.xy / 512.0).rgb;
-  c *= mix(vec3(1.0), paper * vec3(1.0, 0.985, 0.96), 0.95);
+  c *= mix(vec3(1.0), paper * vec3(1.0, 0.985, 0.96), uPaperK);
   float bloom = n2(vUv * asp * 3.0 + 4.0);
-  c = mix(c, c * (0.95 + bloom * 0.08), 0.6);
+  c = mix(c, c * (0.95 + bloom * 0.08), 0.6 * uBlot);
   float vig = smoothstep(1.25, 0.35, length((vUv - 0.5) * vec2(1.0, 0.9)) * 1.45);
   c *= mix(0.9, 1.0, vig);
   // 햇살: 하늘이 보이는 틈으로 해 쪽에서 빛줄기가 번져요 (마음 골목에서만)
@@ -207,7 +207,7 @@ void main(){
   gl_FragColor = vec4(c, 1.0);
 }`;
 
-export interface Look { sat?: number; bright?: number; lift?: number; rays?: number; sunDir?: THREE.Vector3; skyD?: number }
+export interface Look { sat?: number; bright?: number; lift?: number; rays?: number; sunDir?: THREE.Vector3; skyD?: number; paper?: number; blot?: number }
 
 export class WatercolorRenderer {
   renderer: THREE.WebGLRenderer;
@@ -236,7 +236,7 @@ export class WatercolorRenderer {
         tColor: { value: this.rt.texture }, tDepth: { value: this.rt.depthTexture }, tPaper: { value: paper },
         uRes: { value: new THREE.Vector2(4, 4) }, uNear: { value: 0.05 }, uFar: { value: 30 }, uEdge: { value: 1 }, uTime: { value: 0 },
         uFocus: { value: 2.2 }, uFocusRange: { value: 1.6 }, uDof: { value: 0 }, uWarm: { value: 1 }, uPx: { value: 1 },
-        uSat: { value: 1.08 }, uBright: { value: 1 }, uRays: { value: 0 }, uSun: { value: new THREE.Vector2(0.5, 1.2) }, uSunCol: { value: new THREE.Color('#FFE6B0') }, uSkyD: { value: 480 },
+        uSat: { value: 1.08 }, uBright: { value: 1 }, uRays: { value: 0 }, uSun: { value: new THREE.Vector2(0.5, 1.2) }, uSunCol: { value: new THREE.Color('#FFE6B0') }, uSkyD: { value: 480 }, uPaperK: { value: 0.95 }, uBlot: { value: 1 },
       },
       depthTest: false, depthWrite: false,
     });
@@ -282,6 +282,7 @@ export class WatercolorRenderer {
   private applyLook(cam: THREE.PerspectiveCamera) {
     const u = this.post.uniforms, L = this.look;
     u.uSat.value = L?.sat ?? 1.08; u.uBright.value = L?.bright ?? 1; shared.uLift.value = L?.lift ?? 0;
+    u.uPaperK.value = L?.paper ?? 0.95; u.uBlot.value = L?.blot ?? 1;
     let rays = 0;
     if (L?.rays && L.sunDir) {
       // 해는 카메라에서 아주 먼 곳: 화면 위 자리를 구해요 (뒤에 있으면 빛줄기 없음)

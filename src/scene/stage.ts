@@ -4,7 +4,9 @@ import { ease, lerp, tween, wait } from '../core/tween';
 import { ING } from '../data/ingredients';
 import type { ChibiSpec, Customer, Ingredient, Picks } from '../data/types';
 import { lighten } from '../paint/brush';
-import { heartCanvas, sparkleCanvas, steamCanvas, tex, woodCanvas } from '../paint/textures';
+import { heartCanvas, norenCanvas, plaqueCanvas, signCanvas, sparkleCanvas, steamCanvas, tex, woodCanvas } from '../paint/textures';
+import { CRAFT, type CItem, type CPicks, type CraftKind } from '../data/craft';
+import { craftItemModel, makeCraftRig, shelfDecor, type CraftRig } from './craft';
 import { wc, type WatercolorRenderer } from '../render/watercolor';
 import { addRipple, Bubbles } from './broth';
 import { Chibi, HR, LEG, type Act, type Mood } from './chibi';
@@ -27,7 +29,7 @@ const WALL_Z = -1.75; // 문이 달린 뒷벽
 // back만큼 뒤로 물러서요. gap: 얼굴 앞과 벽 사이 틈. snoutTurn: 고개를 옆으로 돌린 긴 주둥이가 앞으로 나오는 비율
 const PULL = { x: -0.8, back: [0, 0.2], open: 0.33, dur: 0.85, snoutTurn: 0.825, gap: 0.06 } as const;
 const POT_SPOT_Z = -0.02, POT_SPOT_Z2 = -0.1; // 냄비째 내어 줄 때 냄비 자리: 혼자 온 손님, 두 손님 (그릇은 -0.24)
-type View = 'guest' | 'pot' | 'door' | 'wide' | 'serve' | 'eat' | 'eat2' | 'face' | 'gimbap';
+type View = 'guest' | 'pot' | 'door' | 'wide' | 'serve' | 'eat' | 'eat2' | 'face' | 'gimbap' | 'bouquet' | 'mini';
 const VIEWS: Record<View, { pos: [number, number, number]; look: [number, number, number]; focus: number; range: number; dof: number }> = {
   guest: { pos: [0, 1.6, 1.6], look: [0, 1.32, -0.8], focus: 2.25, range: 1.1, dof: 0.6 },
   pot: { pos: [0, 1.78, 1.28], look: [0, 0.96, 0.52], focus: 0.95, range: 0.45, dof: 1 },
@@ -41,6 +43,10 @@ const VIEWS: Record<View, { pos: [number, number, number]; look: [number, number
   // 마음 김밥: 조리대 왼쪽 김발 (요리 판에 가리지 않게 냄비 볼 때처럼 위에서)
   // 마음 김밥: 냄비를 치우고 인덕션을 도마로 덮은 가운데 조리대. 아래 요리 판과 위 안내 사이에 김발이 오게 (가까이 있어야 앞발이 닿아서 카메라가 앞으로 쏠리지 않아요)
   gimbap: { pos: [0, 1.4, 1.08], look: [0, 0.925, 0.727], focus: 0.63, range: 0.36, dof: 1 },
+  // 가게 봐 주기 꽃다발: 세워서 묶는 꽃다발 꼭대기까지 보이게 조금 뒤에서
+  bouquet: { pos: [0, 1.43, 1.1], look: [0, 1.06, 0.6], focus: 0.6, range: 0.4, dof: 1 },
+  // 미니 가게(아이스크림·찻잔·과일 바구니): 키가 작아서 받침 가운데를 조금 비스듬히 봐요 (고르기 판에 가리지 않게)
+  mini: { pos: [0, 1.3, 1.12], look: [0, 0.99, 0.66], focus: 0.56, range: 0.4, dof: 1 },
 };
 const MOOD_ACT: Partial<Record<Mood, Act>> = { sad: 'sad', worried: 'worry', angry: 'fist' };
 
@@ -1779,6 +1785,223 @@ export class Stage {
     this.gimPlates = [];
   }
 
+  // ── 가게 봐 주기 (수업용): 라면 가게를 빵집·꽃집으로 살짝 바꿔 꾸미고, 조리대에서 빵을 굽거나 꽃다발을 묶어요 ──
+  private craftKeep: { tex: THREE.Texture[]; maps: [THREE.IUniform, THREE.Texture][]; walls: [THREE.Color, THREE.Color][]; decor: THREE.Group[]; hid: THREE.Object3D[] } | null = null;
+  craftKind: CraftKind | null = null;
+  craftTheme(kind: CraftKind | null) {
+    const T = this.shop.theme;
+    const uni = (m: THREE.Mesh | THREE.Material) => ((m as THREE.Mesh).isMesh ? ((m as THREE.Mesh).material as THREE.ShaderMaterial) : (m as THREE.ShaderMaterial)).uniforms;
+    if (this.craftKeep) {
+      // 원래 라면 가게로
+      const K = this.craftKeep;
+      for (const [u, t] of K.maps) u.value = t;
+      for (const [c, o] of K.walls) c.copy(o);
+      for (const d of K.decor) { d.parent?.remove(d); disposeTree(d); }
+      for (const o of K.hid) o.visible = true;
+      K.tex.forEach((t) => t.dispose());
+      this.craftKeep = null;
+      this.gimRestoreStove();
+      this.shop.pot.visible = true;
+    }
+    this.craftKind = kind;
+    if (!kind) return;
+    const S = CRAFT[kind];
+    // 가게마다 간판·발 색과 벽 빛깔
+    const PAL: Record<CraftKind, [string, string, string, string]> = {
+      bread: ['#B8601E', '#D9894A', '#FFF0E2', '#F7DCC2'], flower: ['#2F8F5B', '#5FB38A', '#F0FAEE', '#E0F0D8'],
+      icecream: ['#D9658A', '#F0974A', '#FFF6E4', '#FDE3EA'], pencil: ['#3C78C8', '#6FB3E0', '#EEF6FD', '#DCEBF8'],
+      book: ['#6E57A8', '#A68BD6', '#F4F0FA', '#E6DDF4'], tea: ['#7A5236', '#A0765A', '#F7F0E6', '#EADCC8'], fruit: ['#C2453B', '#E3645A', '#FFF3EE', '#FBE0D8'],
+    };
+    const [signC, norenC, wallA, wallB] = PAL[kind];
+    const K: NonNullable<Stage['craftKeep']> = { tex: [], maps: [], walls: [], decor: [], hid: [] };
+    const swap = (u: THREE.IUniform, c: HTMLCanvasElement) => { const t = tex(c); K.tex.push(t); K.maps.push([u, u.value]); u.value = t; };
+    const [first, second] = S.shop.split(' ');
+    swap(uni(T.sign).uMap, signCanvas(second, first, signC));
+    swap(T.norenMat.uniforms.uMap, norenCanvas(second[0], second[1] ?? '', norenC));
+    T.plaques.forEach((p, i) => swap(uni(p).uMap, plaqueCanvas(S.plaques[i] ?? '')));
+    const tint = [wallA, wallB, wallB];
+    T.walls.forEach((w, i) => { const c = uni(w).uColor.value as THREE.Color; K.walls.push([c, c.clone()]); c.set(tint[i] ?? tint[0]); });
+    // 선반: 라면 병 대신 빵 바구니나 꽃 양동이
+    for (const row of T.shelfRows) {
+      row.children.slice(1).forEach((c) => { if (c.visible) { c.visible = false; K.hid.push(c); } });
+      const d = shelfDecor(kind); d.position.y = (row.userData.y as number) + 0.02; T.shelf.add(d); K.decor.push(d);
+    }
+    this.craftKeep = K;
+    this.craftStove();
+  }
+  // 가운데 냄비 자리는 넓은 도마로 덮어요 (손님이 바뀌어도 다시 덮어요)
+  craftStove() { if (this.craftKind) this.gimClearStove(); }
+  craftThumb(it: CItem, size = 192): HTMLCanvasElement {
+    const m = craftItemModel(it);
+    this.thumbScene.add(m);
+    const c = this.wcr.snapshot(this.thumbScene, this.thumbCam, size, size, '#FFF8EE');
+    this.thumbScene.remove(m);
+    disposeTree(m);
+    return c;
+  }
+  private craftRig: CraftRig | null = null;
+  private craftProduct: THREE.Group | null = null;
+  async craftStart(kind: CraftKind) {
+    this.craftClear();
+    this.craftStove();
+    const rig = makeCraftRig(kind);
+    this.dollyOn = false; // 재료를 올리는 동안 카메라가 손을 따라 앞으로 쏠리지 않게
+    rig.root.position.copy(Stage.GIM_AT);
+    rig.root.scale.setScalar(0.01);
+    this.scene.add(rig.root);
+    this.craftRig = rig;
+    // 세워 두는 것(꽃다발·아이스크림·찻잔·과일 바구니)은 옆에서, 납작한 것(빵·편지·책)은 위에서 봐요
+    const cam = this.setView(kind === 'flower' ? 'bouquet' : kind === 'icecream' || kind === 'tea' || kind === 'fruit' ? 'mini' : 'gimbap', 0.9);
+    await wait(0.3);
+    sfx.pop();
+    await tween(0.35, (k) => rig.root.scale.setScalar(Math.max(0.01, k)), { ease: ease.outBack });
+    await cam;
+    this.showPaws(true);
+  }
+  async craftSet(p: CPicks) {
+    const rig = this.craftRig;
+    if (!rig) return;
+    const fresh = rig.set(p);
+    if (!fresh) return;
+    const y = fresh.position.y, R = this.paws.R;
+    // 꽃다발은 높이 세워져 있어서 손은 다발 아래쪽 앞을 잡아요 (손이 멀어 카메라가 앞으로 쏠리지 않게)
+    const hand = () => (rig.kind === 'flower' ? rig.root.getWorldPosition(V()).add(V(0.05, 0.07, 0.09)) : fresh.getWorldPosition(V()).add(V(0.05, 0.05, 0.03)));
+    sfx.pop();
+    await tween(0.4, (k) => {
+      fresh.position.y = y + 0.09 * (1 - k);
+      this.pawAt(R, k < 0.85 ? hand() : null);
+    }, { ease: ease.outCubic });
+    this.pawAt(R, null);
+    sfx.plop();
+  }
+  // 빵은 유리 덮개를 씌워 굽고(부풀고 노릇해져요), 꽃다발은 꼭 모아 묶어요
+  async craftFinish() {
+    const rig = this.craftRig;
+    if (!rig) return;
+    const P = rig.product, w = P.getWorldPosition(V());
+    if (rig.kind === 'bread') {
+      const dome = new THREE.Group();
+      const glass = new THREE.Mesh(new THREE.SphereGeometry(0.15, 24, 12, 0, PI * 2, 0, PI / 2), Mu('#FFF3D6', { alpha: 0.35, spec: 0.9, rim: 1.2, side: THREE.DoubleSide, depthWrite: false }));
+      glass.userData.ownGeo = true; dome.add(glass);
+      const knob = new THREE.Mesh(new THREE.SphereGeometry(0.018, 10, 8), M('#C2560E')); knob.position.y = 0.155; knob.userData.ownGeo = true; dome.add(knob);
+      dome.position.copy(w).add(V(0, 0.3, 0)); this.scene.add(dome);
+      sfx.whoosh();
+      await tween(0.45, (k) => { dome.position.y = w.y + 0.3 * (1 - k); }, { ease: ease.outBack });
+      // 굽는 동안: 덮개 안이 따뜻하게 빛나고 김이 올라요
+      const dough: THREE.ShaderMaterial[] = [];
+      P.traverse((o) => { if (o.userData.dough) dough.push((o as THREE.Mesh).material as THREE.ShaderMaterial); });
+      const from = dough.map((m) => m.uniforms.uColor.value.clone()), to = from.map((c) => c.clone().lerp(new THREE.Color('#C98A4E'), 0.35));
+      sfx.soft();
+      await tween(1.6, (k) => {
+        const e = ease.inOutCubic(k);
+        P.scale.setScalar(1 + 0.12 * Math.sin(Math.min(1, k * 1.2) * PI / 2));
+        dough.forEach((m, i) => m.uniforms.uColor.value.copy(from[i]).lerp(to[i], e));
+        glass.material.uniforms.uGlow.value = 0.35 * Math.sin(k * PI);
+        if (Math.random() < 0.25) this.spawn(this.texSteam, w.clone().add(V((Math.random() - 0.5) * 0.08, 0.1, (Math.random() - 0.5) * 0.06)), V(0, 0.12, 0), 0.8, 0.03, 0, '#FFFFFF');
+      }, { ease: ease.linear });
+      sfx.bell();
+      await tween(0.35, (k) => { dome.position.y = w.y + 0.35 * k; dome.scale.setScalar(Math.max(0.01, 1 - k)); });
+      this.scene.remove(dome); disposeTree(dome); glass.material.dispose();
+      for (let k = 0; k < 10; k++) this.spawn(this.texSpark, w.clone().add(V((Math.random() - 0.5) * 0.2, 0.08 + Math.random() * 0.08, (Math.random() - 0.5) * 0.15)), V(0, 0.2, 0), 1, 0.05, 0);
+    } else {
+      sfx.whoosh();
+      await tween(0.7, (k) => { P.rotation.y = Math.sin(k * PI * 2) * 0.25; P.scale.set(1 - 0.1 * Math.sin(k * PI), 1, 1 - 0.1 * Math.sin(k * PI)); });
+      sfx.heart();
+      for (let k = 0; k < 12; k++) this.spawn(this.texSpark, w.clone().add(V((Math.random() - 0.5) * 0.2, 0.15 + Math.random() * 0.15, (Math.random() - 0.5) * 0.15)), V(0, 0.15, 0), 1, 0.05, 0);
+    }
+    await wait(0.3);
+  }
+  // 앞발로 손님 앞에 내어 놓아요
+  async craftServe() {
+    const rig = this.craftRig;
+    if (!rig) return;
+    const P = rig.product;
+    this.scene.attach(P);
+    this.craftProduct = P;
+    const from = P.position.clone();
+    // 만드는 동안 꺼 둔 '다가가기'를 다시 켜요: 손님 쪽으로 내밀 때 몸이 따라 나가서 팔이 길게 늘어나지 않아요.
+    // 내려놓는 자리도 라면 냄비처럼 사장님 쪽으로 조금 당겨요 (카운터 위 거리가 짧아져요)
+    this.dollyOn = true;
+    const end = this.guests.length > 1 ? V(0, 1.035, -0.12) : V(0.2, 1.035, -0.13);
+    const L = this.paws.L, R = this.paws.R;
+    L.maxLen = R.maxLen = 1.8;
+    // 양손으로 받침 양옆을 잡아요 (받침이 손님 쪽으로 돌아도 팔이 엇갈리지 않게 세상 기준 좌우로).
+    // 팔이 다 펴질 만큼 멀어지면 손은 거기서 멈추고, 받침은 카운터 위로 손님 앞까지 미끄러져 가요 (팔이 늘어나지 않게)
+    const reach = (paw: typeof L, w: THREE.Vector3) => {
+      this.cam.updateMatrixWorld();
+      const S = this.paws.group.localToWorld(paw.shoulder.clone()), d = w.distanceTo(S), MAX = 0.55;
+      return d <= MAX ? w : S.addScaledVector(w.clone().sub(S).divideScalar(d), MAX);
+    };
+    const grip = () => { this.pawAt(L, reach(L, P.position.clone().add(V(-0.14, 0.03, 0.02)))); this.pawAt(R, reach(R, P.position.clone().add(V(0.14, 0.03, 0.02)))); };
+    await tween(0.3, () => grip(), { ease: ease.linear });
+    sfx.whoosh();
+    const cam = this.setView('guest', 1.4);
+    for (const pr of this.props) { const s0 = pr.scale.x; tween(0.3, (k) => pr.scale.setScalar(Math.max(0.01, s0 * (1 - k)))).then(() => { pr.visible = false; }); }
+    // 작업대(종이·그림자)는 그 자리에서 사라져요
+    const root = rig.root, s0 = root.scale.x;
+    tween(0.3, (k) => root.scale.setScalar(Math.max(0.01, s0 * (1 - k)))).then(() => { this.scene.remove(root); rig.dispose(); });
+    this.craftRig = null;
+    await tween(1.4, (k) => {
+      const e = ease.inOutCubic(k), mid = V((from.x + end.x) / 2, Math.max(from.y, end.y) + 0.14, (from.z + end.z) / 2);
+      const a = (1 - e) * (1 - e), b = 2 * (1 - e) * e, c = e * e;
+      P.position.set(a * from.x + b * mid.x + c * end.x, a * from.y + b * mid.y + c * end.y, a * from.z + b * mid.z + c * end.z);
+      P.rotation.y = PI * e; // 손님 쪽을 보게 돌려요
+      grip();
+    }, { ease: ease.linear });
+    sfx.soft();
+    await cam;
+    await wait(0.1);
+    this.showPaws(false);
+    this.dollyOn = true;
+    setTimeout(() => { L.maxLen = R.maxLen = 0.5; }, 700);
+  }
+  // 손님이 빵을 한 입 먹거나, 꽃다발을 받아 안아요
+  async craftReceive() {
+    const P = this.craftProduct;
+    if (!P) return;
+    const pos = P.position.clone();
+    await this.setView(this.guests.length > 1 ? 'eat2' : 'eat', 0.8);
+    if (this.craftKind === 'bread') {
+      for (let bite = 0; bite < 2; bite++) {
+        await Promise.all(this.guests.map(async (g, i) => {
+          await wait(i * 0.3);
+          g.manual = true; g.talking = false;
+          g.look = pos.clone().add(V(0, 0.15, 0));
+          const l0 = g.lean;
+          await tween(0.45, (k) => { g.lean = lerp(l0, 0.22, k); g.headExtra.x = 0.25 * k; });
+          sfx.pop();
+          this.burst(pos.clone().add(V(0, 0.08, 0)), '#E3B37A', 6, 0.25);
+          P.scale.multiplyScalar(0.86);
+          g.setMood('eat'); g.chewing = true;
+          await tween(0.45, (k) => { g.lean = lerp(0.22, l0, k); g.headExtra.x = 0.25 * (1 - k); });
+          await wait(0.45);
+          g.chewing = false; g.manual = false; g.look = null; g.headExtra.set(0, 0, 0);
+        }));
+      }
+    } else {
+      // 꽃다발이 손님 품으로
+      const g = this.guests[0];
+      const to = g ? g.root.position.clone().add(V(0, 0.62 * g.root.scale.y, 0.28)) : pos.clone().add(V(0, 0.2, -0.2));
+      sfx.whoosh();
+      await tween(0.9, (k) => { const e = ease.inOutCubic(k); P.position.lerpVectors(pos, to, e); P.rotation.x = -0.35 * e; P.scale.setScalar(1 + 0.15 * e); }, { ease: ease.linear });
+      this.guests.forEach((ch, i) => { ch.setMood('delight'); ch.play(i % 2 ? 'clap' : 'cheer'); });
+      sfx.heart();
+      const head = V();
+      this.guests.forEach((ch) => { ch.head.getWorldPosition(head); for (let k = 0; k < 3; k++) this.spawn(this.texHeart, head.clone().add(V(0.2 + k * 0.05, 0.3, 0.2)), V(0.05 * (k - 1), 0.35, 0), 2, 0.1, 0); });
+      await wait(0.9);
+    }
+    await this.setView('guest', 0.8);
+  }
+  craftClear() {
+    this.dollyOn = true;
+    if (this.craftRig) { this.scene.remove(this.craftRig.root); this.craftRig.dispose(); this.craftRig = null; }
+    if (this.craftProduct) {
+      const P = this.craftProduct; this.craftProduct = null;
+      const s0 = P.scale.x;
+      tween(0.3, (k) => P.scale.setScalar(Math.max(0.01, s0 * (1 - k)))).then(() => { this.scene.remove(P); disposeTree(P); });
+    }
+  }
+
   // ── 작은 그림 찍기 ────────────────────────
   thumb(ing: Ingredient, size = 192): HTMLCanvasElement {
     const m = itemModel(ing);
@@ -1845,7 +2068,7 @@ export class Stage {
       this.shift += (this.shiftTarget - this.shift) * Math.min(1, dt * 5);
       this.applyShift();
     }
-    this.shop.update(dt, this.headBalls(), this.view !== 'pot' && this.view !== 'serve' && this.view !== 'gimbap');
+    this.shop.update(dt, this.headBalls(), this.view !== 'pot' && this.view !== 'serve' && this.view !== 'gimbap' && this.view !== 'bouquet' && this.view !== 'mini');
     const camW = this.cam.getWorldPosition(V());
     this.guests.forEach((g, i) => {
       if (!g.manual) g.look = !g.walking && g.seated && this.view !== 'eat' && this.view !== 'eat2' ? camW : null;

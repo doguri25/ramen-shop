@@ -10,6 +10,7 @@ import { ALLEY_LINKS, KIND_EMOJI, LATER, MAX_PROMISE, type Later, type TreatMood
 import type { Amount, Customer, GimbapRec, Ingredient, Owner, Picks, RamenRecord, Step, Treat } from '../data/types';
 import { EMPTY_G, GIMBAP, GING, GSTEPS, type GIng, type GPicks, type GStep } from '../data/gimbap';
 import { gimFaceCanvas } from '../scene/gimbap';
+import { CRAFT, pickedItems, type CItem, type CPicks, type CraftKind, type CraftScore, emptyPicks } from '../data/craft';
 import { doodleImg } from './doodles';
 import { faceImg, faceSrc, type FaceKind } from './faces';
 import { buildName, isBad, MAX_NAME, TEMPLATES, wordPools, type Template } from '../game/naming';
@@ -596,6 +597,112 @@ export const UI = {
       mount(panel); mount(info);
       showInfo(null);
       render();
+    });
+  },
+
+  // ── 가게 봐 주기 (수업용): 라면처럼 단계마다 재료를 골라요. 손님에게 꼭 필요한 마음은 보여 주지 않아요 ──
+  craft(o: { kind: CraftKind; thumbs: Map<string, string>; onSet: (p: CPicks) => Promise<void> }): Promise<CPicks> {
+    return new Promise((res) => {
+      const S = CRAFT[o.kind], steps = S.steps;
+      const p = emptyPicks(o.kind);
+      let step = 0, busy = false;
+      document.body.classList.add('cooking');
+      const panel = h('div', { class: 'cook slide-up' });
+      const info = h('div', { class: 'info card fade-in' });
+      const ok = (k: number) => !!steps[k].optional || p[steps[k].id].length > 0;
+      const isOn = (g: CItem) => p[g.step].includes(g.id);
+      const icon = ({ bread: '🥐', flower: '💐', icecream: '🍦', pencil: '✏️', book: '📚', tea: '🍵', fruit: '🍎' } as Record<CraftKind, string>)[o.kind];
+      const showInfo = (g: CItem | null) => {
+        info.innerHTML = '';
+        if (!g) {
+          const st = steps[step];
+          info.append(h('div', { class: 'row' }, h('span', { class: 'nm' }, `${icon} ${st.label} 고르기`), st.optional ? h('span', { class: 'opt' }, '안 넣어도 돼요') : null),
+            h('div', { class: 'note' }, st.info + ' 한 번 더 누르면 빠져요. 다음 단계로 넘어가면 다시 바꿀 수 없어요.'));
+          return;
+        }
+        info.append(h('div', { class: 'row' }, h('span', { class: 'nm' }, g.name), h('span', { class: 'fx' }, g.effects.map(fxChip))), h('div', { class: 'note' }, g.note));
+        info.animate([{ transform: 'scale(.97)' }, { transform: 'scale(1)' }], { duration: 180 });
+      };
+      const setH = () => document.documentElement.style.setProperty('--cookH', panel.offsetHeight + 'px');
+      const ro = new ResizeObserver(setH); ro.observe(panel);
+      const finish = () => { ro.disconnect(); panel.remove(); info.remove(); document.body.classList.remove('cooking'); res(JSON.parse(JSON.stringify(p))); };
+      let shownStep = -1;
+      const render = () => {
+        const st = steps[step];
+        const keepX = shownStep === step ? (panel.querySelector('.cards') as HTMLElement | null)?.scrollLeft ?? 0 : 0;
+        shownStep = step;
+        panel.innerHTML = '';
+        const tabs = h('div', { class: 'tabs' }, steps.map((sx, k) => {
+          const n = p[sx.id].length, done = n > 0;
+          return h('span', { class: `tab ${k === step ? 'on' : ''} ${done ? 'done' : ''} ${k < step ? 'past' : k > step ? 'later' : ''}` },
+            k < step ? (done ? '✓ ' : '– ') : done ? '✓ ' : '', sx.label,
+            sx.optional && !done && k >= step ? h('span', { class: 'n' }, '선택') : sx.max > 1 && k >= step ? h('span', { class: 'n' }, `${n}/${sx.max}`) : null);
+        }));
+        const last = step === steps.length - 1;
+        const label = last ? S.done : st.optional && !p[st.id].length ? '건너뛰기 ▶' : `다음: ${steps[step + 1].label} ▶`;
+        const nextBtn = h('button', {
+          class: `btn next ${last ? 'pulse' : ''}`, disabled: !ok(step),
+          onclick: () => { if (busy) return; sfx.pop(); if (!last) { step++; showInfo(null); render(); return; } finish(); },
+        }, label);
+        const cards = h('div', { class: 'cards' }, S.items.filter((g) => g.step === st.id).map((g) => h('button', {
+          class: `icard ${isOn(g) ? 'on' : ''}`, onclick: () => tap(g),
+        }, h('img', { src: o.thumbs.get(g.id) ?? '', alt: '' }), h('div', { class: 'nm' }, g.name), h('div', { class: 'dots' }, g.effects.map(famDot)))));
+        const wrap = h('div', { class: 'cards-wrap seen' }, cards);
+        const arrow = (dir: -1 | 1) => h('button', {
+          class: `scr-arrow ${dir < 0 ? 'left' : 'right'}`, 'aria-label': dir < 0 ? '앞 재료 보기' : '다음 재료 보기',
+          onclick: (e: Event) => { e.stopPropagation(); sfx.tap(); cards.scrollBy({ left: dir * Math.max(240, cards.clientWidth * 0.8), behavior: 'smooth' }); },
+        }, h('span', { html: `<svg viewBox="0 0 24 24" width="30" height="30" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="${dir < 0 ? 'M15 5l-7 7 7 7' : 'M9 5l7 7-7 7'}"/></svg>` }));
+        wrap.append(arrow(-1), arrow(1));
+        const upd = () => { const max = cards.scrollWidth - cards.clientWidth; wrap.classList.toggle('more-left', cards.scrollLeft > 4); wrap.classList.toggle('more-right', cards.scrollLeft < max - 4); };
+        cards.addEventListener('scroll', upd, { passive: true });
+        new ResizeObserver(upd).observe(cards);
+        panel.append(h('div', { class: 'cook-top' }, tabs, nextBtn), wrap);
+        if (keepX) cards.scrollLeft = keepX;
+        requestAnimationFrame(upd);
+        setH();
+      };
+      const tap = async (g: CItem) => {
+        if (busy) return;
+        showInfo(g);
+        const st = steps.find((x) => x.id === g.step)!;
+        const list = p[g.step];
+        if (isOn(g)) {
+          p[g.step] = list.filter((x) => x !== g.id);
+          sfx.back(); render();
+          o.onSet(JSON.parse(JSON.stringify(p)));
+          return;
+        }
+        if (st.max === 1) p[g.step] = [g.id];
+        else if (list.length >= st.max) { sfx.back(); toast(`${st.label}은 ${st.max}가지까지 고를 수 있어요. 빼고 싶은 것을 한 번 더 눌러요.`); return; }
+        else list.push(g.id);
+        busy = true; panel.classList.add('busy');
+        render();
+        try { await o.onSet(JSON.parse(JSON.stringify(p))); } finally { busy = false; panel.classList.remove('busy'); }
+      };
+      mount(panel); mount(info);
+      showInfo(null);
+      render();
+    });
+  },
+
+  // 가게 봐 주기 마음 쪽지: 손님에게 꼭 필요했던 마음, 내가 고른 재료 (손님마다)
+  craftNote(c: Customer, kind: CraftKind, name: string, picks: CPicks, r: CraftScore, left: number): Promise<void> {
+    return new Promise((res) => {
+      const fx = FX.get(c.needs.effect)!, fam = FAMILY.get(fx.family)!, sub = FAMILY.get(c.needs.sub)!;
+      const wrap = h('div', { class: 'modal-wrap fade-in craft-ok' });
+      const close = () => { sfx.pop(); wrap.remove(); res(); };
+      wrap.append(h('div', { class: 'heartnote card pop-in' },
+        h('h2', null, '💌 마음 쪽지'),
+        h('div', { class: 'muted', style: 'font-size:18px' }, `${c.name}에게 건넨 '${name}' · `, h('b', { style: 'color:#E9B92A' }, '★'.repeat(r.stars) + '☆'.repeat(3 - r.stars))),
+        h('div', { class: 'muted', style: 'font-size:18px;margin-top:6px' }, `${c.name}에게 꼭 필요했던 마음은…`),
+        h('div', { class: 'need', style: `background:${fam.soft}` },
+          h('span', { class: 'dot', style: `width:22px;height:22px;border-radius:50%;background:${fam.color}` }),
+          h('span', { class: 'big' }, fx.name), h('span', { class: 'fam' }, `${fam.name} 묶음 · ${fx.when}`)),
+        h('div', { class: 'tip' }, fx.tip),
+        h('div', { class: 'sub' }, '더하면 좋은 마음: ', h('b', { style: `color:${sub.color}` }, `${sub.name} 묶음`)),
+        h('div', { class: 'ings' }, pickedItems(picks).map((it) => h('span', { class: `ing ${r.glow.get(it.id) ?? ''}` }, it.effects.map(famDot).slice(0, 1), it.name))),
+        h('div', { class: 'actions' }, h('button', { class: 'btn', onclick: close }, left > 0 ? `다음 손님 맞이하기 (${left}명 남았어요)` : `${CRAFT[kind].owner.name} 기다리기`))));
+      mount(wrap);
     });
   },
 

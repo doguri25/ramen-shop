@@ -4,7 +4,8 @@ import { blob, ctx2d, darken, inkLine, makeCanvas, softGlow, wash } from '../pai
 // 손그림 작은 그림: 시스템 이모지 대신 수채 물감으로 그려 써요 (마음 골목 단추, 주민 머리 위 표시, 심부름 물건)
 export type DoodleKind =
   | 'village' | 'map' | 'walk' | 'news' | 'stamp' | 'talk' | 'bang' | 'worry' | 'heart' | 'me'
-  | 'bread' | 'flower' | 'letter' | 'book' | 'icecream';
+  | 'bread' | 'flower' | 'letter' | 'book' | 'icecream' | 'tea' | 'fruit' | 'music'
+  | 'notebook' | 'party' | 'chain' | 'group' | 'shopsit';
 
 const INK = '#5B3A29';
 type P = [number, number];
@@ -131,6 +132,79 @@ function paint(kind: DoodleKind, size: number): HTMLCanvasElement {
       blob(g, 64, 52, 28, 22, '#F7B3C2', rnd, { layers: 5, alpha: 0.5, edge: 0.5 });
       blob(g, 64, 30, 20, 16, '#FFF4D6', rnd, { layers: 5, alpha: 0.6, edge: 0.5 });
       g.fillStyle = '#E3645A'; g.beginPath(); g.arc(68, 16, 5, 0, 7); g.fill();
+      break;
+    }
+    case 'tea': {
+      // 김이 나는 찻잔과 받침
+      blob(g, 64, 106, 46, 10, '#E9D6C0', rnd, { layers: 4, alpha: 0.5, edge: 0.5 });
+      wash(g, () => { g.beginPath(); g.moveTo(26, 56); g.lineTo(102, 56); g.bezierCurveTo(100, 96, 84, 104, 64, 104); g.bezierCurveTo(44, 104, 28, 96, 26, 56); g.closePath(); }, '#9FD8B8', rnd, { layers: 5, alpha: 0.5, edge: 0.6, edgeWidth: 2.4 });
+      blob(g, 64, 58, 36, 7, '#C49A5A', rnd, { layers: 3, alpha: 0.6, edge: 0.3 });
+      inkLine(g, arc(106, 74, 12, 12, -Math.PI / 2, Math.PI / 2, 10), INK, 3, rnd, 0.7);
+      for (const x of [50, 66, 82]) inkLine(g, [[x, 46], [x - 5, 36], [x + 3, 26], [x - 2, 16]], '#B9B4AE', 3, rnd, 0.6);
+      break;
+    }
+    case 'fruit': {
+      // 바구니에 담긴 사과·귤·포도
+      blob(g, 46, 56, 18, 18, '#E5484D', rnd, { layers: 5, alpha: 0.5, edge: 0.5 });
+      blob(g, 80, 54, 17, 17, '#F6A23C', rnd, { layers: 5, alpha: 0.5, edge: 0.5 });
+      for (const [x, y] of [[62, 42], [70, 48], [56, 50], [64, 56]] as const) blob(g, x, y, 7, 7, '#8E6FC2', rnd, { layers: 3, alpha: 0.55, edge: 0.4 });
+      inkLine(g, [[46, 40], [48, 30]], '#6E4A30', 3, rnd);
+      blob(g, 54, 30, 7, 4, '#47AE7A', rnd, { layers: 3, alpha: 0.5, edge: 0.3 });
+      poly(g, [[18, 66], [110, 66], [96, 110], [32, 110]], '#D9A066', rnd, 0.6);
+      for (const y of [78, 92]) inkLine(g, [[22, y], [106, y]], '#9A5F32', 2.4, rnd, 0.6);
+      inkLine(g, ring([[18, 66], [110, 66], [96, 110], [32, 110]]), INK, 2.6, rnd, 0.7);
+      break;
+    }
+    case 'music': {
+      // 작은 북과 음표
+      wash(g, () => { g.beginPath(); g.ellipse(56, 84, 36, 12, 0, 0, Math.PI * 2); g.rect(20, 60, 72, 24); g.ellipse(56, 60, 36, 12, 0, 0, Math.PI * 2); }, '#E3645A', rnd, { layers: 4, alpha: 0.45, edge: 0.5, edgeWidth: 2.4 });
+      blob(g, 56, 60, 34, 10, '#FFF4E6', rnd, { layers: 4, alpha: 0.7, edge: 0.4 });
+      for (let i = 0; i < 4; i++) inkLine(g, [[26 + i * 20, 66], [36 + i * 20, 90]], '#F6CF3E', 2.6, rnd, 0.8);
+      inkLine(g, [[98, 22], [98, 52]], INK, 3.4, rnd); inkLine(g, [[98, 22], [116, 28]], INK, 3.4, rnd);
+      blob(g, 92, 54, 8, 6, INK, rnd, { layers: 3, alpha: 0.7, edge: 0.2 });
+      break;
+    }
+    case 'notebook': {
+      poly(g, [[28, 18], [104, 18], [104, 112], [28, 112]], '#FFE9A8', rnd, 0.6);
+      poly(g, [[28, 18], [42, 18], [42, 112], [28, 112]], '#E8823C', rnd, 0.5);
+      inkLine(g, ring([[28, 18], [104, 18], [104, 112], [28, 112]]), INK, 2.8, rnd, 0.7);
+      for (const y of [44, 62, 80]) inkLine(g, [[52, y], [94, y]], '#C9A36E', 2.4, rnd, 0.6);
+      heartShape(g, rnd, 84, 92, 9, '#E3645A');
+      break;
+    }
+    case 'party': {
+      // 깃발 줄과 색종이
+      inkLine(g, [[10, 30], [40, 44], [64, 48], [88, 44], [118, 30]], INK, 2.4, rnd, 0.6);
+      const flags = ['#E3645A', '#F6CF3E', '#47AE7A', '#6FB3E0', '#A68BD6'];
+      [[22, 36], [44, 45], [64, 48], [84, 45], [106, 36]].forEach(([x, y], i) => poly(g, [[x - 8, y], [x + 8, y], [x, y + 18]], flags[i], rnd, 0.5));
+      for (let i = 0; i < 16; i++) blob(g, 16 + rnd() * 96, 76 + rnd() * 40, 3 + rnd() * 3, 2 + rnd() * 3, flags[i % 5], rnd, { layers: 2, alpha: 0.7, edge: 0 });
+      break;
+    }
+    case 'chain': {
+      // 이어지는 심부름: 손에서 손으로 건너가는 선물 상자
+      for (const [x, c] of [[30, '#F7B3C8'], [64, '#FFE07A'], [98, '#9FD8B8']] as const) { poly(g, [[x - 15, 52], [x + 15, 52], [x + 15, 82], [x - 15, 82]], c, rnd, 0.5); inkLine(g, [[x, 52], [x, 82]], '#E3645A', 3, rnd, 0.7); }
+      inkLine(g, arc(47, 56, 15, 14, Math.PI * 1.1, Math.PI * 1.9, 10), '#C2560E', 3, rnd, 0.8);
+      inkLine(g, arc(81, 56, 15, 14, Math.PI * 1.1, Math.PI * 1.9, 10), '#C2560E', 3, rnd, 0.8);
+      poly(g, [[56, 44], [64, 40], [60, 50]], '#C2560E', rnd, 0.3); poly(g, [[90, 44], [98, 40], [94, 50]], '#C2560E', rnd, 0.3);
+      break;
+    }
+    case 'group': {
+      // 마음 모으기: 동그랗게 모인 세 얼굴
+      for (const [x, y, c] of [[40, 70, '#F7B3C8'], [88, 70, '#9FD8B8'], [64, 40, '#FFE07A']] as const) {
+        blob(g, x, y, 20, 20, c, rnd, { layers: 4, alpha: 0.55, edge: 0.55 });
+        g.fillStyle = INK; for (const dx of [-6, 6]) { g.beginPath(); g.arc(x + dx, y - 2, 2.4, 0, 7); g.fill(); }
+        inkLine(g, arc(x, y + 4, 6, 4, 0.2, Math.PI - 0.2, 6), INK, 2, rnd, 0.6);
+      }
+      heartShape(g, rnd, 64, 102, 11, '#E3645A');
+      break;
+    }
+    case 'shopsit': {
+      // 가게 봐 주기: 작은 가게와 '잠깐 비워요' 팻말
+      poly(g, [[22, 58], [106, 58], [106, 108], [22, 108]], '#FFF4E6', rnd, 0.5);
+      for (let i = 0; i < 6; i++) poly(g, [[22 + i * 14, 44], [36 + i * 14, 44], [36 + i * 14, 58], [22 + i * 14, 58]], i % 2 ? '#FFFFFF' : '#F0974A', rnd, 0.3);
+      inkLine(g, ring([[22, 44], [106, 44], [106, 108], [22, 108]]), INK, 2.6, rnd, 0.7);
+      poly(g, [[34, 72], [62, 72], [62, 108], [34, 108]], '#B9835A', rnd, 0.4);
+      poly(g, [[72, 68], [100, 68], [100, 88], [72, 88]], '#FFE07A', rnd, 0.4);
       break;
     }
   }

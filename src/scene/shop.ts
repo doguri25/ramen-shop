@@ -23,8 +23,10 @@ export function makeShop() {
   // 바닥과 벽
   // 방 껍데기(바닥·벽·천장)는 광선추적에서 주 조명을 가리지 않게 표시해 둬요
   mesh(new THREE.PlaneGeometry(7, 7), wc('#FFFFFF', { map: floorT, rim: 0 }), [0, 0, 0], 1, [-PI / 2, 0, 0], root).userData.shell = true;
-  mesh(new THREE.PlaneGeometry(6, 3.2), wc('#FFFFFF', { map: wallT, rim: 0, flat: 0.3 }), [0, 1.6, -1.75], 1, [0, 0, 0], root).userData.shell = true;
-  for (const sd of [-1, 1]) mesh(new THREE.PlaneGeometry(4.5, 3.2), wc('#F1DFC6', { map: wallT, rim: 0, flat: 0.3 }), [sd * 2.6, 1.6, 0.4], 1, [0, -sd * PI / 2, 0], root).userData.shell = true;
+  const walls: THREE.Mesh[] = [];
+  walls.push(mesh(new THREE.PlaneGeometry(6, 3.2), wc('#FFFFFF', { map: wallT, rim: 0, flat: 0.3 }), [0, 1.6, -1.75], 1, [0, 0, 0], root));
+  for (const sd of [-1, 1]) walls.push(mesh(new THREE.PlaneGeometry(4.5, 3.2), wc('#F1DFC6', { map: wallT, rim: 0, flat: 0.3 }), [sd * 2.6, 1.6, 0.4], 1, [0, -sd * PI / 2, 0], root));
+  walls.forEach((w) => { w.userData.shell = true; });
   Object.assign(mesh(new THREE.PlaneGeometry(6, 5), M('#EADBC4', { rim: 0, flat: 0.5 }), [0, 3.1, 0.2], 1, [PI / 2, 0, 0], root).userData, { shell: true, noRecv: true }); // 천장은 안 보여서 굽지 않아요
   // 천장 나무 보
   for (const z of [-1.2, -0.2, 0.8]) Object.assign(mesh(boxG(6, 0.12, 0.14), M('#9A6232'), [0, 3.04, z], 1, [0, 0, 0], root).userData, { shell: true, noRecv: true });
@@ -62,9 +64,11 @@ export function makeShop() {
   sign.renderOrder = 1;
   // 차림표 나무패
   const plaques = ['토닥 라면', '용기 라면', '웃음 라면', '꿀잠 라면'];
+  const plaqueMeshes: THREE.Mesh[] = [];
   plaques.forEach((t, i) => {
     const p = mesh(new THREE.PlaneGeometry(0.5, 0.16), wc('#FFFFFF', { map: tex(plaqueCanvas(t)), rim: 0, flat: 0.6 }), [-2.58, 2.25 - i * 0.22, -0.9 + (i % 2) * 0.05], 1, [0, PI / 2, 0], root);
     p.renderOrder = 1;
+    plaqueMeshes.push(p);
   });
 
   // 문: 오른쪽 경첩에 달려 가게 안쪽 오른편으로 열려요 (손님이 지나가는 왼쪽 길을 막지 않게). 문 뒤에는 바깥 골목 그림
@@ -81,7 +85,8 @@ export function makeShop() {
   // 손잡이: 손님(키가 작은 동물들)이 손을 뻗어 잡을 수 있는 높이
   const knob = mesh(sphereG(0.04), M('#E7B84E', { spec: 0.7 }), [-0.36, 0.88, 0.05], 1, [0, 0, 0], leaf);
   // 문 위 천(노렌): 진짜 천처럼 매달려 흔들려요. 문짝이 열리면서 밀고, 문이 열릴 때 들어오는 바람에 펄럭여요
-  const noren = new Noren(wc('#FFFFFF', { map: tex(norenCanvas()), rim: 0, side: THREE.DoubleSide, transparent: true }), new THREE.Vector3(doorX, 1.95, -1.58), 1.0, 0.65, -1.64);
+  const norenMat = wc('#FFFFFF', { map: tex(norenCanvas()), rim: 0, side: THREE.DoubleSide, transparent: true });
+  const noren = new Noren(norenMat, new THREE.Vector3(doorX, 1.95, -1.58), 1.0, 0.65, -1.64);
   noren.meshes.forEach((m) => { m.userData.noBake = true; root.add(m); });
   mesh(cylG(0.015, 0.015, 1.1, 8), M('#8A5A3B'), [doorX, 2.28, -1.58], 1, [0, 0, PI / 2], root);
   // 종은 천 왼쪽 끝 바깥에 달아요 (천이 펄럭이다 종에 걸리지 않게)
@@ -95,8 +100,11 @@ export function makeShop() {
 
   // 왼쪽 선반과 병들
   const shelf = group(root, [-1.85, 0, -1.6]);
+  const shelfRows: THREE.Group[] = [];
   for (const y of [1.45, 1.95]) {
     const row = group(shelf);
+    row.userData.y = y;
+    shelfRows.push(row);
     mesh(boxG(0.9, 0.04, 0.25), M('#9A6232'), [0, y, 0], 1, [0, 0, 0], row);
     const cols = ['#F2A7B8', '#F4C842', '#8EC5E8', '#A8D08D', '#F5A65B'];
     for (let i = 0; i < 4; i++) {
@@ -215,6 +223,8 @@ export function makeShop() {
   let t = 0;
   const shop = {
     root, bell, flames, pot, lamps, leaf,
+    // 가게 봐 주기에서 빵집·꽃집으로 살짝 바꿔 꾸밀 것들
+    theme: { sign, norenMat, plaques: plaqueMeshes, walls, shelf, shelfRows },
     // 드나드는 길은 문 가운데. 문짝은 활짝(100도쯤) 열려서 길을 비켜요
     doorPos: new THREE.Vector3(doorX, 0, -1.25),
     doorOut: new THREE.Vector3(doorX, 0, -2.2),

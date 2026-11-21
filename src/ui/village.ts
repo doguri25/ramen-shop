@@ -2,9 +2,12 @@ import * as THREE from 'three';
 import { sfx } from '../core/sound';
 import { ease, tween } from '../core/tween';
 import { FAMILIES, FAMILY, FX } from '../data/effects';
-import { FOLKS, ITEM_DOODLE, type FeelOpt, type Folk, type FolkMood, type ShopKind } from '../data/folk';
+import { CRAFT, type CraftKind } from '../data/craft';
+import { FOLKS, folkIndex, ITEM_DOODLE, type FeelOpt, type Folk, type FolkMood, type ShopKind } from '../data/folk';
+import { QUEST, QUESTS, type Quest } from '../data/quests';
 import { ALLEY_LINKS, KIND_EMOJI, LATER } from '../data/later';
 import type { Customer, Owner, RamenRecord } from '../data/types';
+import { josa } from '../data/text';
 import { tex } from '../paint/textures';
 import type { Look } from '../render/watercolor';
 import { Chibi, type Mood } from '../scene/chibi';
@@ -35,12 +38,27 @@ function loadDone(id: string): Set<string> {
   try { const v = JSON.parse(localStorage.getItem(KEY(id)) || '[]'); return new Set(Array.isArray(v) ? v.filter((x) => typeof x === 'string') : []); } catch { return new Set(); }
 }
 function saveDone(id: string, s: Set<string>) { try { localStorage.setItem(KEY(id), JSON.stringify([...s])); } catch { /* 저장 못 해도 계속해요 */ } }
+// 가게 봐 주기 기록: 가게마다 가장 많이 받은 별과 봐 준 횟수
+type ShopRec = Partial<Record<CraftKind, { best: number; times: number }>>;
+const SKEY = (id: string) => `ramen-alley-shop:${id}`;
+function loadShop(id: string): ShopRec { try { const v = JSON.parse(localStorage.getItem(SKEY(id)) || '{}'); return v && typeof v === 'object' ? v : {}; } catch { return {}; } }
+function saveShop(id: string, r: ShopRec) { try { localStorage.setItem(SKEY(id), JSON.stringify(r)); } catch { /* 저장 못 해도 계속해요 */ } }
+// 이어지는 미션: 끝낸 미션과 하는 중인 미션(몇 번째 단계인지)
+type QState = { done: string[]; cur?: { id: string; step: number } };
+const QKEY = (id: string) => `ramen-alley-quest:${id}`;
+function loadQ(id: string): QState {
+  try { const v = JSON.parse(localStorage.getItem(QKEY(id)) || '{}'); return { done: Array.isArray(v?.done) ? v.done.filter((x: unknown) => typeof x === 'string' && QUEST.has(x as string)) : [], cur: v?.cur && QUEST.has(v.cur.id) ? { id: v.cur.id, step: Math.max(0, v.cur.step | 0) } : undefined }; } catch { return { done: [] }; }
+}
+function saveQ(id: string, q: QState) { try { localStorage.setItem(QKEY(id), JSON.stringify(q)); } catch { /* 저장 못 해도 계속해요 */ } }
+// 지금 하는 일: 주민 심부름 또는 이어지는 미션의 한 단계
+interface Task { src: 'errand' | 'quest'; npc: number; qid?: string; step: number; gets: ShopKind[]; got: ShopKind[]; item: string; to: number[] }
 
 const coarse = () => typeof matchMedia === 'function' && matchMedia('(pointer: coarse)').matches;
 
 export function openVillage(o: {
   owner: Owner; recs: RamenRecord[]; order: string[]; customer: (id: string) => Customer | undefined;
   setWorld: (w: World | null) => void; story: (c: Customer, r: RamenRecord) => Promise<void>;
+  shopSit?: (kind: CraftKind) => Promise<{ stars: number[] }>;
 }): Promise<void> {
   return new Promise((res) => {
     const loading = mount(h('div', { class: 'village-loading fade-in' }, h('div', { class: 'vl-in' }, doodleImg('village', '', 'dicon vl'), h('b', null, '마음 골목을 꾸미는 중…'))));
@@ -75,12 +93,12 @@ export function openVillage(o: {
 
       // ── 카메라 ──
       let mode: 'all' | 'walk' = 'all';
-      const fitDist = () => Math.min(310, Math.max(185, 240 / (0.77 * cam.aspect)));
-      const all = { target: V(0, 2, -13), dist: fitDist(), yaw: 0 };
+      const fitDist = () => Math.min(400, Math.max(235, 305 / (0.77 * cam.aspect)));
+      const all = { target: V(0, 2, 18), dist: fitDist(), yaw: 0 };
       const cur = { pos: V(0, 120, 120), look: V(0, 0, -4) };
       let blend = 1; // 돌아다니기로 바꾼 뒤 내려앉는 동안 0→1
       // 마음 골목은 가게보다 화사하게: 채도·밝기를 올리고 그늘을 밝히고, 낮은 해에서 햇살이 비쳐요
-      const look = { sat: 1.18, bright: 1.04, lift: 0.35, rays: 0.25, sunDir: V(0.4, 0.17, 0.5).normalize(), skyD: 400 };
+      const look = { sat: 1.18, bright: 1.04, lift: 0.35, rays: 0.25, sunDir: V(0.4, 0.17, 0.5).normalize(), skyD: 400, paper: 0.8, blot: 0.6 };
       const world: World = { scene, cam, update: () => {}, dof: { focus: 100, range: 40, amount: 0.8 }, look };
       const B = vil.bounds;
       const clampT = (t: THREE.Vector3) => { t.x = Math.max(B.minX + 6, Math.min(B.maxX - 6, t.x)); t.z = Math.max(B.minZ + 6, Math.min(B.maxZ - 6, t.z)); };
@@ -108,7 +126,7 @@ export function openVillage(o: {
         busy = true;
         const specs = Array.isArray(c.chibi) ? c.chibi : [c.chibi];
         const side = V(Math.cos(s.yaw), 0, -Math.sin(s.yaw));
-        const chs = specs.map((sp) => { const ch = new Chibi(sp); ch.root.position.copy(s.door); ch.root.rotation.y = s.yaw; ch.root.scale.multiplyScalar(0.01); scene.add(ch.root); ch.setMood('happy'); return ch; });
+        const chs = specs.map((sp) => { const ch = new Chibi(sp); ch.update(1 / 60); ch.root.position.copy(s.door); ch.root.rotation.y = s.yaw; ch.root.scale.multiplyScalar(0.01); scene.add(ch.root); ch.setMood('happy'); return ch; });
         const shadows = chs.map(() => { const sh = makeShadow(0.7, 0.6, 0.45); scene.add(sh); return sh; });
         guest = { chs, shadows };
         const sc = chs.map((ch) => ch.root.scale.x / 0.01);
@@ -116,10 +134,10 @@ export function openVillage(o: {
         await tween(0.9, (t) => chs.forEach((ch, i) => {
           const off = (i - (chs.length - 1) / 2) * 0.75;
           const p = s.door.clone().lerp(s.out, ease.outCubic(t)).addScaledVector(side, off * t);
-          ch.root.position.set(p.x, vil.walkY(p.x, p.z), p.z);
           ch.root.scale.setScalar(Math.max(0.01, sc[i] * Math.min(1, t * 2.2)));
+          ch.root.position.set(p.x, vil.standY(p.x, p.z, ch), p.z);
           ch.walking = t < 0.9 ? 1 : 0;
-          shadows[i].position.set(p.x, ch.root.position.y + 0.05, p.z);
+          shadows[i].position.set(p.x, vil.walkY(p.x, p.z) + 0.05, p.z);
         }), { ease: ease.linear });
         chs.forEach((ch) => { ch.walking = 0; ch.play('wave'); if (mode === 'walk') ch.look = eye(); });
         if (mode === 'walk') turnTo(s.out, s.out.y + 0.8);
@@ -130,11 +148,11 @@ export function openVillage(o: {
         const from = chs.map((ch) => ch.root.position.clone());
         await tween(0.7, (t) => chs.forEach((ch, i) => {
           const p = from[i].clone().lerp(s.door, t);
-          ch.root.position.set(p.x, vil.walkY(p.x, p.z), p.z);
           ch.root.rotation.y = s.yaw + Math.PI;
           ch.walking = 1;
           ch.root.scale.setScalar(Math.max(0.01, sc[i] * (1 - Math.max(0, t - 0.5) * 2)));
-          shadows[i].position.set(p.x, ch.root.position.y + 0.05, p.z);
+          ch.root.position.set(p.x, vil.standY(p.x, p.z, ch), p.z);
+          shadows[i].position.set(p.x, vil.walkY(p.x, p.z) + 0.05, p.z);
         }), { ease: ease.linear });
         chs.forEach((ch) => { scene.remove(ch.root); disposeTree(ch.root); });
         shadows.forEach((sh) => { scene.remove(sh); disposeTree(sh); });
@@ -155,18 +173,68 @@ export function openVillage(o: {
         }
       };
 
-      // ── 동네 주민 ──
+      // ── 동네 주민과 산책하는 손님 ──
       const npcs = vil.npcs;
+      const walkers = vil.walkers;
+      const NN = npcs.length;
+      const people = [...npcs, ...walkers]; // 대화 상대 번호: 주민 0..NN-1, 산책 손님 NN..
       const badges = npcs.map(() => { const s = sprite('talk'); scene.add(s); return s; });
       const chatStep = new Map<number, number>();
-      let errand: { npc: number; shop: ShopKind; got: boolean } | null = null;
+      let task: Task | null = null;
       let talk: number | null = null;
       const shopOf = (k: ShopKind) => vil.shops.find((s) => s.kind === k);
       const shopMark = sprite('bang'); shopMark.visible = false; scene.add(shopMark);
+      // 가게 주인은 자기 가게 앞에 서 있어요
+      const pinned = new Set<number>();
+      const shopRec = loadShop(o.owner.id);
+      FOLKS.forEach((f, i) => {
+        const kind = (f.type === 'shop' && f.sit ? f.sit.kind : f.stand) as ShopKind | undefined;
+        if (!kind) return;
+        const sh = shopOf(kind);
+        if (!sh) return;
+        const fwd = V(Math.sin(sh.yaw), 0, Math.cos(sh.yaw)), side = V(Math.cos(sh.yaw), 0, -Math.sin(sh.yaw));
+        const p = sh.front.clone().addScaledVector(fwd, -1.9).addScaledVector(side, -1.7);
+        const n = npcs[i];
+        n.ch.root.position.set(p.x, vil.standY(p.x, p.z, n.ch), p.z); n.ch.root.rotation.y = sh.yaw;
+        n.sh.position.set(p.x, vil.walkY(p.x, p.z) + 0.05, p.z);
+        n.hold = true; pinned.add(i);
+      });
+      // ── 이어지는 미션 ──
+      const qs = loadQ(o.owner.id);
+      const qDone = new Set(qs.done);
+      const unlocked = (q: Quest) => q.need.every((id) => done.has(id)) && (!q.needStamps || done.size >= q.needStamps);
+      const offerOf = (i: number) => QUESTS.find((q) => folkIndex(q.giver) === i && !qDone.has(q.id) && task?.qid !== q.id && unlocked(q) && done.has(FOLKS[i].id));
+      const toIdx = (q: Quest, to: string) => (to === 'group' ? (q.group ?? []).map(folkIndex) : [folkIndex(to)]).filter((x) => x >= 0);
+      const questTask = (q: Quest, step: number): Task => {
+        const t = q.tasks[step];
+        return { src: 'quest', npc: folkIndex(q.giver), qid: q.id, step, gets: [...(t.get ?? [])], got: [], item: t.item, to: toIdx(q, t.to) };
+      };
+      // 마음 모으기: 세 주민이 광장 한쪽에 동그랗게 모여요
+      const meetSpot = (q: Quest) => {
+        const g = QUESTS.filter((x) => x.kind === 'mood').indexOf(q);
+        const a = -Math.PI / 2 + (g - 1) * 1.15;
+        return vil.plaza.clone().add(V(Math.cos(a) * (vil.plazaR - 3.2), 0, Math.sin(a) * (vil.plazaR - 3.2)));
+      };
+      const meetFace = new Map<number, THREE.Vector3>(); // 모임 중인 주민이 바라볼 곳
+      const gather = (q: Quest, on: boolean) => {
+        const c = meetSpot(q);
+        (q.group ?? []).map(folkIndex).forEach((i, k) => {
+          const n = npcs[i];
+          if (!on) { n.at = null; n.faceTo = null; meetFace.delete(i); if (!pinned.has(i)) n.hold = false; return; }
+          const a = (k / 3) * Math.PI * 2;
+          n.at = c.clone().add(V(Math.cos(a) * 1.5, 0, Math.sin(a) * 1.5)); n.faceTo = c.clone(); meetFace.set(i, c.clone());
+        });
+      };
+      if (qs.cur) { const q = QUEST.get(qs.cur.id)!; if (qs.cur.step < q.tasks.length) { task = questTask(q, qs.cur.step); if (q.kind === 'mood') gather(q, true); } else qs.cur = undefined; }
+      if (qDone.has('q-festival')) vil.festival.visible = true;
       const badgeKind = (i: number): DoodleKind => {
         const f = FOLKS[i];
+        if (task && task.to.includes(i) && task.got.length >= task.gets.length) return 'bang';
+        if (task?.src === 'errand' && task.npc === i) return ITEM_DOODLE[task.gets[0]] as DoodleKind;
+        const q = offerOf(i);
+        if (q) return q.kind === 'chain' ? 'chain' : q.kind === 'mood' ? 'group' : 'party';
         if (done.has(f.id)) return 'heart';
-        if (errand?.npc === i) return errand.got ? 'bang' : (ITEM_DOODLE[errand.shop] as DoodleKind);
+        if (f.type === 'shop') return 'shopsit';
         return f.type === 'feel' ? 'worry' : f.type === 'chat' ? 'talk' : 'bang';
       };
       const refreshBadges = () => badges.forEach((b, i) => { b.material.map = dtex(badgeKind(i)); b.material.needsUpdate = true; });
@@ -176,8 +244,9 @@ export function openVillage(o: {
       const touch = h('div', { class: 'v-touch' });
       const seg = h('div', { class: 'v-seg' });
       const hint = h('div', { class: 'v-hint' });
-      const stampChip = h('span', { class: 'chip v-stamp' });
-      const drawStamp = () => { stampChip.replaceChildren(doodleImg('stamp'), `마음 도장 ${done.size}/${FOLKS.length}`); };
+      // 마음 도장 칩을 누르면 마음 수첩(할 일 목록)이 열려요
+      const stampChip = h('button', { class: 'chip v-stamp', 'aria-label': '마음 수첩 열기', onclick: () => { sfx.tap(); showBook(); } });
+      const drawStamp = () => { stampChip.replaceChildren(doodleImg('stamp'), h('span', null, h('em', { class: 'lbl' }, '마음 도장 '), `${done.size}/${FOLKS.length}`), h('i', { class: 'v-book-ic' }, doodleImg('notebook'))); };
       drawStamp();
       const goalChip = h('div', { class: 'v-goal card', hidden: true });
       const arrow = h('span', { class: 'v-arrow', html: '<svg viewBox="0 0 24 24"><path d="M12 3l7 9h-4.5v9h-5v-9H5z" fill="#C2560E"/></svg>' });
@@ -220,10 +289,12 @@ export function openVillage(o: {
         h('button', { 'aria-label': '작게 보기', onclick: () => { sfx.tap(); all.dist = Math.min(fitDist() * 1.1, all.dist / 0.72); } }, '−'));
       const news = ALLEY_LINKS.filter((l) => (best.get(l.a)?.stars ?? 0) >= 2 && (best.get(l.b)?.stars ?? 0) >= 2);
       const face = (id: string) => { const c = o.customer(id); const s = c ? (Array.isArray(c.chibi) ? c.chibi[0] : c.chibi) : null; return s ? KIND_EMOJI[s.kind] ?? '🏠' : '🏠'; };
-      const newsBox = h('details', { class: 'v-news card' },
-        h('summary', null, doodleImg('news'), `골목 소식 ${news.length ? news.length + '개' : ''}`),
-        news.length ? h('div', null, news.map((l) => h('div', { class: 'nw' }, h('span', null, face(l.a) + face(l.b)), l.text)))
-          : h('div', { class: 'muted' }, lit ? '비슷한 고민을 가진 두 손님을 모두 도우면 두 손님 사이에 새 이야기가 생겨요.' : '라면을 끓여 준 손님의 집에 불이 켜져요.'));
+      // 골목 소식: 위쪽 줄에 작은 칩으로 두고, 누르면 아래로 펼쳐져요 (좁은 화면에서는 그림과 숫자만)
+      const newsBox = h('details', { class: 'v-news' },
+        h('summary', { 'aria-label': `골목 소식 ${news.length}개`, title: '골목 소식' }, doodleImg('news'), h('span', { class: 'nl' }, '골목 소식'), news.length ? h('b', { class: 'nc' }, String(news.length)) : null),
+        h('div', { class: 'nb card' }, h('b', { class: 'nh' }, '골목 소식'),
+          news.length ? h('div', null, news.map((l) => h('div', { class: 'nw' }, h('span', null, face(l.a) + face(l.b)), l.text)))
+            : h('div', { class: 'muted' }, lit ? '비슷한 고민을 가진 두 손님을 모두 도우면 두 손님 사이에 새 이야기가 생겨요.' : '라면을 끓여 준 손님의 집에 불이 켜져요.')));
       // 마을 단추: 전체 보기는 그 마을로 날아가고, 돌아다니기는 마을 어귀로 순간 이동해요
       const jumpTo = (k: number) => {
         const t = vil.towns[k];
@@ -248,9 +319,9 @@ export function openVillage(o: {
           h('header', { class: 'v-top' },
             h('div', { class: 'v-title' }, doodleImg('village'), '마음 골목', h('small', null, `${o.owner.number}번 ${o.owner.name} 사장님`)),
             h('span', { class: 'chip v-count' }, `불 켜진 집 ${lit} / ${houses.length}`),
-            stampChip,
-            seg, h('button', { class: 'icon-btn v-help', 'aria-label': '마음 골목 안내', onclick: () => { sfx.tap(); showIntro(); } }, '?'), iconBtn(ICON.close, () => close(), '닫기')),
-          h('div', { class: 'v-row2' }, newsBox, goalChip)),
+            stampChip, newsBox,
+            h('div', { class: 'v-right' }, seg, h('button', { class: 'icon-btn v-help', 'aria-label': '마음 골목 안내', onclick: () => { sfx.tap(); showIntro(); } }, '?'), iconBtn(ICON.close, () => close(), '닫기'))),
+          h('div', { class: 'v-row2' }, goalChip)),
         hint, zoom, prompt, stickGhost, stick, townBar, talkBox, fade);
       document.body.classList.add('village-open');
       loading.remove();
@@ -266,8 +337,10 @@ export function openVillage(o: {
         intro = h('div', { class: 'v-intro' }, h('div', { class: 'vi-card card pop-in' },
           h('div', { class: 'vi-head' }, doodleImg('village', '', 'dicon vi-logo'), h('div', null, h('h2', null, '마음 골목'), h('p', null, '라면을 끓여 준 손님들이 사는 마을이에요.'))),
           h('ul', null,
-            row('village', '불 켜진 집', '내가 라면을 끓여 준 손님 집이에요. 누르면 손님이 나와 뒷이야기를 들려줘요.'),
-            row('talk', '동네 주민', '머리 위에 표시가 뜬 주민에게 말을 걸어 봐요. 마음을 알아주면 마음 도장을 받아요.'),
+            row('village', '불 켜진 집', '라면을 끓여 준 손님 집이에요. 누르면 손님이 나와요. 골목을 산책하는 손님도 있어요.'),
+            row('talk', '동네 주민', '머리 위에 표시가 뜬 주민에게 말을 걸어요. 마음을 알아주면 마음 도장! 도장이 모이면 이어지는 미션이 열려요.'),
+            row('shopsit', '가게 봐 주기', '가게 주인이 자리를 비울 때 가게를 봐 줘요. 빵집·꽃집은 손님 셋, 다른 가게는 손님 하나예요.'),
+            row('notebook', '마음 수첩', '위쪽 마음 도장을 누르면 할 일과 미션이 한눈에 보여요.'),
             row('walk', '돌아다니기', PC ? '사장님 눈으로 걸어요. 화살표 키로 걷고, 끌어서 둘러봐요.' : '사장님 눈으로 걸어요. 왼쪽을 눌러 걷고, 오른쪽을 밀어 둘러봐요.')),
           h('div', { class: 'vi-btns' },
             h('button', { class: 'btn ghost small', onclick: () => { sfx.tap(); hideIntro(); } }, '전체 보기로 둘러보기'),
@@ -277,52 +350,99 @@ export function openVillage(o: {
       }
       showIntro();
 
-      // ── 심부름 안내 ──
+      // ── 할 일 안내 (심부름·미션) ──
+      const need = () => (task ? task.gets.filter((k) => !task!.got.includes(k)) : []);
+      const nearShop = () => {
+        const list = need().map((k) => shopOf(k)).filter((x): x is NonNullable<typeof x> => !!x);
+        const me = mode === 'walk' ? fp.pos : all.target;
+        list.sort((a, b) => Math.hypot(a.front.x - me.x, a.front.z - me.z) - Math.hypot(b.front.x - me.x, b.front.z - me.z));
+        return list[0] ?? null;
+      };
+      const nearTo = () => {
+        if (!task || !task.to.length) return null;
+        const me = mode === 'walk' ? fp.pos : all.target;
+        return [...task.to].sort((a, b) => npcs[a].ch.root.position.distanceTo(me) - npcs[b].ch.root.position.distanceTo(me))[0];
+      };
+      const taskLabel = () => {
+        if (!task) return '';
+        const sh = nearShop(), left = need().length;
+        if (sh) return task.gets.length > 1 ? `${sh.name}에서 받기 (${task.got.length}/${task.gets.length})` : `${sh.name}에서 ${task.item} 받기`;
+        const q = task.qid ? QUEST.get(task.qid)! : null;
+        if (q?.kind === 'mood') return `${josa(task.item, '을', '를')} 광장 모임에`;
+        const t = nearTo();
+        void left;
+        return `${josa(task.item, '을', '를')} ${t !== null ? FOLKS[t].name : ''}에게`;
+      };
       const drawGoal = () => {
-        if (!errand) { goalChip.hidden = true; shopMark.visible = false; return; }
-        const f = FOLKS[errand.npc], e = f.errand!, sh = shopOf(errand.shop);
+        if (!task) { goalChip.hidden = true; shopMark.visible = false; return; }
+        const sh = nearShop();
         goalChip.hidden = false;
-        goalIcon.replaceChildren(doodleImg(ITEM_DOODLE[errand.shop] as DoodleKind));
-        goalText.textContent = errand.got ? `${e.item}을(를) ${f.name}에게` : `${sh?.name ?? '가게'}에서 ${e.item} 받기`;
-        shopMark.visible = !errand.got && !!sh;
+        goalIcon.replaceChildren(doodleImg(sh ? (ITEM_DOODLE[sh.kind] as DoodleKind) : task.src === 'quest' ? (QUEST.get(task.qid!)!.kind === 'mood' ? 'group' : QUEST.get(task.qid!)!.kind === 'festival' ? 'party' : 'chain') : 'bang'));
+        goalText.textContent = taskLabel();
+        shopMark.visible = !!sh;
         if (sh) shopMark.position.copy(sh.front).setY(sh.front.y + 4.6);
       };
       const goalPos = () => {
-        if (!errand) return null;
-        if (errand.got) return npcs[errand.npc].ch.root.position;
-        return shopOf(errand.shop)?.front ?? null;
+        if (!task) return null;
+        const sh = nearShop();
+        if (sh) return sh.front;
+        const t = nearTo();
+        return t !== null ? npcs[t].ch.root.position : null;
       };
 
       // ── 마음 도장 ──
-      const award = (f: Folk) => {
+      const popStamp = (k: DoodleKind, title: string, line: string) => {
+        const pop = h('div', { class: 'v-stamp-pop' }, doodleImg(k, '', 'dicon sp'), h('b', null, title), h('span', null, line));
+        el.appendChild(pop);
+        setTimeout(() => pop.remove(), 1900);
+      };
+      const award = (f: Folk, line = `${f.name}의 마음을 알아주었어요`) => {
         if (done.has(f.id)) return;
+        const before = QUESTS.filter((q) => !qDone.has(q.id) && unlocked(q)).length;
         done.add(f.id); saveDone(o.owner.id, done); drawStamp();
         stampChip.classList.remove('bump'); void stampChip.offsetWidth; stampChip.classList.add('bump');
         sfx.heart();
-        const pop = h('div', { class: 'v-stamp-pop' }, doodleImg('stamp', '', 'dicon sp'), h('b', null, '마음 도장!'), h('span', null, `${f.name}의 마음을 알아주었어요`));
-        el.appendChild(pop);
-        setTimeout(() => pop.remove(), 1900);
+        popStamp('stamp', '마음 도장!', line);
+        const opened = QUESTS.filter((q) => !qDone.has(q.id) && unlocked(q));
+        if (opened.length > before) {
+          const q = opened.find((x) => x.need.includes(f.id) || (x.needStamps && done.size === x.needStamps)) ?? opened[opened.length - 1];
+          setTimeout(() => { sfx.pop(); toast(`새 미션 '${q.title}'${josa(q.title, '이', '가').slice(q.title.length)} 열렸어요! ${FOLKS[folkIndex(q.giver)].name}에게 가 보세요.`, 4000); }, 1500);
+        }
         if (done.size === FOLKS.length) setTimeout(() => { sfx.fanfare(); toast('동네 주민 모두에게 마음 도장을 받았어요! 마음 골목이 더 따뜻해졌어요.', 4200); }, 1200);
         refreshBadges();
       };
+      const finishQuest = (q: Quest) => {
+        qDone.add(q.id); qs.done = [...qDone]; qs.cur = undefined; saveQ(o.owner.id, qs);
+        task = null;
+        sfx.fanfare();
+        popStamp(q.kind === 'chain' ? 'chain' : q.kind === 'mood' ? 'group' : 'party', `${q.title} 끝!`, q.end);
+        setTimeout(() => toast(`${q.end} (이어지는 미션 ${qDone.size}/${QUESTS.length})`, 3600), 1500);
+        drawGoal(); refreshBadges();
+      };
 
       // ── 말 걸기 (대화창) ──
-      const say = (f: Folk, mood: FolkMood, text: string, buttons: (HTMLElement | null)[]) => {
+      // who: 말하는 주민(번호). 손님(산책)이 말할 때는 이름과 얼굴을 따로 넘겨요
+      const say = (f: Folk | { name: string; type?: string }, mood: FolkMood, text: string, buttons: (HTMLElement | null)[], who = talk!, tag?: string) => {
+        const ty = (f as Folk).type;
         talkBox.replaceChildren(
-          h('div', { class: 'vt-who' }, faceImg(MOOD_FACE[mood], '', 'hface vt-face'), h('b', null, f.name), h('span', null, f.type === 'feel' ? '마음 이야기' : f.type === 'errand' ? '부탁' : '동네 이야기')),
+          h('div', { class: 'vt-who' }, faceImg(MOOD_FACE[mood], '', 'hface vt-face'), h('b', null, f.name), h('span', null, tag ?? (ty === 'feel' ? '마음 이야기' : ty === 'errand' ? '부탁' : ty === 'shop' ? '가게 주인' : ty === 'chat' ? '동네 이야기' : '손님'))),
           h('p', { class: 'vt-line' }, text),
           h('div', { class: 'vt-btns' }, ...buttons));
-        const ch = npcs[talk!].ch;
+        const ch = people[who].ch;
         ch.setMood(MOOD_CHIBI[mood]); ch.talking = true; sfx.talk();
-        setTimeout(() => { if (talk !== null) npcs[talk].ch.talking = false; }, 900);
+        setTimeout(() => { ch.talking = false; }, 900);
       };
       const btn = (label: string, fn: () => void, cls = 'btn small') => h('button', { class: cls, onclick: () => { sfx.tap(); fn(); } }, label);
+      const holdFor = (i: number) => pinned.has(i) || (task?.src === 'errand' && task.npc === i);
       const closeTalk = () => {
         if (talk === null) return;
-        const n = npcs[talk];
-        n.ch.talking = false; n.ch.look = null; n.faceTo = null;
-        n.hold = errand?.npc === talk && !errand.got; // 심부름을 맡긴 주민은 그 자리에서 기다려요
-        if (!done.has(FOLKS[talk].id) && FOLKS[talk].type !== 'feel') n.ch.setMood('happy');
+        const n = people[talk];
+        n.ch.talking = false; n.ch.look = null; n.ch.play('idle');
+        if (talk < NN) {
+          n.faceTo = n.at ? meetFace.get(talk)?.clone() ?? null : null;
+          n.hold = holdFor(talk); // 심부름을 맡긴 주민·가게 주인은 그 자리에 있어요
+          if (!done.has(FOLKS[talk].id) && FOLKS[talk].type !== 'feel') n.ch.setMood('happy');
+        } else { n.faceTo = null; n.hold = false; n.ch.setMood('happy'); }
         talk = null; talkBox.hidden = true; el.classList.remove('talking');
         faceYaw = facePitch = null;
         drawGoal(); refreshBadges();
@@ -350,9 +470,133 @@ export function openVillage(o: {
           if (last) { award(f); closeTalk(); } else { chatStep.set(i, k + 1); chatStepAt(i, f, k + 1); }
         })]);
       };
+      const busyLine = (f: Folk) => `${f.hello} …아, 지금은 다른 일을 하는 중이군요. 그거 먼저 끝내고 와 줄래요?`;
+      // 미션 받기
+      const offer = (i: number, q: Quest) => {
+        const f = FOLKS[i], n = npcs[i];
+        n.ch.play('wave');
+        const tag = q.kind === 'chain' ? '이어지는 심부름' : q.kind === 'mood' ? '마음 모으기' : '동네 잔치';
+        say(f, 'happy', q.ask, [
+          btn('좋아, 할게!', () => {
+            task = questTask(q, 0); qs.cur = { id: q.id, step: 0 }; saveQ(o.owner.id, qs);
+            if (q.kind === 'mood') gather(q, true);
+            n.ch.play('cheer'); sfx.pop();
+            closeTalk();
+            toast(`미션 '${q.title}' 시작! ${taskLabel()}`, 3400);
+          }),
+          btn('다음에 할게', () => closeTalk(), 'btn small ghost')], i, tag);
+        talkBox.prepend(h('div', { class: 'vt-note' }, `새 미션: ${q.title}`));
+      };
+      // 미션 단계 건네기
+      const deliverQuest = (i: number) => {
+        const q = QUEST.get(task!.qid!)!, st = q.tasks[task!.step], f = FOLKS[i], n = npcs[i];
+        n.ch.play('cheer');
+        const last = task!.step >= q.tasks.length - 1;
+        if (!last) {
+          say(f, 'happy', st.say, [btn('좋아, 전해 줄게!', () => {
+            const next = task!.step + 1;
+            task = questTask(q, next); qs.cur = { id: q.id, step: next }; saveQ(o.owner.id, qs);
+            closeTalk(); sfx.pop(); toast(taskLabel(), 3000);
+          })], i, q.title);
+          return;
+        }
+        if (q.kind === 'mood') { say(f, 'happy', st.say, [btn('모임 시작!', () => meeting(q, 0))], i, q.title); return; }
+        if (q.kind === 'festival') { say(f, 'happy', st.say, [btn('잔치 시작!', () => { closeTalk(); void festival(q); })], i, q.title); return; }
+        say(f, 'happy', st.say, [btn('천만에!', () => { closeTalk(); finishQuest(q); })], i, q.title);
+      };
+      // 마음 모으기 모임: 셋이 차례로 말하고, 함께 고민에 답해요
+      const meeting = (q: Quest, k: number) => {
+        const lines = q.meet ?? [];
+        if (k < lines.length) {
+          const [id, text] = lines[k].split('|'), i = folkIndex(id);
+          npcs[i].ch.play('talk');
+          say(FOLKS[i], 'neutral', text, [btn(k === lines.length - 1 ? '그랬구나…' : '응응', () => meeting(q, k + 1))], i, q.title);
+          return;
+        }
+        const i0 = folkIndex(q.giver), qu = q.question!;
+        say(FOLKS[i0], 'worried', qu.say, qu.opts.map((op) => btn(op.text, () => {
+          const grp = (q.group ?? []).map(folkIndex);
+          if (op.good) {
+            grp.forEach((gi) => npcs[gi].ch.play('cheer'));
+            say(FOLKS[i0], 'happy', op.reply, [btn('멋진 모임이야!', () => { closeTalk(); gather(q, false); finishQuest(q); })], i0, q.title);
+          } else {
+            grp.forEach((gi) => npcs[gi].ch.play('think'));
+            say(FOLKS[i0], 'sad', op.reply, [btn('다시 생각해 볼게', () => meeting(q, lines.length), 'btn small ghost')], i0, q.title);
+            talkBox.prepend(h('div', { class: 'vt-note soft' }, '우리가 위로받았던 말을 떠올려 볼까요?'));
+          }
+        }, 'btn small ghost vt-opt')), i0, q.title);
+      };
+      // 동네 잔치: 모두 광장에 모여 깃발과 초롱을 달고 함께 춤춰요
+      let partyT = 0, danceT = 0;
+      const festival = async (q: Quest) => {
+        busy = true; goal = null; onArrive = null; keys.clear();
+        fade.classList.add('on');
+        await new Promise((r2) => setTimeout(r2, 320));
+        vil.festival.visible = true;
+        const c = vil.plaza;
+        const crowd = people.map((_, i) => i).filter((i) => i !== folkIndex(q.giver));
+        // 사장님이 서는 쪽(남쪽)은 비워 두고 반원보다 넓게 둘러서요
+        crowd.forEach((i, k) => {
+          const a = Math.PI / 2 + 0.7 + (k / Math.max(1, crowd.length - 1)) * (Math.PI * 2 - 1.4), r = vil.plazaR - 1.2 - (k % 2) * 1.8;
+          const n = people[i]; n.at = c.clone().add(V(Math.cos(a) * r, 0, Math.sin(a) * r)); n.faceTo = c.clone(); n.hold = true;
+          n.ch.root.position.copy(n.at).setY(vil.standY(n.at.x, n.at.z, n.ch));
+        });
+        const hi = folkIndex(q.giver), host = npcs[hi];
+        host.at = c.clone().add(V(0, 0, 4.2)); host.faceTo = c.clone().add(V(0, 0, 12)); host.hold = true;
+        host.ch.root.position.copy(host.at).setY(vil.standY(host.at.x, host.at.z, host.ch));
+        if (mode === 'walk') { fp.pos.set(c.x, 0, c.z + 9.2); fp.y = vil.walkY(fp.pos.x, fp.pos.z); fp.yaw = Math.PI; fp.pitch = -0.06; cur.pos.copy(eye()); faceYaw = facePitch = null; }
+        else { all.target.copy(c); all.dist = 30; all.yaw = 0; }
+        fade.classList.remove('on');
+        sfx.fanfare();
+        partyT = 14;
+        const conf = h('div', { class: 'confetti v-party' });
+        for (let k = 0; k < 60; k++) conf.appendChild(h('i', { style: `left:${Math.random() * 100}%;animation-delay:${Math.random() * 2.4}s;background:${['#E3645A', '#F6CF3E', '#47AE7A', '#6FB3E0', '#A68BD6', '#F0974A'][k % 6]}` }));
+        el.appendChild(conf);
+        setTimeout(() => conf.remove(), 9000);
+        talk = hi; talkBox.hidden = false; el.classList.add('talking');
+        const lines = ['여러분, 다 모였나요? 오늘은 마음 골목 잔치 날이에요!', '슬플 때 토닥여 주고, 화날 때 기다려 주고, 걱정될 때 곁에 있어 준 이웃들 덕분이에요.', '그리고 우리 마음을 하나하나 알아준 라면 가게 사장님, 고마워요! 자, 다 같이 딩동딩동!'];
+        const step = (k: number) => {
+          host.ch.play(k === lines.length - 1 ? 'cheer' : 'talk');
+          say(FOLKS[hi], 'happy', lines[k], [btn(k === lines.length - 1 ? '딩동딩동! 🎉' : '와아!', () => {
+            if (k < lines.length - 1) { sfx.heart(); step(k + 1); return; }
+            busy = false;
+            closeTalk(); finishQuest(q);
+          })], hi, '동네 잔치');
+        };
+        step(0);
+      };
+      // 잔치가 끝나면: 춤은 멈추고, 사장님이 광장을 떠나면 모두 제자리로 돌아가요 (눈앞에서 갑자기 사라지지 않게)
+      let partyStay = false;
+      const endParty = () => {
+        partyStay = false;
+        people.forEach((n, i) => { n.ch.play('idle'); n.ch.bounce = 0; n.at = null; n.faceTo = null; n.hold = i < NN && holdFor(i); });
+        // 가게 주인은 다시 가게 앞으로
+        FOLKS.forEach((f, i) => {
+          const kind = (f.type === 'shop' && f.sit ? f.sit.kind : f.stand) as ShopKind | undefined;
+          const sh = kind ? shopOf(kind) : null;
+          if (!sh) return;
+          const fwd = V(Math.sin(sh.yaw), 0, Math.cos(sh.yaw)), side = V(Math.cos(sh.yaw), 0, -Math.sin(sh.yaw));
+          npcs[i].at = sh.front.clone().addScaledVector(fwd, -1.9).addScaledVector(side, -1.7);
+          npcs[i].faceTo = sh.front.clone().addScaledVector(fwd, 3); npcs[i].hold = true;
+        });
+        // 모임 중인 미션이 있으면 다시 모임 자리로
+        const q = task?.qid ? QUEST.get(task.qid) : null;
+        if (q?.kind === 'mood') gather(q, true);
+      };
+      // 산책하는 손님: 라면을 먹은 뒤의 이야기를 들려줘요
+      const walkerTalk = (w: number) => {
+        const j = w - NN, sp = vil.houses[walkers[j].house], c = o.customer(sp.h.id), r = best.get(sp.h.id);
+        if (!c) { closeTalk(); return; }
+        const L = LATER[sp.h.id], lines = (r && r.stars >= 3 ? L.good : L.okay).map((x) => x.replace(/^@1\s+/, ''));
+        const step = (k: number) => {
+          people[w].ch.play(k === 0 ? 'wave' : 'talk');
+          say({ name: c.name }, 'happy', lines[k], [btn(k >= lines.length - 1 ? '또 만나요!' : '응응', () => { if (k >= lines.length - 1) closeTalk(); else step(k + 1); })], w, '산책하는 손님');
+        };
+        step(0);
+      };
       const openTalk = (i: number) => {
         if (busy || talk !== null) return;
-        const f = FOLKS[i], n = npcs[i];
+        const n = people[i];
         goal = null; onArrive = null;
         talk = i; n.hold = true;
         const meP = mode === 'walk' ? eye() : cur.pos.clone();
@@ -360,61 +604,168 @@ export function openVillage(o: {
         if (mode === 'walk') turnTo(n.ch.root.position, n.ch.root.position.y + 0.7); // 얼굴이 대화창 위에 오게 몸 아래쪽을 겨눠요
         else { all.target.copy(n.ch.root.position).setY(n.ch.root.position.y); all.dist = 14; }
         talkBox.hidden = false; el.classList.add('talking'); prompt.hidden = true;
-        if (done.has(f.id) && !(errand?.npc === i)) { n.ch.play('wave'); say(f, 'happy', f.done, [btn('또 만나요!', () => closeTalk())]); return; }
-        if (f.type === 'feel') {
-          n.ch.play('worry');
-          say(f, f.feel!.mood, f.hello, [btn('무슨 일 있어?', () => feelStep(i, f))]);
-        } else if (f.type === 'chat') {
-          n.ch.play('wave');
-          const k = chatStep.get(i) ?? 0;
-          if (k === 0) say(f, 'happy', f.hello, [btn('안녕!', () => chatStepAt(i, f, 0))]);
-          else chatStepAt(i, f, k);
-        } else {
-          const e = f.errand!;
-          if (errand && errand.npc === i) {
-            if (errand.got) {
-              n.ch.play('cheer');
-              say(f, 'happy', e.thanks, [btn('천만에!', () => closeTalk())]);
-              errand = null; award(f);
-            } else say(f, 'neutral', e.waiting, [btn('알았어, 다녀올게!', () => closeTalk())]);
-          } else if (errand) {
-            say(f, 'neutral', `${f.hello} …아, 지금은 다른 심부름 중이군요. 그거 먼저 끝내고 와 줄래요?`, [btn('알았어!', () => closeTalk())]);
-          } else {
-            n.ch.play('wave');
-            say(f, 'neutral', f.hello, [btn('무슨 부탁인데?', () => {
-              n.ch.play('think');
-              say(f, 'worried', e.ask, [
-                btn('좋아, 다녀올게!', () => { errand = { npc: i, shop: e.shop, got: false }; n.ch.play('cheer'); n.ch.setMood('happy'); toast(e.waiting, 3200); closeTalk(); }),
-                btn('다음에 할게', () => closeTalk(), 'btn small ghost')]);
-            })]);
+        if (i >= NN) { walkerTalk(i); return; }
+        const f = FOLKS[i];
+        // 1) 지금 하는 일의 받을 사람이면 건네기
+        if (task && task.to.includes(i)) {
+          if (need().length) {
+            const sh = nearShop();
+            say(f, 'neutral', `${sh?.name ?? '가게'}에서 ${task.gets.length > 1 ? '준비물을 다' : josa(task.item, '을', '를')} 받아 와 줄래요? 기다릴게요!`, [btn('알았어, 다녀올게!', () => closeTalk())]);
+            return;
           }
+          if (task.src === 'errand') {
+            const e = f.errand!;
+            n.ch.play('cheer');
+            say(f, 'happy', e.thanks, [btn('천만에!', () => closeTalk())]);
+            task = null; award(f);
+            return;
+          }
+          deliverQuest(i);
+          return;
         }
+        // 2) 가게 주인: 가게 봐 주기
+        if (f.type === 'shop' && f.sit) {
+          const sk = f.sit.kind, rec = shopRec[sk];
+          n.ch.play('wave');
+          const ask = () => { n.ch.play('think'); say(f, 'worried', f.sit!.ask, [
+            o.shopSit ? btn('좋아요, 맡겨 주세요!', () => sit(i, sk)) : null,
+            btn('다음에요', () => closeTalk(), 'btn small ghost')]); };
+          if (!o.shopSit) { say(f, 'neutral', `${f.hello} …아, 지금은 라면 가게에 손님이 기다리고 있군요. 다음에 꼭 부탁해요!`, [btn('알았어요!', () => closeTalk())]); return; }
+          if (rec?.times) say(f, 'happy', `${f.sit.again} (지금까지 ${rec.times}번, 가장 많이 받은 별 ${rec.best}개)`, [btn('좋아요, 맡겨 주세요!', () => sit(i, sk)), btn('다음에요', () => closeTalk(), 'btn small ghost')]);
+          else say(f, 'neutral', f.hello, [btn('무슨 일이에요?', ask)]);
+          return;
+        }
+        // 3) 아직 마음 도장을 못 받은 주민: 자기 이야기
+        if (!done.has(f.id)) {
+          if (f.type === 'feel') {
+            n.ch.play('worry');
+            say(f, f.feel!.mood, f.hello, [btn('무슨 일 있어?', () => feelStep(i, f))]);
+          } else if (f.type === 'chat') {
+            n.ch.play('wave');
+            const k = chatStep.get(i) ?? 0;
+            if (k === 0) say(f, 'happy', f.hello, [btn('안녕!', () => chatStepAt(i, f, 0))]);
+            else chatStepAt(i, f, k);
+          } else {
+            const e = f.errand!;
+            if (task?.src === 'errand' && task.npc === i) say(f, 'neutral', e.waiting, [btn('알았어, 다녀올게!', () => closeTalk())]);
+            else if (task) say(f, 'neutral', busyLine(f), [btn('알았어!', () => closeTalk())]);
+            else {
+              n.ch.play('wave');
+              say(f, 'neutral', f.hello, [btn('무슨 부탁인데?', () => {
+                n.ch.play('think');
+                say(f, 'worried', e.ask, [
+                  btn('좋아, 다녀올게!', () => { task = { src: 'errand', npc: i, step: 0, gets: [e.shop], got: [], item: e.item, to: [i] }; n.ch.play('cheer'); n.ch.setMood('happy'); toast(e.waiting, 3200); closeTalk(); }),
+                  btn('다음에 할게', () => closeTalk(), 'btn small ghost')]);
+              })]);
+            }
+          }
+          return;
+        }
+        // 4) 새로 열린 미션
+        const q = offerOf(i);
+        if (q) {
+          if (task) { say(f, 'neutral', `${f.hello} 부탁하고 싶은 게 있는데… 지금 하는 일을 먼저 끝내고 와 줄래요?`, [btn('알았어!', () => closeTalk())]); return; }
+          offer(i, q);
+          return;
+        }
+        // 5) 내가 준 미션을 하는 중
+        if (task?.src === 'quest' && task.npc === i) { n.ch.play('wave'); say(f, 'happy', `부탁한 미션 잘 부탁해요! 지금은 ${taskLabel()}.`, [btn('응, 하는 중이야!', () => closeTalk())]); return; }
+        n.ch.play('wave'); say(f, 'happy', f.done, [btn('또 만나요!', () => closeTalk())]);
       };
-      const takeItem = () => {
-        if (!errand || errand.got) return;
-        const sh = shopOf(errand.shop), e = FOLKS[errand.npc].errand!;
-        errand.got = true; sfx.pop();
-        toast(`${sh?.name ?? '가게'}에서 ${e.item}을(를) 받았어요. ${FOLKS[errand.npc].name}에게 가져다줘요!`, 3000);
+      const takeItem = (kind?: ShopKind) => {
+        if (!task) return;
+        const k = kind ?? need()[0];
+        if (!k || !need().includes(k)) return;
+        const sh = shopOf(k);
+        task.got.push(k); sfx.pop();
+        const left = need().length;
+        const item = task.gets.length > 1 ? `${sh?.name.split(' ').pop() ?? ''} 준비물` : task.item;
+        const t = nearTo();
+        toast(left ? `${sh?.name ?? '가게'}에서 ${josa(item, '을', '를')} 받았어요. 남은 가게 ${left}곳!` : `${sh?.name ?? '가게'}에서 ${josa(item, '을', '를')} 받았어요. ${QUEST.get(task.qid ?? '')?.kind === 'mood' ? '광장 모임' : t !== null ? FOLKS[t].name : ''}에게 가져다줘요!`, 3000);
         drawGoal(); refreshBadges();
+      };
+      // 가게 봐 주기: 골목을 잠깐 숨기고 가게 안으로 들어가요. 끝나면 그 자리로 돌아와요
+      let sitting = false;
+      const sit = async (i: number, kind: CraftKind) => {
+        if (!o.shopSit || sitting) return;
+        closeTalk();
+        sitting = true; busy = true; keys.clear(); goal = null; onArrive = null;
+        sfx.door();
+        fade.classList.add('on');
+        await new Promise((r2) => setTimeout(r2, 300));
+        el.style.display = 'none'; document.body.classList.remove('village-open'); o.setWorld(null);
+        fade.classList.remove('on');
+        let r: { stars: number[] } | null = null;
+        try { r = await o.shopSit(kind); } catch (e) { console.error('[shop-sit]', e); }
+        o.setWorld(world); el.style.display = ''; document.body.classList.add('village-open');
+        sitting = false; busy = false;
+        if (r && r.stars.length) {
+          const total = r.stars.reduce((a, b) => a + b, 0);
+          const rec = shopRec[kind] ?? { best: 0, times: 0 };
+          rec.best = Math.max(rec.best, total); rec.times++; shopRec[kind] = rec; saveShop(o.owner.id, shopRec);
+          award(FOLKS[i], `${josa(CRAFT[kind].shop, '을', '를')} 잘 봐 주었어요`);
+          toast(`${josa(CRAFT[kind].shop, '을', '를')} 봐 주고 별 ${total}개를 받았어요!`, 3200);
+          refreshBadges();
+        }
       };
       const tapNpc = (i: number) => {
         if (talk !== null || busy) return;
         sfx.tap();
         if (mode === 'all') { openTalk(i); return; }
-        const p = npcs[i].ch.root.position;
+        const p = people[i].ch.root.position;
         if (Math.hypot(p.x - fp.pos.x, p.z - fp.pos.z) <= TALK_R + 0.6) { openTalk(i); return; }
-        npcs[i].hold = true; // 걸어가는 동안 기다려 줘요
+        people[i].hold = true; // 걸어가는 동안 기다려 줘요
         goal = p.clone(); onArrive = () => openTalk(i);
       };
       const tapShop = (hit: THREE.Object3D) => {
         const kind = hit.userData.shopKind as ShopKind;
-        if (errand && !errand.got && errand.shop === kind) {
+        if (need().includes(kind)) {
           const sh = shopOf(kind)!;
-          if (mode === 'all' || Math.hypot(sh.front.x - fp.pos.x, sh.front.z - fp.pos.z) <= SHOP_R + 1) { takeItem(); return; }
-          sfx.tap(); goal = sh.front.clone(); onArrive = takeItem; return;
+          if (mode === 'all' || Math.hypot(sh.front.x - fp.pos.x, sh.front.z - fp.pos.z) <= SHOP_R + 1) { takeItem(kind); return; }
+          sfx.tap(); goal = sh.front.clone(); onArrive = () => takeItem(kind); return;
         }
         sfx.tap(); toast(hit.userData.shopLine);
       };
+
+      // ── 마음 수첩: 주민 도장과 이어지는 미션을 한눈에 ──
+      let book: HTMLElement | null = null;
+      const hideBook = () => { if (!book) return; const b = book; book = null; b.classList.add('out'); setTimeout(() => b.remove(), 200); };
+      const guideTo = (i: number) => {
+        hideBook();
+        if (mode === 'all') { const p = npcs[i].ch.root.position; all.target.set(p.x, p.y, p.z); all.dist = 22; return; }
+        tapNpc(i);
+      };
+      function showBook() {
+        if (book || busy) return;
+        if (talk !== null) closeTalk();
+        const typeIc = (f: Folk): DoodleKind => (f.type === 'feel' ? 'worry' : f.type === 'chat' ? 'talk' : f.type === 'shop' ? 'shopsit' : 'bang');
+        const folkCards = FOLKS.map((f, i) => h('button', { class: 'vb-folk' + (done.has(f.id) ? ' on' : ''), onclick: () => { sfx.tap(); guideTo(i); } },
+          doodleImg(done.has(f.id) ? 'stamp' : typeIc(f)), h('span', null, f.name)));
+        const qRow = (q: Quest) => {
+          const gi = folkIndex(q.giver), doing = task?.qid === q.id, fin = qDone.has(q.id), open = unlocked(q);
+          const state = fin ? '끝!' : doing ? '하는 중' : open ? '할 수 있어요' : '잠김';
+          const text = fin ? q.end : doing ? taskLabel() : open ? (done.has(FOLKS[gi].id) ? `${FOLKS[gi].name}에게 가 보세요.` : `먼저 ${FOLKS[gi].name}의 이야기를 들어 주세요.`) : q.hint;
+          const prog = !fin && !open ? (q.needStamps ? ` (${done.size}/${q.needStamps})` : ` (${q.need.filter((id) => done.has(id)).length}/${q.need.length})`) : '';
+          return h('li', { class: 'vb-q ' + (fin ? 'fin' : doing ? 'doing' : open ? 'open' : 'lock') },
+            doodleImg(q.kind === 'chain' ? 'chain' : q.kind === 'mood' ? 'group' : 'party'),
+            h('div', null, h('b', null, q.title, h('em', null, state)), h('span', null, text + prog)),
+            !fin && (open || doing) ? h('button', { class: 'btn small ghost', onclick: () => {
+              sfx.tap();
+              if (doing) { const gp = goalPos(); hideBook(); if (gp) { if (mode === 'all') { all.target.copy(gp); all.dist = 24; } else { const sh = nearShop(); if (sh) { goal = sh.front.clone(); onArrive = () => takeItem(sh.kind); } else { const t = nearTo(); if (t !== null) tapNpc(t); } } } }
+              else guideTo(gi);
+            } }, '찾아가기') : null);
+        };
+        book = h('div', { class: 'v-intro v-book' }, h('div', { class: 'vi-card card pop-in' },
+          h('div', { class: 'vi-head' }, doodleImg('notebook', '', 'dicon vi-logo'), h('div', null, h('h2', null, '마음 수첩'), h('p', null, `마음 도장 ${done.size}/${FOLKS.length} · 이어지는 미션 ${qDone.size}/${QUESTS.length}`))),
+          task ? h('div', { class: 'vb-now' }, doodleImg('bang'), h('span', null, `지금 할 일: ${taskLabel()}`)) : null,
+          h('h3', null, '이어지는 미션'),
+          h('ul', { class: 'vb-qs' }, ...QUESTS.map(qRow)),
+          h('h3', null, '동네 주민 (누르면 찾아가요)'),
+          h('div', { class: 'vb-folks' }, ...folkCards),
+          h('div', { class: 'vi-btns' }, h('button', { class: 'btn small', onclick: () => { sfx.tap(); hideBook(); } }, '닫기'))));
+        book.addEventListener('click', (e) => { if (e.target === book) hideBook(); });
+        el.appendChild(book);
+      }
 
       // ── 손가락·마우스 ──
       const ray = new THREE.Raycaster();
@@ -425,12 +776,12 @@ export function openVillage(o: {
       const STICK_R = 52;
       const tapAt = (x: number, y: number) => {
         ray.setFromCamera(ndc(x, y), cam);
-        const hn = ray.intersectObjects(npcs.map((n) => n.hit), false)[0];
+        const hn = ray.intersectObjects(people.map((n) => n.hit), false)[0];
         const hh = ray.intersectObjects(vil.hits, false)[0];
         const hs = ray.intersectObjects(vil.shopHits, false)[0];
         const hg = ray.intersectObject(vil.ground, false)[0];
         const near = (d: number | undefined, ...others: (THREE.Intersection | undefined)[]) => d !== undefined && others.every((x2) => !x2 || d < x2.distance + 1.2);
-        if (hn && near(hn.distance, hh, hs, hg)) { tapNpc(hn.object.userData.npc as number); return; }
+        if (hn && near(hn.distance, hh, hs, hg)) { const u = hn.object.userData; tapNpc(u.walker !== undefined ? NN + (u.walker as number) : (u.npc as number)); return; }
         if (hs && near(hs.distance, hh, hg)) { tapShop(hs.object); return; }
         if (hh && near(hh.distance, hg)) { tapHouse(hh.object.userData.house); return; }
         if (hg && mode === 'walk') {
@@ -439,6 +790,7 @@ export function openVillage(o: {
         } else if (hg && mode === 'all') { all.target.copy(hg.point).setY(0); clampT(all.target); }
       };
       touch.addEventListener('pointerdown', (e) => {
+        newsBox.open = false;
         touch.setPointerCapture(e.pointerId);
         const isStick = mode === 'walk' && e.pointerType !== 'mouse' && stickV.id < 0 && e.clientX < innerWidth * 0.5 && talk === null;
         pts.set(e.pointerId, { x: e.clientX, y: e.clientY, x0: e.clientX, y0: e.clientY, t0: performance.now(), stick: isStick });
@@ -508,10 +860,12 @@ export function openVillage(o: {
       const MOVE_KEYS = ['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'KeyW', 'KeyA', 'KeyS', 'KeyD'];
       const onKey = (e: KeyboardEvent) => {
         if (e.type === 'keyup') { keys.delete(e.code); return; }
+        if (sitting) return;
         const t = e.target as HTMLElement | null;
         if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return;
         if (document.querySelector('.modal-wrap')) { keys.clear(); return; } // 손님 이야기 창이 열려 있으면 쉬어요
         if (intro) { if (['Enter', 'Space', 'Escape'].includes(e.code) || MOVE_KEYS.includes(e.code)) { e.preventDefault(); hideIntro(); if (MOVE_KEYS.includes(e.code)) setMode('walk'); } return; }
+        if (book) { if (e.code === 'Escape' || e.code === 'Enter') { e.preventDefault(); hideBook(); } keys.clear(); return; }
         if (MOVE_KEYS.includes(e.code)) {
           e.preventDefault();
           if (talk !== null) return;
@@ -532,7 +886,7 @@ export function openVillage(o: {
       const tryMove = (nx: number, nz: number) => {
         const a = fp.pos;
         // 주민 몸을 뚫고 지나가지 않게 (가까워지는 쪽으로는 못 가요)
-        for (const n of npcs) {
+        for (const n of people) {
           const p = n.ch.root.position, d1 = (p.x - nx) ** 2 + (p.z - nz) ** 2;
           if (d1 < 0.85 * 0.85 && d1 < (p.x - a.x) ** 2 + (p.z - a.z) ** 2) return false;
         }
@@ -580,7 +934,7 @@ export function openVillage(o: {
               } else {
                 goal = null; onArrive = null;
                 if (vil.inWater(fp.pos.x + (d.x / L), fp.pos.z + (d.z / L))) toast('냇물은 다리로 건너요');
-                npcs.forEach((n, i) => { if (n.hold && talk !== i && errand?.npc !== i) n.hold = false; });
+                people.forEach((n, i) => { if (n.hold && !n.at && talk !== i && !holdFor(i)) n.hold = false; });
               }
             }
           }
@@ -608,9 +962,25 @@ export function openVillage(o: {
           b.position.set(p.x, p.y + 1.75 * sc + 0.25 + Math.sin(performance.now() / 380 + i) * 0.06, p.z);
           b.scale.setScalar(Math.min(4.5, Math.max(0.55, d * (mode === 'all' ? 0.045 : 0.03))));
           const show = mode === 'walk' ? d < 85 : all.dist < 130 || d < 140;
-          n.ch.root.visible = show || talk === i || errand?.npc === i;
-          b.visible = talk !== i && (n.ch.root.visible || errand?.npc === i || mode === 'all');
+          const key = !!task && (task.to.includes(i) || task.npc === i);
+          n.ch.root.visible = show || talk === i || key || partyT > 0 || partyStay;
+          b.visible = talk !== i && partyT <= 0 && (n.ch.root.visible || key || mode === 'all');
         });
+        walkers.forEach((w, j) => {
+          const d = camP.distanceTo(w.ch.root.position);
+          w.ch.root.visible = (mode === 'walk' ? d < 85 : all.dist < 130 || d < 140) || talk === NN + j || partyT > 0 || partyStay;
+        });
+        // 잔치: 연설이 끝나면 한동안 다 같이 춤추다가 다시 제자리로
+        if (partyT > 0 && talk === null) {
+          partyT -= dt;
+          danceT -= dt;
+          if (danceT <= 0) { danceT = 0.9; const n = people[Math.floor(Math.random() * people.length)]; n.ch.play(Math.random() < 0.5 ? 'cheer' : 'clap'); n.ch.bounce = 1; setTimeout(() => { n.ch.bounce = 0; }, 1600); }
+          if (partyT <= 0) { partyStay = true; people.forEach((n) => { n.ch.play('idle'); n.ch.bounce = 0; }); }
+        }
+        if (partyStay && talk === null && !busy) {
+          const me = mode === 'walk' ? fp.pos : all.target;
+          if (Math.hypot(me.x - vil.plaza.x, me.z - vil.plaza.z) > 34 || (mode === 'all' && all.dist > 110)) endParty();
+        }
         meMark.visible = mode === 'all';
         if (meMark.visible) { meMark.position.set(fp.pos.x, fp.y + 1.2 + cam.position.distanceTo(fp.pos) * 0.03, fp.pos.z); meMark.scale.setScalar(Math.min(7, Math.max(1.2, cam.position.distanceTo(fp.pos) * 0.05))); }
         if (shopMark.visible) {
@@ -622,17 +992,17 @@ export function openVillage(o: {
         promptAct = null;
         if (mode === 'walk' && talk === null && !busy) {
           let bi = -1, bd = TALK_R;
-          npcs.forEach((n, i) => {
+          people.forEach((n, i) => {
             const p = n.ch.root.position, dx = p.x - fp.pos.x, dz = p.z - fp.pos.z, d = Math.hypot(dx, dz);
             if (d < bd && (Math.sin(fp.yaw) * dx + Math.cos(fp.yaw) * dz) / Math.max(0.01, d) > 0.25) { bd = d; bi = i; }
           });
-          const sh = errand && !errand.got ? shopOf(errand.shop) : null;
-          if (sh && Math.hypot(sh.front.x - fp.pos.x, sh.front.z - fp.pos.z) < SHOP_R) {
-            promptAct = takeItem;
-            setPrompt(ITEM_DOODLE[errand!.shop] as DoodleKind, `${FOLKS[errand!.npc].errand!.item} 받기`);
+          const sh = need().map((k) => shopOf(k)).find((x) => x && Math.hypot(x.front.x - fp.pos.x, x.front.z - fp.pos.z) < SHOP_R);
+          if (sh) {
+            promptAct = () => takeItem(sh.kind);
+            setPrompt(ITEM_DOODLE[sh.kind] as DoodleKind, task!.gets.length > 1 ? `${sh.name}에서 받기` : `${task!.item} 받기`);
           } else if (bi >= 0) {
             const k = bi; promptAct = () => openTalk(k);
-            setPrompt('talk', `${FOLKS[bi].name}에게 말 걸기`);
+            setPrompt('talk', k < NN ? `${FOLKS[k].name}에게 말 걸기` : `${o.customer(vil.houses[walkers[k - NN].house].h.id)?.name ?? '손님'}에게 인사하기`);
           }
         }
         prompt.hidden = !promptAct;
@@ -645,10 +1015,12 @@ export function openVillage(o: {
           goalDist.textContent = `${Math.round(Math.hypot(gp.x - (mode === 'walk' ? fp.pos.x : all.target.x), gp.z - (mode === 'walk' ? fp.pos.z : all.target.z)))}m`;
         }
         if (mode === 'walk') {
-          const tn = talk !== null ? npcs[talk].ch.root.position : null;
+          const tn = talk !== null ? people[talk].ch.root.position : null;
           world.dof.focus = tn ? cam.position.distanceTo(tn) : 9; world.dof.range = tn ? 4 : 16; world.dof.amount = tn ? 0.4 : 0.18;
         } else { const fd = cur.pos.distanceTo(cur.look); world.dof.focus = fd; world.dof.range = fd * 0.42; world.dof.amount = 0.9; }
         look.rays = mode === 'walk' ? 0.7 : 0.22;
+        // 걸어 다닐 때는 종이 결과 화면 얼룩을 옅게 (가까운 땅이 얼룩져 보이지 않게)
+        look.paper = mode === 'walk' ? 0.5 : 0.8; look.blot = mode === 'walk' ? 0.15 : 0.6;
       };
       let toastCool = 0;
       let promptKey = '';
@@ -660,7 +1032,7 @@ export function openVillage(o: {
       }
       o.setWorld(world);
       // 점검용 (개발 중에만)
-      if (import.meta.env.DEV) (window as unknown as { __village: unknown }).__village = { vil, cam, fp, setMode, all, openTalk, closeTalk, tapNpc, takeItem, get errand() { return errand; }, get talk() { return talk; }, done, keys, stickV, jumpTo, shops: SHOPS };
+      if (import.meta.env.DEV) (window as unknown as { __village: unknown }).__village = { vil, cam, fp, setMode, all, openTalk, closeTalk, tapNpc, takeItem, get task() { return task; }, get talk() { return talk; }, done, qDone, qs, keys, stickV, jumpTo, shops: SHOPS, showBook, hideBook, people, walkers, offerOf, finishQuest, festival: (id = 'q-festival') => festival(QUEST.get(id)!), award: (i: number) => award(FOLKS[i]) };
       function close() {
         if (busy) return;
         if (talk !== null) closeTalk();

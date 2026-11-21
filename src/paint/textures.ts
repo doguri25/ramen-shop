@@ -139,32 +139,35 @@ export function villageCanvas() {
   return c;
 }
 
-export function signCanvas() {
+export function signCanvas(main = '마음라면', small = '후루룩', color = '#C2560E') {
   const w = 1024, h = 320, c = makeCanvas(w, h), g = ctx2d(c), rnd = seeded(31);
   const wood = woodCanvas('#B9845A', 9, 3, w, h);
   g.drawImage(wood, 0, 0);
   wash(g, () => { g.beginPath(); g.roundRect(14, 14, w - 28, h - 28, 26); }, '#FFF4E6', rnd, { layers: 3, alpha: 0.55, edge: 0.4 });
-  g.fillStyle = '#C2560E';
+  g.fillStyle = color;
   g.font = `150px ${FONT_H}`; g.textAlign = 'center'; g.textBaseline = 'middle';
-  g.globalAlpha = 0.92; g.fillText('마음라면', w / 2 + 30, h / 2 + 18);
+  // 긴 가게 이름(아이스크림 등)은 왼쪽 작은 글씨와 겹치지 않게 줄여서 오른쪽으로 (마음라면은 그대로)
+  let fs = 150, cx = w / 2 + 30;
+  if (g.measureText(main).width > 620) { while (fs > 70 && g.measureText(main).width > 640) { fs -= 6; g.font = `${fs}px ${FONT_H}`; } cx = w / 2 + 100; }
+  g.globalAlpha = 0.92; g.fillText(main, cx, h / 2 + 18);
   g.globalAlpha = 1;
   g.fillStyle = '#5A3A28'; g.font = `54px ${FONT_H}`;
-  g.fillText('후루룩', 170, h / 2 + 10);
+  g.fillText(small, 170, h / 2 + 10);
   // 김 모양
-  for (let i = 0; i < 3; i++) inkLine(g, [[110 + i * 40, 90], [120 + i * 40, 70], [105 + i * 40, 52], [118 + i * 40, 34]], '#C2560E', 6, rnd, 0.7);
+  for (let i = 0; i < 3; i++) inkLine(g, [[110 + i * 40, 90], [120 + i * 40, 70], [105 + i * 40, 52], [118 + i * 40, 34]], color, 6, rnd, 0.7);
   return c;
 }
 
-export function norenCanvas() {
+export function norenCanvas(l1 = '라', l2 = '면', col = '#E07A5F') {
   const w = 512, h = 512, c = makeCanvas(w, h), g = ctx2d(c), rnd = seeded(41);
   g.clearRect(0, 0, w, h);
-  const cols = ['#E07A5F', '#E07A5F'];
+  const cols = [col, col];
   for (let i = 0; i < 2; i++) {
     const x0 = i * w / 2 + 6;
     wash(g, () => { g.beginPath(); g.rect(x0, 0, w / 2 - 12, h - 10); }, cols[i], rnd, { layers: 4, alpha: 0.5, edge: 0.35 });
   }
   g.fillStyle = '#FFF4E6'; g.font = `150px ${FONT_H}`; g.textAlign = 'center'; g.textBaseline = 'middle';
-  g.fillText('라', w * 0.25, h * 0.45); g.fillText('면', w * 0.75, h * 0.45);
+  g.fillText(l1, w * 0.25, h * 0.45); g.fillText(l2, w * 0.75, h * 0.45);
   granulate(g, w, h, rnd, INK, 900, 0.06);
   return c;
 }

@@ -1,10 +1,11 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { mulberry32 } from '../core/rng';
+import type { ShopKind } from '../data/folk';
 import type { ChibiSpec } from '../data/types';
 import { blob, ctx2d, darken, lighten, makeCanvas, mix } from '../paint/brush';
 import { tex } from '../paint/textures';
-import { Chibi } from './chibi';
+import { Chibi, LEG } from './chibi';
 import { glowTex, makeGlow, makeShadow } from './fx';
 import { boxG, coneG, cylG, disposeTree, M, Mu, mesh, sphereG } from './geo';
 import { bakeSpec, placeProps, planProps } from './villageProps';
@@ -18,26 +19,36 @@ export interface VHouse { id: string; name: string; family: string; lit: boolean
 export interface VTown { family: string; name: string; color: string }
 export interface VHouseSpot { h: VHouse; hit: THREE.Mesh; door: THREE.Vector3; out: THREE.Vector3; yaw: number; town: number }
 // 동네 주민: hold이면 멈춰 서고, faceTo가 있으면 그쪽을 봐요
-export interface VNpc { ch: Chibi; hit: THREE.Mesh; hold: boolean; faceTo: THREE.Vector3 | null }
+export interface VNpc { ch: Chibi; hit: THREE.Mesh; sh: THREE.Object3D; hold: boolean; faceTo: THREE.Vector3 | null; at: THREE.Vector3 | null }
+// 불 켜진 집 손님: 자기 마을 골목을 산책해요
+export interface VWalker extends VNpc { house: number }
 export interface VShopSpot { hit: THREE.Mesh; kind: VShop['kind']; name: string; front: THREE.Vector3; yaw: number }
 export interface Village {
   root: THREE.Group; ground: THREE.Mesh; hits: THREE.Mesh[]; shopHits: THREE.Mesh[]; shops: VShopSpot[]; npcs: VNpc[];
   houses: VHouseSpot[]; towns: { center: THREE.Vector3; t: VTown; lit: number; total: number }[];
   shopDoor: THREE.Vector3; bounds: { minX: number; maxX: number; minZ: number; maxZ: number };
+  walkers: VWalker[];
+  // 시장 거리 광장: 마음 모으기 모임과 동네 잔치가 열리는 곳
+  plaza: THREE.Vector3; plazaR: number; festival: THREE.Group;
   heightAt: (x: number, z: number) => number; walkY: (x: number, z: number) => number; inWater: (x: number, z: number) => boolean; blocked: (x: number, z: number) => boolean;
+  // 캐릭터를 땅 위에 세울 높이: 다리 길이만큼 올려야 신발이 땅에 묻히지 않아요
+  standY: (x: number, z: number, ch: Chibi) => number;
   update: (dt: number, eye?: THREE.Vector3) => void; dispose: () => void;
   bakeSpec: () => unknown; baked: boolean;
 }
 
 // ── 땅 모양 ─────────────────────────────
-const X0 = -100, X1 = 100, Z0 = -80, Z1 = 66;
+const X0 = -125, X1 = 125, Z0 = -92, Z1 = 108;
 const RIVER: [number, number][] = [[-250, -44], [-190, -30], [-140, -40], [-112, -36], [-86, -22], [-66, -30], [-44, -16], [-22, -26], [-4, -14], [16, -22], [36, -10], [58, -20], [80, -6], [112, -14], [150, -4], [200, -20], [250, -12]];
 const SHOP = V(0, 0, 6);
 // 마을마다 구불구불한 골목 하나: 가운데 자리와 골목 방향(라디안)
-const LANES: [number, number, number][] = [[-70, -58, 0.45], [-30, -62, -0.25], [10, -58, 0.35], [54, -56, -0.4], [-70, 20, -0.6], [-34, 44, 0.2], [10, 50, -0.3], [58, 30, 0.55]];
+// (마을을 넓히면서 골목 사이를 조금씩 더 띄웠어요)
+const LANES: [number, number, number][] = [[-83, -64, 0.45], [-35, -69, -0.25], [12, -64, 0.35], [64, -62, -0.4], [-83, 23, -0.6], [-41, 50, 0.2], [13, 57, -0.3], [69, 34, 0.55]];
+// 시장 거리 광장 (마을 남쪽)
+const PLAZA = V(-8, 0, 84), PLAZA_R = 10;
 const WATER = -0.55;
 // 마을 바깥: 산과 숲이 둘러싸요 (지도 끝이 잘려 보이지 않게)
-const BX0 = -240, BX1 = 240, BZ0 = -210, BZ1 = 196;
+const BX0 = -270, BX1 = 270, BZ0 = -230, BZ1 = 236;
 // 땅 그림은 마을 안을 촘촘하게, 바깥은 성기게 그려요 (한 장에 함께)
 const IN = 0.82, OUTU = (1 - IN) / 2;
 const mapU = (x: number) => (x < X0 ? OUTU * (x - BX0) / (X0 - BX0) : x > X1 ? 1 - OUTU + OUTU * (x - X1) / (BX1 - X1) : OUTU + IN * (x - X0) / (X1 - X0));
@@ -159,13 +170,17 @@ function shopFront(): THREE.Group {
 }
 
 // 마을 가게들: 줄무늬 차양, 간판, 가게마다 진열 소품
-export interface VShop { name: string; wall: string; awn: [string, string]; line: string; kind: 'bread' | 'flower' | 'pencil' | 'book' | 'icecream' }
+export interface VShop { name: string; wall: string; awn: [string, string]; line: string; kind: ShopKind; market?: [number, number] }
 export const SHOPS: VShop[] = [
   { name: '폭신 빵집', wall: '#FCE3D6', awn: ['#E98BA3', '#FFFFFF'], line: '🥐 폭신 빵집: 갓 구운 빵 냄새가 골목까지 퍼져요.', kind: 'bread' },
   { name: '방긋 꽃집', wall: '#E7F3DD', awn: ['#47AE7A', '#FFFFFF'], line: '🌷 방긋 꽃집: 오늘 고마운 사람에게 꽃 한 송이 어때요?', kind: 'flower' },
   { name: '알록 문구점', wall: '#DDEFFA', awn: ['#6FB3E0', '#FFFFFF'], line: '✏️ 알록 문구점: 친구에게 쓸 편지지가 가득해요.', kind: 'pencil' },
   { name: '소곤 책방', wall: '#ECE5F7', awn: ['#A68BD6', '#FFFFFF'], line: '📚 소곤 책방: 마음이 궁금할 때 읽는 책이 있어요.', kind: 'book' },
   { name: '사르르 아이스크림', wall: '#FFF4D6', awn: ['#F0974A', '#FFFFFF'], line: '🍦 사르르 아이스크림: 화가 날 땐 시원하게 한 숟가락!', kind: 'icecream' },
+  // 시장 거리 (광장 남쪽에 나란히): market = 광장 가운데에서 떨어진 자리
+  { name: '포근 찻집', wall: '#F3E6D6', awn: ['#A0765A', '#FFF8EC'], line: '🍵 포근 찻집: 따뜻한 차 한 잔에 마음이 느긋해져요.', kind: 'tea', market: [-17, 15] },
+  { name: '딩동 악기점', wall: '#FFF6D6', awn: ['#E9B92A', '#FFFFFF'], line: '🥁 딩동 악기점: 기쁠 땐 쿵쿵, 슬플 땐 잔잔하게!', kind: 'music', market: [0, 17] },
+  { name: '새콤 과일가게', wall: '#FDE4E0', awn: ['#E3645A', '#FFFFFF'], line: '🍎 새콤 과일가게: 나눠 먹으면 더 달콤해요.', kind: 'fruit', market: [17, 15] },
 ];
 function shopBuilding(sh: VShop): THREE.Group {
   const o = new THREE.Group();
@@ -185,6 +200,9 @@ function shopBuilding(sh: VShop): THREE.Group {
   if (sh.kind === 'flower') for (let i = 0; i < 5; i++) { mesh(cylG(0.12, 0.09, 0.2, 8), M('#C2563A'), [0.3 + i * 0.3, 0.7, top], 1, [0, 0, 0], o); mesh(sphereG(0.13, 8, 6), M(['#F7B3C2', '#FFE08A', '#E3645A', '#C9B6F0', '#FFFFFF'][i]), [0.3 + i * 0.3, 0.9, top], 1, [0, 0, 0], o); }
   if (sh.kind === 'pencil') for (let i = 0; i < 7; i++) mesh(cylG(0.05, 0.05, 0.6, 6), M(['#E3645A', '#F0974A', '#E9B92A', '#47AE7A', '#6FB3E0', '#A68BD6', '#E98BA3'][i]), [0.25 + i * 0.22, 0.88, top], 1, [0.2, 0, (i - 3) * 0.06], o);
   if (sh.kind === 'book') for (let i = 0; i < 6; i++) mesh(boxG(0.22, 0.32, 0.4), M(['#A68BD6', '#6FB3E0', '#E9B92A', '#E3645A', '#47AE7A', '#F0974A'][i]), [0.3 + i * 0.24, 0.76, top], 1, [0, 0, (rnd() - 0.5) * 0.2], o);
+  if (sh.kind === 'tea') { mesh(sphereG(0.24, 12, 10), M('#9FD8B8', { noise: 2 }), [0.6, 0.82, top], [1, 0.8, 1], [0, 0, 0], o); mesh(cylG(0.03, 0.05, 0.3, 6), M('#9FD8B8'), [0.86, 0.86, top], 1, [0, 0, -0.9], o); for (let i = 0; i < 3; i++) mesh(cylG(0.1, 0.08, 0.14, 10), M(['#F7C3CC', '#FFF8EC', '#F6CF3E'][i]), [1.0 + i * 0.25, 0.68, top], 1, [0, 0, 0], o); }
+  if (sh.kind === 'fruit') for (let i = 0; i < 3; i++) { mesh(boxG(0.48, 0.2, 0.5), M('#B9835A'), [0.4 + i * 0.5, 0.7, top], 1, [0, 0, 0], o); for (let k = 0; k < 4; k++) mesh(sphereG(0.1, 8, 6), M(['#E5484D', '#F6A23C', '#8E6FC2'][i]), [0.3 + i * 0.5 + (k % 2) * 0.18, 0.86, top - 0.1 + Math.floor(k / 2) * 0.2], 1, [0, 0, 0], o); }
+  if (sh.kind === 'music') { mesh(cylG(0.32, 0.32, 0.36, 16), M('#E3645A'), [0.6, 0.78, top], 1, [0, 0, 0], o); mesh(cylG(0.33, 0.33, 0.04, 16), M('#FFF4E6'), [0.6, 0.97, top], 1, [0, 0, 0], o); mesh(coneG(0.12, 0.5, 10), M('#E9B92A', { spec: 0.6 }), [1.3, 0.8, top], 1, [0, 0, PI / 2], o); mesh(cylG(0.025, 0.025, 0.5, 6), M('#E9B92A', { spec: 0.6 }), [1.6, 0.8, top], 1, [0, 0, PI / 2], o); }
   if (sh.kind === 'icecream') { mesh(coneG(0.5, 1.3, 12), M('#E3B37A', { noise: 3 }), [0, H + 1.35, 0], 1, [PI, 0, 0], o); for (const [c, y] of [['#F7B3C2', 2.15], ['#FFF4D6', 2.6]] as const) mesh(sphereG(0.6, 14, 10), M(c), [0, H + y, 0], 1, [0, 0, 0], o); }
   return o;
 }
@@ -223,6 +241,7 @@ export function buildVillage(houses: VHouse[], towns: VTown[], villagers: ChibiS
   const root = new THREE.Group();
   const stat = new THREE.Group(); // 합칠 것들
   const own: THREE.Object3D[] = [];
+  const flowerGeos: THREE.BufferGeometry[] = [];
   const rnd = mulberry32(77);
   // 냇물 곡선과 거리표
   const river = new THREE.CatmullRomCurve3(RIVER.map(([x, z]) => V(x, 0, z)), false, 'centripetal');
@@ -244,7 +263,7 @@ export function buildVillage(houses: VHouse[], towns: VTown[], villagers: ChibiS
     const [cx, cz, a] = LANES[k];
     const d = V(Math.cos(a), 0, Math.sin(a)), n = V(-d.z, 0, d.x);
     const w = () => (rnd() - 0.5) * 7;
-    const pts = [-18, -7, 5, 17].map((t, i) => V(cx, 0, cz).addScaledVector(d, t).addScaledVector(n, i % 2 ? 3.5 + w() * 0.4 : -3.5 + w() * 0.4));
+    const pts = [-21, -8, 6, 20].map((t, i) => V(cx, 0, cz).addScaledVector(d, t).addScaledVector(n, i % 2 ? 3.5 + w() * 0.4 : -3.5 + w() * 0.4));
     return new THREE.CatmullRomCurve3(pts, false, 'centripetal');
   });
   const pads: { x: number; z: number; y: number }[] = [];
@@ -256,7 +275,7 @@ export function buildVillage(houses: VHouse[], towns: VTown[], villagers: ChibiS
       // 골목 양쪽에 번갈아, 조금씩 들쭉날쭉하게
       const u = Math.min(0.97, 0.06 + (i / Math.max(1, list.length - 1)) * 0.9 + (rnd() - 0.5) * 0.02);
       const p = lane.getPointAt(u), tg = lane.getTangentAt(u), n = V(-tg.z, 0, tg.x);
-      const side = i % 2 ? 1 : -1, off = 4.6 + rnd() * 1.4;
+      const side = i % 2 ? 1 : -1, off = 5.0 + rnd() * 1.4;
       const x = p.x + n.x * side * off, z = p.z + n.z * side * off;
       const yaw = Math.atan2(p.x - x, p.z - z) + (rnd() - 0.5) * 0.3;
       plan.push({ h, k, x, z, yaw });
@@ -265,6 +284,7 @@ export function buildVillage(houses: VHouse[], towns: VTown[], villagers: ChibiS
     });
   });
   const shopY = Math.max(1, base(SHOP.x, SHOP.z));
+  const plazaY = Math.max(0.6, base(PLAZA.x, PLAZA.z));
   const heightAt = (x: number, z: number) => {
     let h = base(x, z);
     // 집 자리는 조금씩 평평하게 (계단처럼 높낮이가 생겨요)
@@ -275,6 +295,8 @@ export function buildVillage(houses: VHouse[], towns: VTown[], villagers: ChibiS
       h = p.y * (1 - s) + h * s;
     }
     { const s = smooth(6, 12, Math.hypot(x - SHOP.x, z - SHOP.z)); h = shopY * (1 - s) + h * s; }
+    // 시장 거리 광장과 가게 자리는 평평하게
+    { const s = smooth(PLAZA_R + 9, PLAZA_R + 20, Math.hypot(x - PLAZA.x, (z - PLAZA.z) * 0.85)); h = plazaY * (1 - s) + h * s; }
     const s = smooth(2.6, 8, rdist(x, z));
     return -1.6 * (1 - s) + h * s;
   };
@@ -317,6 +339,10 @@ export function buildVillage(houses: VHouse[], towns: VTown[], villagers: ChibiS
     return new THREE.CatmullRomCurve3([a.clone(), a.clone().lerp(b, 0.33).addScaledVector(n, w), a.clone().lerp(b, 0.66).addScaledVector(n, -w * 0.9), b.clone()], false, 'centripetal');
   };
   lanes.forEach((ln, k) => roads.push(wind(door, near(ln, door), k)));
+  // 시장 거리: 라면 가게에서 광장까지 큰길 하나, 광장을 지나는 가게 거리 하나 (마을 골목 사이로 지나가요)
+  const marketRoad = new THREE.CatmullRomCurve3([door.clone(), V(-6, 0, 24), V(-14, 0, 42), V(-14, 0, 60), V(PLAZA.x - 2, 0, PLAZA.z - PLAZA_R + 1)], false, 'centripetal');
+  const marketStreet = new THREE.CatmullRomCurve3([V(PLAZA.x - 38, 0, PLAZA.z + 6), V(PLAZA.x - 18, 0, PLAZA.z + 8.5), V(PLAZA.x, 0, PLAZA.z + 9), V(PLAZA.x + 18, 0, PLAZA.z + 8.5), V(PLAZA.x + 36, 0, PLAZA.z + 5)], false, 'centripetal');
+  roads.push(marketRoad, marketStreet);
   const half = Math.floor(lanes.length / 2);
   for (const [i, j] of [[0, 1], [1, 2], [2, 3], [4, 5], [5, 6], [6, 7]]) {
     if (i >= lanes.length || j >= lanes.length || (i < half) !== (j < half)) continue;
@@ -356,7 +382,7 @@ export function buildVillage(houses: VHouse[], towns: VTown[], villagers: ChibiS
   const inWater = (x: number, z: number) => rdist(x, z) < 3.4 && bridgeAt(x, z) === null;
 
   // ── 땅 그림: 풀밭, 냇가 모래, 큰길과 골목, 꽃 ──
-  const TW = 2400, TH = Math.round(TW * (Z1 - Z0) / (X1 - X0));
+  const TW = 2800, TH = Math.round(TW * (Z1 - Z0) / (X1 - X0));
   const cv = makeCanvas(TW, TH), g = ctx2d(cv);
   const px = (x: number) => mapU(x) * TW, pz = (z: number) => mapV(z) * TH, pm = (IN * TW) / (X1 - X0);
   g.fillStyle = '#CDEAA6'; g.fillRect(0, 0, TW, TH);
@@ -373,7 +399,7 @@ export function buildVillage(houses: VHouse[], towns: VTown[], villagers: ChibiS
       g.fillRect(xx, yy, step, step);
     }
   }
-  for (let i = 0; i < 360; i++) blob(g, rnd() * TW, rnd() * TH, 30 + rnd() * 90, 20 + rnd() * 60, rnd() < 0.5 ? '#E6F4BE' : '#C3DF94', rnd, { layers: 2, alpha: 0.16, edge: 0 });
+  for (let i = 0; i < 360; i++) blob(g, rnd() * TW, rnd() * TH, 30 + rnd() * 90, 20 + rnd() * 60, rnd() < 0.5 ? '#E6F4BE' : '#C3DF94', rnd, { layers: 2, alpha: 0.08, edge: 0 });
   const stroke = (pts: THREE.Vector3[], color: string, width: number, alpha = 1, dash?: number[]) => {
     g.save(); g.globalAlpha = alpha; g.strokeStyle = color; g.lineWidth = width * pm; g.lineCap = 'round'; g.lineJoin = 'round';
     if (dash) g.setLineDash(dash.map((x) => x * pm));
@@ -382,6 +408,11 @@ export function buildVillage(houses: VHouse[], towns: VTown[], villagers: ChibiS
   stroke(rp, '#E8DDB6', 13, 0.7); stroke(rp, '#E2D3A6', 9.5);
   for (const p of roads) { const pts = p.getSpacedPoints(140); stroke(pts, '#E3CFA6', 3.4, 0.45); stroke(pts, '#E9D7B0', 2.4); }
   for (const p of lanes) { const pts = p.getSpacedPoints(80); stroke(pts, '#DCC8A0', 4.2, 0.4); stroke(pts, '#EADBBE', 3.2); stroke(pts, '#D9C59C', 0.35, 0.8, [0.7, 0.6]); }
+  // 광장: 둥근 돌바닥
+  g.fillStyle = '#E9DCC0'; g.beginPath(); g.ellipse(px(PLAZA.x), pz(PLAZA.z), (PLAZA_R + 1.2) * pm, (PLAZA_R + 1.2) * pm, 0, 0, 7); g.fill();
+  g.strokeStyle = '#D8C7A2'; g.lineWidth = 0.35 * pm;
+  for (let r = 3; r <= PLAZA_R; r += 2.4) { g.beginPath(); g.ellipse(px(PLAZA.x), pz(PLAZA.z), r * pm, r * pm, 0, 0, 7); g.stroke(); }
+  for (let a = 0; a < 16; a++) { const an = (a / 16) * PI * 2; g.beginPath(); g.moveTo(px(PLAZA.x + Math.cos(an) * 3), pz(PLAZA.z + Math.sin(an) * 3)); g.lineTo(px(PLAZA.x + Math.cos(an) * PLAZA_R), pz(PLAZA.z + Math.sin(an) * PLAZA_R)); g.stroke(); }
   // 집 앞 작은 마당
   for (const q of plan) { g.fillStyle = '#E6D5B2'; g.globalAlpha = 0.55; g.beginPath(); g.ellipse(px(q.x), pz(q.z), 3.2 * pm, 3.2 * pm, 0, 0, 7); g.fill(); }
   g.globalAlpha = 1;
@@ -391,15 +422,15 @@ export function buildVillage(houses: VHouse[], towns: VTown[], villagers: ChibiS
     const x = X0 + flRnd() * (X1 - X0), z = Z0 + flRnd() * (Z1 - Z0);
     if (rdist(x, z) < 8) continue;
     g.fillStyle = ['#FF9FB7', '#FFD95E', '#FFFFFF', '#B9A2F2', '#FFB27A', '#8FD3F5'][i % 6];
-    g.globalAlpha = 0.85;
-    for (let k = 0; k < 4; k++) { g.beginPath(); g.arc(px(x) + (flRnd() - 0.5) * 12, pz(z) + (flRnd() - 0.5) * 12, 2.2 + flRnd() * 2.4, 0, 7); g.fill(); }
+    g.globalAlpha = 0.5; // 걸어 다닐 때 가까이 보면 물감 얼룩처럼 보이지 않게 작고 옅게 (진짜 꽃은 따로 심어요)
+    for (let k = 0; k < 4; k++) { g.beginPath(); g.arc(px(x) + (flRnd() - 0.5) * 12, pz(z) + (flRnd() - 0.5) * 12, (2.2 + flRnd() * 2.4) * 0.6, 0, 7); g.fill(); }
   }
   for (let i = 0; i < 1100; i++) {
     const x = X0 + rnd() * (X1 - X0), z = Z0 + rnd() * (Z1 - Z0);
     if (rdist(x, z) < 8) continue;
     g.fillStyle = ['#F7B3C2', '#FFE08A', '#FFFFFF', '#C9B6F0', '#F9C38E'][i % 5];
-    g.globalAlpha = 0.9;
-    for (let k = 0; k < 5; k++) { g.beginPath(); g.arc(px(x) + (rnd() - 0.5) * 14, pz(z) + (rnd() - 0.5) * 14, 2 + rnd() * 2.2, 0, 7); g.fill(); }
+    g.globalAlpha = 0.5;
+    for (let k = 0; k < 5; k++) { g.beginPath(); g.arc(px(x) + (rnd() - 0.5) * 14, pz(z) + (rnd() - 0.5) * 14, (2 + rnd() * 2.2) * 0.6, 0, 7); g.fill(); }
   }
   g.globalAlpha = 1;
   const groundTex = tex(cv);
@@ -424,7 +455,7 @@ export function buildVillage(houses: VHouse[], towns: VTown[], villagers: ChibiS
   geo.setAttribute('uv', new THREE.Float32BufferAttribute(guv, 2));
   geo.setIndex(gix);
   geo.computeVertexNormals();
-  const ground = new THREE.Mesh(geo, Mu('#FFFFFF', { map: groundTex, rim: 0 }));
+  const ground = new THREE.Mesh(geo, Mu('#FFFFFF', { map: groundTex, rim: 0, flat: 0.25 })); // 그늘 띠가 얼룩처럼 끊기지 않게 살짝 고르게
   ground.userData.ownGeo = true;
   root.add(ground); own.push(ground);
   const skyCv = makeCanvas(8, 256), sg = ctx2d(skyCv), gr = sg.createLinearGradient(0, 0, 0, 256);
@@ -487,7 +518,27 @@ export function buildVillage(houses: VHouse[], towns: VTown[], villagers: ChibiS
   // ── 마을 가게들: 라면 가게에서 가까운 큰길 가 ──
   const shopHits: VShopSpot[] = [];
   const shopSpots: [number, number][] = [];
+  const putShop = (sh: VShop, x: number, z: number, yaw: number) => {
+    const y = heightAt(x, z);
+    const b = shopBuilding(sh); b.position.set(x, y, z); b.rotation.y = yaw; stat.add(b);
+    const fwd = V(Math.sin(yaw), 0, Math.cos(yaw));
+    // 간판은 지붕 앞에 세워요 (위에서 내려다봐도 보이게 살짝 뒤로 눕혀요)
+    const sg2 = new THREE.Mesh(new THREE.PlaneGeometry(3.0, 0.8), Mu('#FFFFFF', { map: sign(sh.name, 420, 112, '#FFFDF6', darken(sh.awn[0], 0.35), 52), flat: 0.9, rim: 0, side: THREE.DoubleSide }));
+    sg2.userData.ownGeo = true; sg2.position.set(x, y + 3.25, z).addScaledVector(fwd, 2.1); sg2.rotation.set(-0.35, yaw, 0, 'YXZ'); root.add(sg2); own.push(sg2);
+    const hit = new THREE.Mesh(new THREE.BoxGeometry(4.6, 4, 4.4), new THREE.MeshBasicMaterial({ visible: false }));
+    hit.position.set(x, y + 2, z); hit.rotation.y = yaw; hit.userData.shopLine = sh.line; hit.userData.shopKind = sh.kind; hit.userData.ownGeo = true;
+    root.add(hit);
+    const front = V(x, y, z).addScaledVector(fwd, 4.8); front.y = heightAt(front.x, front.z); // 간판이 한눈에 보이는 자리
+    shopHits.push({ hit, kind: sh.kind, name: sh.name, front, yaw });
+    shopSpots.push([x, z]);
+  };
   SHOPS.forEach((sh, i) => {
+    if (sh.market) {
+      // 시장 거리 가게: 광장을 바라보고 나란히 서요
+      const x = PLAZA.x + sh.market[0], z = PLAZA.z + sh.market[1];
+      putShop(sh, x, z, Math.atan2(PLAZA.x - x, PLAZA.z - z));
+      return;
+    }
     for (let tries = 0; tries < 12; tries++) {
       const road = roads[(i * 3 + tries) % lanes.length], u = 0.12 + (tries % 4) * 0.06 + i * 0.015;
       const p = road.getPointAt(Math.min(0.6, u)), tg = road.getTangentAt(Math.min(0.6, u)), n = V(-tg.z, 0, tg.x);
@@ -496,27 +547,57 @@ export function buildVillage(houses: VHouse[], towns: VTown[], villagers: ChibiS
       if (Math.hypot(x - SHOP.x, z - SHOP.z) < 12 || rdist(x, z) < 11) continue;
       if (plan.some((q) => Math.hypot(q.x - x, q.z - z) < 8) || shopSpots.some(([sx, sz]) => Math.hypot(sx - x, sz - z) < 9)) continue;
       if (pathPtsEarly.some((q) => (q.x - x) ** 2 + (q.z - z) ** 2 < 3.6 ** 2)) continue;
-      const yaw = Math.atan2(p.x - x, p.z - z);
-      const y = heightAt(x, z);
-      const b = shopBuilding(sh); b.position.set(x, y, z); b.rotation.y = yaw; stat.add(b);
-      const fwd = V(Math.sin(yaw), 0, Math.cos(yaw));
-      // 간판은 지붕 앞에 세워요 (위에서 내려다봐도 보이게 살짝 뒤로 눕혀요)
-      const sg2 = new THREE.Mesh(new THREE.PlaneGeometry(3.0, 0.8), Mu('#FFFFFF', { map: sign(sh.name, 420, 112, '#FFFDF6', darken(sh.awn[0], 0.35), 52), flat: 0.9, rim: 0, side: THREE.DoubleSide }));
-      sg2.userData.ownGeo = true; sg2.position.set(x, y + 3.25, z).addScaledVector(fwd, 2.1); sg2.rotation.set(-0.35, yaw, 0, 'YXZ'); root.add(sg2); own.push(sg2);
-      const hit = new THREE.Mesh(new THREE.BoxGeometry(4.6, 4, 4.4), new THREE.MeshBasicMaterial({ visible: false }));
-      hit.position.set(x, y + 2, z); hit.rotation.y = yaw; hit.userData.shopLine = sh.line; hit.userData.shopKind = sh.kind; hit.userData.ownGeo = true;
-      root.add(hit);
-      const front = V(x, y, z).addScaledVector(fwd, 4.8); front.y = heightAt(front.x, front.z); // 간판이 한눈에 보이는 자리
-      shopHits.push({ hit, kind: sh.kind, name: sh.name, front, yaw });
-      shopSpots.push([x, z]);
+      putShop(sh, x, z, Math.atan2(p.x - x, p.z - z));
       break;
     }
   });
 
+  // ── 광장: 분수, 긴 의자. 잔치 꾸밈은 잔치를 연 뒤에 보여요 ──
+  const extraSolids: [number, number, number][] = [];
+  {
+    const py = heightAt(PLAZA.x, PLAZA.z);
+    const fo = new THREE.Group(); fo.position.set(PLAZA.x, py, PLAZA.z);
+    mesh(cylG(2.5, 2.7, 0.6, 24), M('#D6CFC4', { noise: 3 }), [0, 0.3, 0], 1, [0, 0, 0], fo);
+    mesh(cylG(2.2, 2.2, 0.05, 24), M('#86CDF0', { flat: 0.5, spec: 0.9 }), [0, 0.56, 0], 1, [0, 0, 0], fo);
+    mesh(cylG(0.32, 0.42, 1.5, 12), M('#E9E2D6', { noise: 2 }), [0, 1.0, 0], 1, [0, 0, 0], fo);
+    mesh(cylG(0.9, 0.5, 0.3, 16), M('#E2DBCF', { noise: 2 }), [0, 1.75, 0], 1, [0, 0, 0], fo);
+    mesh(sphereG(0.55, 14, 10), M('#BFE6F7', { flat: 0.6, alpha: 0.75 }), [0, 2.1, 0], [1, 0.7, 1], [0, 0, 0], fo);
+    stat.add(fo);
+    extraSolids.push([PLAZA.x, PLAZA.z, 3.0]);
+    for (let k = 0; k < 4; k++) {
+      const a = PI * 0.25 + (k * PI) / 2, bx = PLAZA.x + Math.cos(a) * (PLAZA_R - 1.4), bz = PLAZA.z + Math.sin(a) * (PLAZA_R - 1.4);
+      if (bz > PLAZA.z + 4) continue; // 가게 쪽은 비워 둬요
+      const bench = new THREE.Group(); bench.position.set(bx, heightAt(bx, bz), bz); bench.rotation.y = Math.atan2(PLAZA.x - bx, PLAZA.z - bz);
+      mesh(boxG(2.0, 0.12, 0.6), M('#B98A5E', { noise: 2 }), [0, 0.5, 0], 1, [0, 0, 0], bench);
+      mesh(boxG(2.0, 0.5, 0.1), M('#A87B52', { noise: 2 }), [0, 0.8, -0.28], 1, [0, 0, 0], bench);
+      for (const x of [-0.85, 0.85]) mesh(boxG(0.1, 0.5, 0.5), M('#8A5E3C'), [x, 0.25, 0], 1, [0, 0, 0], bench);
+      stat.add(bench); extraSolids.push([bx, bz, 1.2]);
+    }
+  }
+  const festival = new THREE.Group();
+  {
+    // 광장을 둘러싼 깃발 줄과 초롱
+    const py = heightAt(PLAZA.x, PLAZA.z), cols = ['#E3645A', '#F6CF3E', '#47AE7A', '#6FB3E0', '#A68BD6', '#F0974A'];
+    const poles: THREE.Vector3[] = [];
+    for (let k = 0; k < 8; k++) { const a = (k / 8) * PI * 2 + 0.2; poles.push(V(PLAZA.x + Math.cos(a) * (PLAZA_R + 0.6), py, PLAZA.z + Math.sin(a) * (PLAZA_R + 0.6))); }
+    for (const p of poles) { mesh(cylG(0.08, 0.1, 4.2, 8), M('#8A5E3C'), [p.x, p.y + 2.1, p.z], 1, [0, 0, 0], festival); mesh(sphereG(0.16, 8, 6), M('#F6CF3E'), [p.x, p.y + 4.25, p.z], 1, [0, 0, 0], festival); }
+    poles.forEach((a, k) => {
+      const b = poles[(k + 1) % poles.length];
+      for (let i = 1; i < 8; i++) {
+        const t = i / 8, x = a.x + (b.x - a.x) * t, z = a.z + (b.z - a.z) * t, y = py + 4.0 - Math.sin(t * PI) * 0.9;
+        const f = mesh(coneG(0.2, 0.42, 3), M(cols[(i + k) % cols.length]), [x, y - 0.2, z], 1, [PI, 0, 0], festival);
+        f.rotation.y = Math.atan2(b.x - a.x, b.z - a.z);
+        if (i % 3 === 0) { mesh(sphereG(0.24, 10, 8), M('#FFB86B', { flat: 0.85 }), [x, y - 0.55, z], [1, 1.2, 1], [0, 0, 0], festival); const gl = makeGlow('#FFD27A', 1.6, 0.4); gl.position.set(x, y - 0.55, z); festival.add(gl); }
+      }
+    });
+    festival.visible = false;
+    root.add(festival);
+  }
+
   // ── 집 ──
   const spots: VHouseSpot[] = [];
   const hits: THREE.Mesh[] = [];
-  const solids: [number, number, number][] = shopSpots.map(([x, z]) => [x, z, 3.0] as [number, number, number]);
+  const solids: [number, number, number][] = [...shopSpots.map(([x, z]) => [x, z, 3.0] as [number, number, number]), ...extraSolids];
   const hitGeo = new THREE.BoxGeometry(3.2, 4.4, 3.0);
   const hitMat = new THREE.MeshBasicMaterial({ visible: false });
   plan.forEach((q, i) => {
@@ -577,7 +658,7 @@ export function buildVillage(houses: VHouse[], towns: VTown[], villagers: ChibiS
     rnd, heightAt, rdist, river: rp, paths: pathPtsEarly,
     houses: plan.map((q) => ({ x: q.x, z: q.z, yaw: q.yaw })),
     shops: shopHits.map((sh, i) => ({ x: shopSpots[i][0], z: shopSpots[i][1], yaw: sh.yaw })),
-    entries, solids, shop: SHOP, rect: { x0: X0, x1: X1, z0: Z0, z1: Z1 },
+    entries, solids: [...solids, [PLAZA.x, PLAZA.z, PLAZA_R + 3]], shop: SHOP, rect: { x0: X0, x1: X1, z0: Z0, z1: Z1 },
   });
   const placed0 = placeProps(props, stat, root, heightAt);
   solids.push(...props.solids);
@@ -588,8 +669,10 @@ export function buildVillage(houses: VHouse[], towns: VTown[], villagers: ChibiS
     for (const sp of props.spots) if ((sp.x - x) ** 2 + (sp.z - z) ** 2 < (sp.r + 1.6 + pad) ** 2) return false;
     for (const [lx, , lz] of props.lamps) if ((lx - x) ** 2 + (lz - z) ** 2 < (1.4 + pad) ** 2) return false;
     if (Math.hypot(x - SHOP.x, z - SHOP.z) < 10 + pad) return false;
+    if (Math.hypot(x - PLAZA.x, z - PLAZA.z) < PLAZA_R + 2.5 + pad) return false;
     for (const q of plan) if ((q.x - x) ** 2 + (q.z - z) ** 2 < (4.2 + pad) ** 2) return false;
     for (const p of pathPts) if ((p.x - x) ** 2 + (p.z - z) ** 2 < (2.8 + pad) ** 2) return false;
+    for (const [sx, sz] of shopSpots) if ((sx - x) ** 2 + (sz - z) ** 2 < (5.4 + pad) ** 2) return false; // 가게 앞을 가리지 않게
     return true;
   };
   // 나무 색: 가까운 마을의 주인공 색 → 그 밖의 알록달록한 색 → 초록 (자리는 그대로, 색만 따로 골라요)
@@ -602,7 +685,7 @@ export function buildVillage(houses: VHouse[], towns: VTown[], villagers: ChibiS
     return 'green';
   };
   let placed = 0;
-  for (let i = 0; i < 1400 && placed < 230; i++) {
+  for (let i = 0; i < 2200 && placed < 330; i++) {
     const x = X0 + 2 + rnd() * (X1 - X0 - 4), z = Z0 + 2 + rnd() * (Z1 - Z0 - 4);
     if (!clear(x, z, 0.4)) continue;
     const sc = 0.9 + rnd() * 0.6;
@@ -616,7 +699,7 @@ export function buildVillage(houses: VHouse[], towns: VTown[], villagers: ChibiS
     if (d < 3 || rdist(x, z) < 9 || rnd() > 0.35 + smooth(0, 40, d) * 0.65) continue;
     const t = tree(1000 + i, 1.1 + rnd() * 0.9, pickPal(x, z, 0.38 - smooth(0, 60, d) * 0.2)); t.position.set(x, heightAt(x, z) - 0.1, z); stat.add(t); n++;
   }
-  for (let i = 0, n = 0; i < 500 && n < 50; i++) {
+  for (let i = 0, n = 0; i < 700 && n < 70; i++) {
     const x = X0 + rnd() * (X1 - X0), z = Z0 + rnd() * (Z1 - Z0);
     if (!clear(x, z, -1.2)) continue;
     const m = mushroom(i); m.position.set(x, heightAt(x, z), z); stat.add(m); n++;
@@ -641,6 +724,37 @@ export function buildVillage(houses: VHouse[], towns: VTown[], villagers: ChibiS
   const motes = new THREE.Points(moteGeo, new THREE.PointsMaterial({ map: glowTex(), color: '#FFE7A6', size: 0.34, sizeAttenuation: true, transparent: true, opacity: 0.85, depthWrite: false, blending: THREE.AdditiveBlending }));
   motes.renderOrder = 7; motes.frustumCulled = false;
   root.add(motes);
+  // 들꽃: 땅에 그린 꽃 대신 진짜 작은 꽃을 심어요 (가까이 걸어도 또렷해요). 색마다 한 번에 그려요
+  {
+    const fRnd = mulberry32(31337);
+    const cols = ['#FF9FB7', '#FFD95E', '#FFFFFF', '#B9A2F2', '#FFB27A', '#8FD3F5'];
+    const petals = (() => { const parts: THREE.BufferGeometry[] = []; for (let i = 0; i < 5; i++) { const a = (i / 5) * PI * 2; const g2 = new THREE.SphereGeometry(1, 6, 3); g2.scale(0.07, 0.018, 0.045); g2.translate(0.06, 0, 0); g2.rotateY(a); parts.push(g2); } const m = mergeGeometries(parts, false)!; parts.forEach((x) => x.dispose()); return m; })();
+    const center = new THREE.SphereGeometry(0.035, 5, 3); // 꽃이 많아서 면은 적게 (태블릿 부담 줄이기)
+    const spots2: THREE.Matrix4[][] = cols.map(() => []);
+    const all: THREE.Matrix4[] = [];
+    const q = new THREE.Quaternion(), e = new THREE.Euler();
+    for (let i = 0, n = 0; i < 12000 && n < 2000; i++) {
+      // 길가와 집 둘레에 더 많이
+      const near = fRnd() < 0.6 && pathPts.length;
+      let x: number, z: number;
+      if (near) { const p = pathPts[Math.floor(fRnd() * pathPts.length)]; const a = fRnd() * PI * 2, r = 2.6 + fRnd() * 3.5; x = p.x + Math.cos(a) * r; z = p.z + Math.sin(a) * r; }
+      else { x = X0 + 3 + fRnd() * (X1 - X0 - 6); z = Z0 + 3 + fRnd() * (Z1 - Z0 - 6); }
+      if (!clear(x, z, -1.6)) continue;
+      const y = heightAt(x, z) + 0.05, sc = 0.8 + fRnd() * 0.6;
+      e.set((fRnd() - 0.5) * 0.4, fRnd() * PI * 2, (fRnd() - 0.5) * 0.4); q.setFromEuler(e);
+      const m = new THREE.Matrix4().compose(V(x, y, z), q, V(sc, sc, sc));
+      spots2[n % cols.length].push(m); all.push(m); n++;
+    }
+    cols.forEach((c, k) => {
+      const im = new THREE.InstancedMesh(petals, M(c, { noise: 2 }), spots2[k].length);
+      spots2[k].forEach((m, i) => im.setMatrixAt(i, m)); im.instanceMatrix.needsUpdate = true; im.frustumCulled = false;
+      root.add(im);
+    });
+    const ic = new THREE.InstancedMesh(center, M('#F6C431'), all.length);
+    all.forEach((m, i) => ic.setMatrixAt(i, m)); ic.instanceMatrix.needsUpdate = true; ic.frustumCulled = false;
+    root.add(ic);
+    flowerGeos.push(petals, center);
+  }
   const merged = new THREE.Group();
   root.add(merged);
   mergeStatic(stat, merged);
@@ -648,17 +762,47 @@ export function buildVillage(houses: VHouse[], towns: VTown[], villagers: ChibiS
 
   // 동네 사람들: 길과 골목을 따라 천천히 오가요
   const npcHitGeo = new THREE.CylinderGeometry(0.75, 0.75, 2.2, 10);
-  const npcs = villagers.map((s2, i) => {
+  const standY = (x: number, z: number, ch: Chibi) => walkY(x, z) + LEG * ch.root.scale.y;
+  // 멀리서 볼 때는 몸짓 많은 캐릭터 대신 몸통·머리만 있는 작은 인형을 세워요 (태블릿이 버벅이지 않게)
+  const pawnBody = new THREE.CapsuleGeometry(0.27, 0.34, 3, 8), pawnHead = new THREE.SphereGeometry(0.4, 10, 8);
+  const pawnOf = (s2: ChibiSpec) => {
+    const g2 = new THREE.Group();
+    const b = new THREE.Mesh(pawnBody, M(s2.cloth)); b.position.y = 0.32; g2.add(b);
+    const hd = new THREE.Mesh(pawnHead, M(s2.fur)); hd.position.y = 0.92; g2.add(hd);
+    g2.visible = false;
+    return g2;
+  };
+  type Actor = VNpc & { p: THREE.CatmullRomCurve3; t: number; dir: number; speed: number; rest: number; pawn: THREE.Group; u0: number; u1: number };
+  const makeActor = (s2: ChibiSpec, p: THREE.CatmullRomCurve3, tag: Record<string, number>, mood: 'happy' | 'neutral', u0 = 0, u1 = 1): Actor => {
     const ch = new Chibi(s2);
-    const p = allPaths[(i * 5 + 1) % allPaths.length];
     const sh = makeShadow(0.7, 0.6, 0.45);
     root.add(ch.root); root.add(sh);
-    ch.setMood(i % 3 ? 'happy' : 'neutral');
+    ch.setMood(mood);
+    // 멀리 있어서 몸짓 계산을 쉬는 주민도 팔이 제자리에 붙어 있게 한 번은 자세를 잡아 둬요
+    ch.update(1 / 60);
     const hit = new THREE.Mesh(npcHitGeo, hitMat);
-    hit.position.y = 1.0; hit.userData.npc = i;
+    hit.position.y = 1.0; Object.assign(hit.userData, tag);
     ch.root.add(hit);
-    return { ch, sh, p, hit, t: rnd(), dir: rnd() < 0.5 ? 1 : -1, speed: (0.9 + rnd() * 0.4) / p.getLength(), rest: 0, hold: false, faceTo: null as THREE.Vector3 | null };
-  });
+    const pawn = pawnOf(s2); ch.root.add(pawn);
+    return { ch, sh, p, hit, pawn, t: u0 + rnd() * (u1 - u0), u0, u1, dir: rnd() < 0.5 ? 1 : -1, speed: (0.9 + rnd() * 0.4) / p.getLength(), rest: 0, hold: false, faceTo: null, at: null };
+  };
+  const npcs: Actor[] = villagers.map((s2, i) => makeActor(s2, allPaths[(i * 5 + 1) % allPaths.length], { npc: i }, i % 3 ? 'happy' : 'neutral'));
+  // 불 켜진 집 손님 몇 분이 자기 마을 골목을 산책해요 (마을마다 고르게, 별을 많이 받은 손님부터)
+  const walkers: (Actor & { house: number })[] = [];
+  {
+    const byTown = towns.map((_, k) => spots.map((sp, i) => ({ sp, i })).filter((x) => x.sp.town === k && x.sp.h.lit && x.sp.h.spec).sort((a, b) => b.sp.h.stars - a.sp.h.stars));
+    for (let round = 0; round < 2 && walkers.length < 10; round++) {
+      for (let k = 0; k < towns.length && walkers.length < 10; k++) {
+        const pick = byTown[k][round];
+        if (!pick) continue;
+        const sp0 = pick.sp.h.spec!, spec = Array.isArray(sp0) ? sp0[0] : sp0;
+        const w = makeActor(spec, lanes[k], { walker: walkers.length }, 'happy', 0.08, 0.92) as Actor & { house: number };
+        w.house = pick.i; w.speed *= 0.8;
+        walkers.push(w);
+      }
+    }
+  }
+  const actors: Actor[] = [...npcs, ...walkers];
   const blocked = (x: number, z: number) => {
     if (inWater(x, z)) return true;
     if (Math.abs(x - SHOP.x) < 3.1 && Math.abs(z - SHOP.z) < 2.5) return true;
@@ -667,6 +811,11 @@ export function buildVillage(houses: VHouse[], towns: VTown[], villagers: ChibiS
   };
   const tmp = V();
   let clock = 0;
+  const face = (n: Actor, to: THREE.Vector3, dt: number) => {
+    const want = Math.atan2(to.x - n.ch.root.position.x, to.z - n.ch.root.position.z);
+    let d = want - n.ch.root.rotation.y; while (d > PI) d -= 2 * PI; while (d < -PI) d += 2 * PI;
+    n.ch.root.rotation.y += d * Math.min(1, dt * 8);
+  };
   const update = (dt: number, eye?: THREE.Vector3) => {
     clock += dt;
     for (const g2 of glints) { const k = Math.sin(clock * g2.sp + g2.ph); g2.s.material.opacity = Math.max(0, k) ** 6 * 0.85; }
@@ -680,32 +829,47 @@ export function buildVillage(houses: VHouse[], towns: VTown[], villagers: ChibiS
       if (eye && (L.group.position.x - eye.x) ** 2 + (L.group.position.z - eye.z) ** 2 > 90 * 90) continue;
       L.update(clock);
     }
-    for (const n of npcs) {
-      // 멀리 있는 주민은 몸짓을 쉬어요 (태블릿이 버벅이지 않게)
-      const far = !!eye && (n.ch.root.position.x - eye.x) ** 2 + (n.ch.root.position.z - eye.z) ** 2 > 75 * 75;
-      if (n.hold) {
-        n.ch.walking = 0;
-        if (n.faceTo) {
-          const want = Math.atan2(n.faceTo.x - n.ch.root.position.x, n.faceTo.z - n.ch.root.position.z);
-          let d = want - n.ch.root.rotation.y; while (d > PI) d -= 2 * PI; while (d < -PI) d += 2 * PI;
-          n.ch.root.rotation.y += d * Math.min(1, dt * 8);
+    for (const n of actors) {
+      const P = n.ch.root.position;
+      const d2 = eye ? (P.x - eye.x) ** 2 + (P.y - eye.y) ** 2 + (P.z - eye.z) ** 2 : 0;
+      // 멀리 있는 주민은 몸짓을 쉬고(75m), 더 멀면 작은 인형으로 바꿔 그려요(65m)
+      const far = d2 > 75 * 75, tiny = d2 > 65 * 65;
+      n.ch.body.visible = !tiny; n.pawn.visible = tiny;
+      if (n.at) {
+        // 모임 자리로: 가까우면 걸어가고, 멀거나 안 보이는 곳이면 바로 옮겨요
+        const dx = n.at.x - P.x, dz = n.at.z - P.z, d = Math.hypot(dx, dz);
+        if (d > 0.25) {
+          if (d > 26 || far) P.set(n.at.x, standY(n.at.x, n.at.z, n.ch), n.at.z);
+          else {
+            const st = Math.min(d, dt * 2.4);
+            P.x += (dx / d) * st; P.z += (dz / d) * st; P.y = standY(P.x, P.z, n.ch);
+            n.ch.root.rotation.y = Math.atan2(dx, dz); n.ch.walking = 1;
+          }
+          n.sh.position.set(P.x, walkY(P.x, P.z) + 0.05, P.z);
+          if (!far) n.ch.update(dt);
+          continue;
         }
-        n.ch.update(dt); continue;
+      }
+      if (n.hold || n.at) {
+        n.ch.walking = 0;
+        if (n.faceTo) face(n, n.faceTo, dt);
+        if (!far) n.ch.update(dt);
+        continue;
       }
       if (n.rest > 0) { n.rest -= dt; n.ch.walking = 0; if (!far) n.ch.update(dt); continue; }
       n.t += n.dir * n.speed * dt;
-      if (n.t > 1 || n.t < 0) { n.dir *= -1; n.t = Math.max(0, Math.min(1, n.t)); n.rest = 2 + Math.random() * 3; }
+      if (n.t > n.u1 || n.t < n.u0) { n.dir *= -1; n.t = Math.max(n.u0, Math.min(n.u1, n.t)); n.rest = 2 + Math.random() * 3; }
       n.p.getPointAt(n.t, tmp);
       const ahead = n.p.getPointAt(Math.max(0, Math.min(1, n.t + n.dir * 0.002)));
-      n.ch.root.position.set(tmp.x, walkY(tmp.x, tmp.z), tmp.z);
+      n.ch.root.position.set(tmp.x, standY(tmp.x, tmp.z, n.ch), tmp.z);
       n.ch.root.rotation.y = Math.atan2(ahead.x - tmp.x, ahead.z - tmp.z);
-      n.sh.position.set(tmp.x, n.ch.root.position.y + 0.05, tmp.z);
+      n.sh.position.set(tmp.x, walkY(tmp.x, tmp.z) + 0.05, tmp.z);
       n.ch.walking = 1;
       if (!far) n.ch.update(dt);
     }
   };
   const dispose = () => {
-    hitGeo.dispose(); hitMat.dispose(); npcHitGeo.dispose(); moteGeo.dispose();
+    hitGeo.dispose(); hitMat.dispose(); npcHitGeo.dispose(); pawnBody.dispose(); pawnHead.dispose(); moteGeo.dispose(); flowerGeos.forEach((g2) => g2.dispose());
     (motes.material as THREE.Material).dispose(); glints.forEach((g2) => g2.s.material.dispose());
     placed0.lines.forEach((L) => L.dispose());
     for (const o of own) { const m = (o as THREE.Mesh).material as THREE.ShaderMaterial; m.uniforms?.uMap?.value?.dispose?.(); }
@@ -713,8 +877,9 @@ export function buildVillage(houses: VHouse[], towns: VTown[], villagers: ChibiS
   };
   void mix;
   return {
-    root, ground, hits, shopHits: shopHits.map((x) => x.hit), shops: shopHits, npcs: npcs as VNpc[], houses: spots, towns: townInfo, shopDoor: V(door.x, walkY(door.x, door.z), door.z),
-    bounds: { minX: X0, maxX: X1, minZ: Z0, maxZ: Z1 }, heightAt, walkY, inWater, blocked, update, dispose,
+    root, ground, hits, shopHits: shopHits.map((x) => x.hit), shops: shopHits, npcs, walkers, houses: spots, towns: townInfo, shopDoor: V(door.x, walkY(door.x, door.z), door.z),
+    plaza: V(PLAZA.x, heightAt(PLAZA.x, PLAZA.z), PLAZA.z), plazaR: PLAZA_R, festival,
+    bounds: { minX: X0, maxX: X1, minZ: Z0, maxZ: Z1 }, heightAt, walkY, standY, inWater, blocked, update, dispose,
     bakeSpec: () => bakeSpec(props, heightAt), baked: placed0.baked,
   };
 }

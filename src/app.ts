@@ -11,11 +11,12 @@ import { EVENT } from './event/flag';
 import { bandOf, keyOf, maskName, rank, type Best, type SendResult, type Who } from './event/rank';
 import { EV, rememberPaused, whoText } from './event/screens';
 import { ING, INGREDIENTS } from './data/ingredients';
-import { TUTOR_INTRO } from './data/text';
+import { josa, TUTOR_INTRO } from './data/text';
 import { BODY, LATER, PROMISES, type BodyMood } from './data/later';
 import { FX } from './data/effects';
 import type { ChibiSpec, Customer, GimbapRec, Owner, Picks, RamenRecord, Step, Treat } from './data/types';
 import { GIMBAP, judgeGimbap } from './data/gimbap';
+import { adaptStory, craftLines, craftName, CRAFT, scoreCraft, type CraftKind } from './data/craft';
 import type { World } from './ui/village';
 import { catchUpOrder, customerForRound, makeOrder } from './game/schedule';
 import { fiveStars, hasHeart, isBackward, score } from './game/scoring';
@@ -232,7 +233,7 @@ export class App {
   private async openAlley(o: Owner, recs: RamenRecord[]) {
     // 골목(주민·물리 소품)은 열 때 불러와요 (첫 화면을 가볍게)
     const { openVillage } = await import('./ui/village');
-    return openVillage({ owner: o, recs, order: o.order, customer: (id) => CUSX.get(id), setWorld: (w) => { this.world = w; }, story: (c, r) => UI.alleyHouse(o, c, r, true) });
+    return openVillage({ owner: o, recs, order: o.order, customer: (id) => CUSX.get(id), setWorld: (w) => { this.world = w; }, story: (c, r) => UI.alleyHouse(o, c, r, true), shopSit: this.inRound ? undefined : (kind) => this.shopSit(kind) }); // 라면 손님이 있는 동안은 가게를 비울 수 없어요
   }
 
   private async chooseOwner() {
@@ -477,6 +478,104 @@ export class App {
     await UI.dialog(view, lines, { onLine: (k, w) => say(k, w, lines), final: { label: '마음 쪽지 보기' } });
     st.talk(0, false);
     return { picks, name: j.name, stamp: j.stamp, effect: j.effect };
+  }
+
+  // 마음 골목 '가게 봐 주기' (수업용): 빵집·꽃집 주인이 잠깐 자리를 비운 동안 라면 손님 세 분을 맞아요.
+  // 놀이는 라면과 같아요: 이야기 듣기 → 단계마다 재료 고르기 → 굽거나 묶어서 건네기 → 별과 마음 쪽지
+  private cThumbs = new Map<string, string>();
+  private async shopSit(kind: CraftKind): Promise<{ stars: number[] }> {
+    const S = CRAFT[kind], st = this.stage;
+    document.body.classList.add('shop-sit');
+    st.clearGuests();
+    st.craftTheme(kind);
+    await st.setView('wide', 0);
+    const banner = h('div', { class: 'sit-banner card craft-ok fade-in' });
+    document.getElementById('ui')!.appendChild(banner);
+    // 빵집·꽃집은 손님 셋, 미니 가게는 손님 하나
+    const N = S.mini ? 1 : 3;
+    const ICON: Record<CraftKind, string> = { bread: '🥐', flower: '💐', icecream: '🍦', pencil: '✏️', book: '📚', tea: '🍵', fruit: '🍎' };
+    const setBanner = (i: number) => { banner.textContent = `${ICON[kind]} ${josa(S.shop, '을', '를')} 봐 주는 중${N > 1 ? ` · 손님 ${i + 1}/${N}` : ''}`; };
+    setBanner(0);
+    // 재료 그림은 처음 한 번만 그려요
+    let n = 0;
+    for (const it of S.items) {
+      if (this.cThumbs.has(it.id)) continue;
+      this.cThumbs.set(it.id, st.craftThumb(it, 192).toDataURL('image/webp', 0.9));
+      if (++n % 5 === 0) await new Promise((r) => setTimeout(r, 0));
+    }
+    // 손님 셋: 라면 손님 가운데서 겹치지 않게 골라요
+    const rnd = mulberry32((Date.now() ^ hashStr(kind)) >>> 0);
+    const pool = CUSTOMERS_72.slice();
+    for (let i = pool.length - 1; i > 0; i--) { const j = Math.floor(rnd() * (i + 1)); [pool[i], pool[j]] = [pool[j], pool[i]]; }
+    const stars: number[] = [];
+    try {
+      for (let i = 0; i < N; i++) {
+        const c0 = pool[i], c: Customer = { ...c0, story: adaptStory(c0, kind) };
+        setBanner(i);
+        st.craftStove();
+        st.mood('neutral');
+        await st.setView('door', 0.9);
+        const entering = st.enter(c0, { prop: false });
+        await wait(1.2);
+        st.setView('guest', 1.4);
+        await entering;
+        const say = this.say(c);
+        st.mood(this.moodFor(c));
+        await UI.dialog(c, c.story, { onLine: (k, w) => say(k, w, c.story), final: { label: S.go, replay: true } });
+        st.talk(0, false);
+        this.memo(c, say);
+        await st.craftStart(kind);
+        const picks = await UI.craft({ kind, thumbs: this.cThumbs, onSet: (p) => st.craftSet(p) });
+        document.querySelectorAll('.dialog').forEach((d) => d.remove());
+        window.speechSynthesis?.cancel();
+        st.talk(0, false);
+        await st.craftFinish();
+        document.querySelector('.memo')?.remove();
+        const r = scoreCraft(c, picks), name = craftName(kind, picks);
+        await st.craftServe();
+        await st.craftReceive();
+        st.celebrate(r.stars, false);
+        const lines = craftLines(c, kind, r.stars, name);
+        await UI.reaction(c, r.stars, false, (k, w) => say(k, w, lines), lines, r.stars);
+        st.talk(0, false);
+        await UI.craftNote(c, kind, name, picks, r, N - 1 - i);
+        stars.push(r.stars);
+        st.craftClear();
+        await st.leave();
+        st.clearGuests();
+      }
+      // 주인이 돌아와서 고맙다고 해요
+      const total = stars.reduce((a, b) => a + b, 0);
+      const ownerC: Customer = { id: `owner-${kind}`, name: S.owner.name, source: 'new', chibi: S.owner.spec, greet: '', story: [], needs: { effect: '고마움', sub: 'love' }, feelingWords: [], reactions: { 3: [], 2: [], 1: [] }, prop: '', propModel: '' };
+      st.craftStove();
+      await st.setView('door', 0.9);
+      const entering = st.enter(ownerC, { prop: false });
+      await wait(1.2);
+      st.setView('guest', 1.4);
+      await entering;
+      st.mood('happy');
+      const say = this.say(ownerC);
+      const lines = [
+        '다녀왔어요! 가게를 봐 줘서 정말 고마워요.',
+        N > 1 ? `손님 세 분께 별을 ${total}개 받았네요. ${total >= 8 ? '손님 마음을 저보다 더 잘 살펴 줬어요!' : total >= 6 ? '손님 마음을 정성껏 살펴 줬군요.' : '처음인데도 끝까지 잘 해 줬어요.'}`
+          : `손님께 별을 ${total}개 받았네요. ${total >= 3 ? '손님 마음에 꼭 맞게 골라 줬어요!' : total >= 2 ? '손님 마음을 정성껏 살펴 줬군요.' : '처음인데도 끝까지 잘 해 줬어요.'}`,
+        '고마운 마음을 담아 마음 도장을 드릴게요.',
+      ];
+      await UI.dialog(ownerC, lines, { onLine: (k, w) => say(k, w, lines), final: { label: '마음 골목으로 돌아가기' } });
+      st.talk(0, false);
+      await st.leave();
+    } finally {
+      window.speechSynthesis?.cancel();
+      document.querySelectorAll('.dialog, .memo').forEach((d) => d.remove());
+      banner.remove();
+      st.craftClear();
+      st.clearGuests();
+      st.craftTheme(null);
+      st.resetPot();
+      st.setView('wide', 0);
+      document.body.classList.remove('shop-sit');
+    }
+    return { stars };
   }
 
   // 수업용: 두 그릇 전에 라면을 끓여 준 손님이 다음 손님보다 먼저 잠깐 들러 뒷이야기를 들려줘요 (두 그릇마다 한 번)
