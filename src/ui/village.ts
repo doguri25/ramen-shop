@@ -369,7 +369,7 @@ export function openVillage(o: {
       function showIntro() {
         if (intro) return;
         const row = (k: DoodleKind, b: string, t: string) => h('li', null, doodleImg(k), h('div', null, h('b', null, b), h('span', null, t)));
-        intro = h('div', { class: 'v-intro' }, h('div', { class: 'vi-card card pop-in' },
+        intro = h('div', { class: 'v-intro' }, h('div', { class: 'vi-card vi-guide card pop-in' },
           h('div', { class: 'vi-head' }, doodleImg('village', '', 'dicon vi-logo'), h('div', null, h('h2', null, '마음 골목'), h('p', null, '라면을 끓여 준 손님들이 사는 마을이에요.'))),
           h('ul', null,
             row('village', '불 켜진 집', '라면을 끓여 준 손님 집이에요. 누르면 손님이 나와요. 골목을 산책하는 손님도 있어요.'),

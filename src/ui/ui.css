@@ -837,6 +837,10 @@ body.village-open #ui > *:not(.village):not(.modal-wrap):not(.toast):not(.villag
 .village .vi-card li span { font-size: 15px; line-height: 1.45; color: var(--ink); word-break: keep-all; }
 .village .vi-btns { display: flex; gap: 8px; justify-content: flex-end; flex-wrap: wrap; }
 .village .vi-btns .dicon { width: 26px; height: 26px; }
+/* 첫 안내: 화면이 낮으면 안내 목록만 스크롤되고, 아래 단추는 늘 카드 안에 보여요 (단추 아래 그림자 자리도 남겨요) */
+.village .vi-guide { display: flex; flex-direction: column; overflow: hidden; }
+.village .vi-guide > ul { flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
+.village .vi-guide .vi-btns { flex: none; padding-bottom: 6px; }
 @media (max-width: 640px), (max-height: 520px) {
   .village .vi-card { padding: 14px 16px 14px; border-radius: 22px; }
   .village .vi-head .vi-logo { width: 46px; height: 46px; }
@@ -851,6 +855,16 @@ body.village-open #ui > *:not(.village):not(.modal-wrap):not(.toast):not(.villag
   .village .vi-card { width: min(760px, 100%); }
   .village .vi-card ul { flex-direction: row; }
   .village .vi-card li { flex: 1; flex-direction: column; align-items: flex-start; gap: 4px; }
+}
+/* 폰 가로처럼 아주 낮은 화면: 안내 글을 조금 줄여서 스크롤 없이 거의 다 보이게 */
+@media (max-height: 430px) {
+  .village .vi-guide .vi-head p { display: none; }
+  .village .vi-guide .vi-head .vi-logo { width: 38px; height: 38px; }
+  .village .vi-guide ul { margin: 8px 0 10px; }
+  .village .vi-guide li { padding: 6px 8px; }
+  .village .vi-guide li .dicon { width: 24px; height: 24px; }
+  .village .vi-guide li b { font-size: 15px; }
+  .village .vi-guide li span { font-size: 12.5px; line-height: 1.35; }
 }
 .village-loading { position: absolute; inset: 0; z-index: 12; display: grid; place-items: center; background: rgba(246,235,221,.82); pointer-events: auto; }
 .village-loading .vl-in { display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 22px 30px; border-radius: 22px; background: #fff; box-shadow: var(--shadow); }
