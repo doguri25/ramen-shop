@@ -5,7 +5,7 @@ import { blob, ctx2d, darken, inkLine, makeCanvas, softGlow, wash } from '../pai
 export type DoodleKind =
   | 'village' | 'map' | 'walk' | 'news' | 'stamp' | 'talk' | 'bang' | 'worry' | 'heart' | 'me'
   | 'bread' | 'flower' | 'letter' | 'book' | 'icecream' | 'tea' | 'fruit' | 'music'
-  | 'notebook' | 'party' | 'chain' | 'group' | 'shopsit';
+  | 'notebook' | 'party' | 'chain' | 'group' | 'shopsit' | 'sun' | 'dusk' | 'moon';
 
 const INK = '#5B3A29';
 type P = [number, number];
@@ -205,6 +205,31 @@ function paint(kind: DoodleKind, size: number): HTMLCanvasElement {
       inkLine(g, ring([[22, 44], [106, 44], [106, 108], [22, 108]]), INK, 2.6, rnd, 0.7);
       poly(g, [[34, 72], [62, 72], [62, 108], [34, 108]], '#B9835A', rnd, 0.4);
       poly(g, [[72, 68], [100, 68], [100, 88], [72, 88]], '#FFE07A', rnd, 0.4);
+      break;
+    }
+    case 'sun': {
+      // 낮: 동그란 해와 빛살
+      softGlow(g, 64, 64, 50, '#FFE9A8', 0.8);
+      for (let i = 0; i < 8; i++) { const a = (i / 8) * Math.PI * 2; inkLine(g, [[64 + Math.cos(a) * 34, 64 + Math.sin(a) * 34], [64 + Math.cos(a) * 48, 64 + Math.sin(a) * 48]], '#F2A71B', 5, rnd, 0.8); }
+      blob(g, 64, 64, 25, 25, '#FFCC3D', rnd, { layers: 5, alpha: 0.55, edge: 0.6 });
+      break;
+    }
+    case 'dusk': {
+      // 노을녘: 언덕 너머로 지는 해와 붉은 하늘
+      blob(g, 64, 52, 56, 30, '#FBC08C', rnd, { layers: 4, alpha: 0.4, edge: 0 });
+      softGlow(g, 64, 78, 42, '#FFB070', 0.8);
+      blob(g, 64, 80, 24, 24, '#FF8A4A', rnd, { layers: 5, alpha: 0.55, edge: 0.6 });
+      wash(g, () => { g.beginPath(); g.moveTo(6, 118); g.lineTo(6, 86); g.quadraticCurveTo(40, 72, 70, 86); g.quadraticCurveTo(98, 98, 122, 84); g.lineTo(122, 118); g.closePath(); }, '#B98AA6', rnd, { layers: 4, alpha: 0.5, edge: 0.4 });
+      inkLine(g, [[18, 44], [34, 42]], '#E3645A', 2.4, rnd, 0.6); inkLine(g, [[92, 36], [112, 34]], '#E3645A', 2.4, rnd, 0.6);
+      break;
+    }
+    case 'moon': {
+      // 밤: 초승달과 별 셋
+      softGlow(g, 58, 64, 46, '#C9D6FF', 0.7);
+      wash(g, () => { g.beginPath(); g.arc(58, 64, 32, 0, Math.PI * 2); g.arc(74, 54, 28, 0, Math.PI * 2, true); g.closePath(); }, '#FFE58A', rnd, { layers: 5, alpha: 0.6, jitter: 1, edge: 0.6, edgeWidth: 2.4 });
+      for (const [x, y, r] of [[96, 34, 6], [104, 78, 4.5], [86, 102, 3.5]] as const) {
+        inkLine(g, [[x - r, y], [x + r, y]], '#F2B72D', 2.6, rnd, 0.5); inkLine(g, [[x, y - r], [x, y + r]], '#F2B72D', 2.6, rnd, 0.5);
+      }
       break;
     }
   }

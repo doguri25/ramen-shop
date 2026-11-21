@@ -34,7 +34,11 @@ export interface Village {
   // 캐릭터를 땅 위에 세울 높이: 다리 길이만큼 올려야 신발이 땅에 묻히지 않아요
   standY: (x: number, z: number, ch: Chibi) => number;
   update: (dt: number, eye?: THREE.Vector3) => void; dispose: () => void;
+  // 시간대: 하늘, 별과 달(해), 등불·창문 빛무리, 떠도는 빛 알갱이를 바꿔요
+  setTod: (t: 'day' | 'dusk' | 'night') => void;
   bakeSpec: () => unknown; baked: boolean;
+  // 냇물을 건너는 다리 (양 끝 자리와 높이)
+  bridges: { a: THREE.Vector3; b: THREE.Vector3; ya: number; yb: number }[];
 }
 
 // ── 땅 모양 ─────────────────────────────
@@ -349,24 +353,70 @@ export function buildVillage(houses: VHouse[], towns: VTown[], villagers: ChibiS
     const a = far(lanes[i], door), b = near(lanes[j], a);
     roads.push(wind(a, b, i + j, 0.12));
   }
+  // 다리: 큰길이 냇물을 건너는 곳. 가까운 곳에서 건너는 길이 여럿이면 다리 하나로 모아요 (다리끼리 겹치지 않게).
+  // 길은 다리 위에서 곧게 지나가요 (주민이 난간을 뚫고 걷거나 물에 빠지지 않게)
+  const bridges: { a: THREE.Vector3; b: THREE.Vector3; ya: number; yb: number }[] = [];
+  {
+    type Cross = { r: number; s: number; e: number; a: THREE.Vector3; b: THREE.Vector3 };
+    const crosses: Cross[] = [];
+    const rpts = roads.map((p) => p.getSpacedPoints(Math.ceil(p.getLength() / 0.5)));
+    rpts.forEach((pts, r) => {
+      let s0 = -1;
+      for (let i = 0; i < pts.length; i++) {
+        const wet = rdist(pts[i].x, pts[i].z) < 6.2;
+        if (wet && s0 < 0) s0 = i;
+        if ((!wet || i === pts.length - 1) && s0 >= 0) {
+          const a = pts[Math.max(0, s0 - 1)], b = pts[i];
+          // 냇물을 정말 건널 때만 다리를 놓아요 (냇가를 스치기만 하면 놓지 않아요)
+          if (riverSide(a) !== riverSide(b) && a.distanceTo(b) < 22) crosses.push({ r, s: Math.max(0, s0 - 1), e: i, a: a.clone(), b: b.clone() });
+          s0 = -1;
+        }
+      }
+    });
+    // 두 건너는 자리(선분)가 이만큼 가까우면 한 다리로 (다리 폭 2.6m + 여유)
+    const segD = (a: THREE.Vector3, b: THREE.Vector3, c: THREE.Vector3, d: THREE.Vector3) => {
+      let m = Infinity;
+      for (let i = 0; i <= 16; i++) for (let j = 0; j <= 16; j++) m = Math.min(m, Math.hypot(a.x + (b.x - a.x) * i / 16 - c.x - (d.x - c.x) * j / 16, a.z + (b.z - a.z) * i / 16 - c.z - (d.z - c.z) * j / 16));
+      return m;
+    };
+    const groups: Cross[][] = [];
+    for (const c of crosses) { const gr = groups.find((g2) => g2.some((o) => segD(o.a, o.b, c.a, c.b) < 4.5)); if (gr) gr.push(c); else groups.push([c]); }
+    const ends = new Map<Cross, [THREE.Vector3, THREE.Vector3]>();
+    for (const gr of groups) {
+      const side0 = riverSide(gr[0].a), A = V(), B = V();
+      for (const c of gr) { const near0 = riverSide(c.a) === side0; A.add(near0 ? c.a : c.b); B.add(near0 ? c.b : c.a); }
+      A.divideScalar(gr.length).setY(0); B.divideScalar(gr.length).setY(0);
+      // 모은 다리의 양 끝이 마른 땅에 닿을 때까지 늘여요
+      const dir = V().subVectors(B, A).normalize();
+      for (let k = 0; k < 24 && rdist(A.x, A.z) < 6.2; k++) A.addScaledVector(dir, -0.5);
+      for (let k = 0; k < 24 && rdist(B.x, B.z) < 6.2; k++) B.addScaledVector(dir, 0.5);
+      bridges.push({ a: A, b: B, ya: heightAt(A.x, A.z), yb: heightAt(B.x, B.z) });
+      for (const c of gr) ends.set(c, riverSide(c.a) === side0 ? [A, B] : [B, A]);
+    }
+    // 건너는 길을 다시 이어요: 다리 앞까지는 원래 길, 다리 위는 곧게, 다리 뒤로는 다시 원래 길
+    rpts.forEach((pts, r) => {
+      const cs = crosses.filter((c) => c.r === r).sort((x, y) => x.s - y.s);
+      if (!cs.length) return;
+      const out: THREE.Vector3[] = [];
+      let i = 0;
+      for (const c of cs) {
+        const [A, B] = ends.get(c)!;
+        // 다리 옆(난간 옆)을 지나는 점은 빼고, 다리 끝 너머에서 곧게 다리로 들어오고 나가요
+        const abx = B.x - A.x, abz = B.z - A.z, L2 = abx * abx + abz * abz;
+        const uOf = (q: THREE.Vector3) => ((q.x - A.x) * abx + (q.z - A.z) * abz) / L2;
+        for (; i < c.s; i += 4) out.push(pts[i].clone());
+        while (out.length > 1 && (out[out.length - 1].distanceTo(A) < 2.5 || uOf(out[out.length - 1]) > -0.12)) out.pop();
+        for (const k of [0, 0.12, 0.3, 0.5, 0.7, 0.88, 1]) out.push(A.clone().lerp(B, k));
+        i = c.e;
+        while (i < pts.length - 1 && (pts[i].distanceTo(B) < 2.5 || uOf(pts[i]) < 1.12)) i++;
+      }
+      for (; i < pts.length - 1; i += 4) out.push(pts[i].clone());
+      out.push(pts[pts.length - 1].clone());
+      roads[r] = new THREE.CatmullRomCurve3(out, false, 'centripetal');
+    });
+  }
   const allPaths = [...roads, ...lanes];
   const pathPtsEarly = allPaths.flatMap((p) => p.getSpacedPoints(90));
-  // 다리: 큰길이 냇물을 건너는 곳
-  const bridges: { a: THREE.Vector3; b: THREE.Vector3; ya: number; yb: number }[] = [];
-  for (const p of roads) {
-    const pts = p.getSpacedPoints(Math.ceil(p.getLength() / 0.5));
-    let s0 = -1;
-    for (let i = 0; i < pts.length; i++) {
-      const wet = rdist(pts[i].x, pts[i].z) < 6.2;
-      if (wet && s0 < 0) s0 = i;
-      if ((!wet || i === pts.length - 1) && s0 >= 0) {
-        const a = pts[Math.max(0, s0 - 1)], b = pts[i];
-        // 냇물을 정말 건널 때만 다리를 놓아요 (냇가를 스치기만 하면 놓지 않아요)
-        if (riverSide(a) !== riverSide(b) && a.distanceTo(b) < 22) bridges.push({ a: a.clone(), b: b.clone(), ya: heightAt(a.x, a.z), yb: heightAt(b.x, b.z) });
-        s0 = -1;
-      }
-    }
-  }
   const bridgeAt = (x: number, z: number): number | null => {
     for (const br of bridges) {
       const ab = V().subVectors(br.b, br.a), L = ab.length(), u = ((x - br.a.x) * ab.x + (z - br.a.z) * ab.z) / (L * L);
@@ -458,11 +508,33 @@ export function buildVillage(houses: VHouse[], towns: VTown[], villagers: ChibiS
   const ground = new THREE.Mesh(geo, Mu('#FFFFFF', { map: groundTex, rim: 0, flat: 0.25 })); // 그늘 띠가 얼룩처럼 끊기지 않게 살짝 고르게
   ground.userData.ownGeo = true;
   root.add(ground); own.push(ground);
-  const skyCv = makeCanvas(8, 256), sg = ctx2d(skyCv), gr = sg.createLinearGradient(0, 0, 0, 256);
-  gr.addColorStop(0, '#8FCBF2'); gr.addColorStop(0.36, '#CDE8F8'); gr.addColorStop(0.47, '#FFF0D6'); gr.addColorStop(0.5, '#FFE9C8'); gr.addColorStop(0.52, '#CDEAA6'); gr.addColorStop(1, '#CDEAA6');
-  sg.fillStyle = gr; sg.fillRect(0, 0, 8, 256);
-  const sky = new THREE.Mesh(new THREE.SphereGeometry(520, 32, 16), Mu('#FFFFFF', { map: tex(skyCv), flat: 1, rim: 0, side: THREE.BackSide }));
+  // 하늘: 시간대마다 띠 색이 달라요 (아래 절반은 땅 끝 너머 빛깔)
+  const SKY: Record<'day' | 'dusk' | 'night', [number, string][]> = {
+    day: [[0, '#8FCBF2'], [0.36, '#CDE8F8'], [0.47, '#FFF0D6'], [0.5, '#FFE9C8'], [0.52, '#CDEAA6'], [1, '#CDEAA6']],
+    dusk: [[0, '#7E7FC0'], [0.22, '#D98FA6'], [0.38, '#F7A47A'], [0.47, '#FFC98E'], [0.5, '#FFDDA8'], [0.52, '#C9B88A'], [1, '#C9B88A']],
+    night: [[0, '#0E1638'], [0.3, '#1E2A5A'], [0.45, '#3A4680'], [0.5, '#4E5690'], [0.52, '#2C3A52'], [1, '#2C3A52']],
+  };
+  const skyTex = (t: 'day' | 'dusk' | 'night') => {
+    const skyCv = makeCanvas(8, 256), sg = ctx2d(skyCv), gr = sg.createLinearGradient(0, 0, 0, 256);
+    SKY[t].forEach(([k, c]) => gr.addColorStop(k, c));
+    sg.fillStyle = gr; sg.fillRect(0, 0, 8, 256);
+    return tex(skyCv);
+  };
+  const skyTexs: Partial<Record<'day' | 'dusk' | 'night', THREE.Texture>> = { day: skyTex('day') };
+  const sky = new THREE.Mesh(new THREE.SphereGeometry(520, 32, 16), Mu('#FFFFFF', { map: skyTexs.day!, flat: 1, rim: 0, side: THREE.BackSide }));
   sky.userData.ownGeo = true; root.add(sky); own.push(sky);
+  // 밤하늘 별 (밤에만)
+  const starGeo = new THREE.BufferGeometry();
+  {
+    const sr = mulberry32(4242), sp: number[] = [];
+    for (let i = 0; i < 520; i++) { const a = sr() * PI * 2, e = 0.06 + Math.pow(sr(), 0.7) * 1.4, r = 480; sp.push(Math.cos(a) * Math.cos(e) * r, Math.sin(e) * r, Math.sin(a) * Math.cos(e) * r); }
+    starGeo.setAttribute('position', new THREE.Float32BufferAttribute(sp, 3));
+  }
+  const stars = new THREE.Points(starGeo, new THREE.PointsMaterial({ map: glowTex(), color: '#FFF6DC', size: 4.2, sizeAttenuation: true, transparent: true, opacity: 0.95, depthWrite: false, blending: THREE.AdditiveBlending }));
+  stars.visible = false; stars.renderOrder = 1; root.add(stars);
+  // 노을녘 해, 밤의 달
+  const orb = makeGlow('#FFB070', 90, 0.85); orb.visible = false; root.add(orb);
+  const orbCore = makeGlow('#FFF3D0', 26, 0.95); orbCore.visible = false; root.add(orbCore);
   // 아주 먼 산줄기 (땅 끝 너머)
   for (let i = 0; i < 18; i++) {
     const a = (i / 18) * PI * 2, r = 330 + rnd() * 40;
@@ -803,8 +875,20 @@ export function buildVillage(houses: VHouse[], towns: VTown[], villagers: ChibiS
     }
   }
   const actors: Actor[] = [...npcs, ...walkers];
+  // 다리 난간: 다리 위에서는 난간 밖으로, 다리 옆에서는 난간 안으로 지나가지 못해요 (다리 양 끝으로만 오르내려요).
+  // 난간(가운데 줄에서 1.25m)과 사장님 몸 반지름(0.3m)만큼을 막아요
+  const railHit = (x: number, z: number) => {
+    for (const br of bridges) {
+      const abx = br.b.x - br.a.x, abz = br.b.z - br.a.z, L2 = abx * abx + abz * abz;
+      const u = ((x - br.a.x) * abx + (z - br.a.z) * abz) / L2;
+      if (u < 0.02 || u > 0.98) continue;
+      const lat = Math.abs((x - br.a.x) * abz - (z - br.a.z) * abx) / Math.sqrt(L2);
+      if (lat > 0.95 && lat < 1.55) return true;
+    }
+    return false;
+  };
   const blocked = (x: number, z: number) => {
-    if (inWater(x, z)) return true;
+    if (inWater(x, z) || railHit(x, z)) return true;
     if (Math.abs(x - SHOP.x) < 3.1 && Math.abs(z - SHOP.z) < 2.5) return true;
     for (const [sx, sz, r] of solids) if ((x - sx) ** 2 + (z - sz) ** 2 < r * r) return true;
     return x < X0 + 2 || x > X1 - 2 || z < Z0 + 2 || z > Z1 - 2;
@@ -869,17 +953,36 @@ export function buildVillage(houses: VHouse[], towns: VTown[], villagers: ChibiS
     }
   };
   const dispose = () => {
+    starGeo.dispose(); (stars.material as THREE.Material).dispose(); Object.values(skyTexs).forEach((t2) => t2?.dispose());
     hitGeo.dispose(); hitMat.dispose(); npcHitGeo.dispose(); pawnBody.dispose(); pawnHead.dispose(); moteGeo.dispose(); flowerGeos.forEach((g2) => g2.dispose());
     (motes.material as THREE.Material).dispose(); glints.forEach((g2) => g2.s.material.dispose());
     placed0.lines.forEach((L) => L.dispose());
     for (const o of own) { const m = (o as THREE.Mesh).material as THREE.ShaderMaterial; m.uniforms?.uMap?.value?.dispose?.(); }
     disposeTree(root);
   };
+  // 빛무리(등불·불 켜진 집·가게): 밤에는 더 밝게. 냇물 반짝임은 매 장면 따로 움직여서 빼요
+  const glintSet = new Set(glints.map((g2) => g2.s as THREE.Object3D));
+  const glows: { s: THREE.Sprite; base: number }[] = [];
+  root.traverse((o) => { const sp = o as THREE.Sprite; if (sp.isSprite && !glintSet.has(o) && o !== orb && o !== orbCore && (sp.material as THREE.SpriteMaterial).blending === THREE.AdditiveBlending) glows.push({ s: sp, base: (sp.material as THREE.SpriteMaterial).opacity }); });
+  const moteMat = motes.material as THREE.PointsMaterial;
+  const setTod = (t: 'day' | 'dusk' | 'night') => {
+    if (!skyTexs[t]) skyTexs[t] = skyTex(t);
+    ((sky.material as THREE.ShaderMaterial).uniforms.uMap.value = skyTexs[t]);
+    stars.visible = t === 'night';
+    const k = t === 'day' ? 1 : t === 'dusk' ? 1.25 : 1.75;
+    glows.forEach((g2) => { g2.s.material.opacity = Math.min(0.92, g2.base * k); });
+    moteMat.color.set(t === 'night' ? '#FFE27A' : t === 'dusk' ? '#FFD39A' : '#FFE7A6'); moteMat.size = t === 'night' ? 0.42 : 0.34;
+    orb.visible = orbCore.visible = t !== 'day';
+    const dir = t === 'dusk' ? V(-0.86, 0.07, 0.42).normalize() : V(0.3, 0.55, -0.55).normalize();
+    orb.position.copy(dir).multiplyScalar(470); orbCore.position.copy(dir).multiplyScalar(468);
+    orb.material.color.set(t === 'dusk' ? '#FFA060' : '#C9D8FF'); orb.material.opacity = t === 'dusk' ? 0.85 : 0.5;
+    orbCore.material.color.set(t === 'dusk' ? '#FFE0B0' : '#FFFBEA'); orb.scale.setScalar(t === 'dusk' ? 110 : 70); orbCore.scale.setScalar(t === 'dusk' ? 30 : 20);
+  };
   void mix;
   return {
     root, ground, hits, shopHits: shopHits.map((x) => x.hit), shops: shopHits, npcs, walkers, houses: spots, towns: townInfo, shopDoor: V(door.x, walkY(door.x, door.z), door.z),
     plaza: V(PLAZA.x, heightAt(PLAZA.x, PLAZA.z), PLAZA.z), plazaR: PLAZA_R, festival,
-    bounds: { minX: X0, maxX: X1, minZ: Z0, maxZ: Z1 }, heightAt, walkY, standY, inWater, blocked, update, dispose,
-    bakeSpec: () => bakeSpec(props, heightAt), baked: placed0.baked,
+    bounds: { minX: X0, maxX: X1, minZ: Z0, maxZ: Z1 }, heightAt, walkY, standY, inWater, blocked, update, dispose, setTod,
+    bakeSpec: () => bakeSpec(props, heightAt), baked: placed0.baked, bridges,
   };
 }

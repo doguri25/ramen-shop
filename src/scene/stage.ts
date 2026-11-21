@@ -1979,16 +1979,37 @@ export class Stage {
         }));
       }
     } else {
-      // 꽃다발이 손님 품으로
+      // 받은 것은 손님 얼굴 앞, 카운터 위에서 두 손으로 잡아요 (몸이나 얼굴 속으로 들어가지 않게)
       const g = this.guests[0];
-      const to = g ? g.root.position.clone().add(V(0, 0.62 * g.root.scale.y, 0.28)) : pos.clone().add(V(0, 0.2, -0.2));
-      sfx.whoosh();
-      await tween(0.9, (k) => { const e = ease.inOutCubic(k); P.position.lerpVectors(pos, to, e); P.rotation.x = -0.35 * e; P.scale.setScalar(1 + 0.15 * e); }, { ease: ease.linear });
-      this.guests.forEach((ch, i) => { ch.setMood('delight'); ch.play(i % 2 ? 'clap' : 'cheer'); });
-      sfx.heart();
       const head = V();
+      let to = pos.clone().add(V(0, 0.04, -0.06));
+      if (g) {
+        g.head.getWorldPosition(head);
+        const sc = g.root.scale.y, faceZ = head.z + (HR + g.faceReach) * sc; // 얼굴(주둥이·부리) 앞쪽 끝
+        to = V(this.guests.length > 1 ? pos.x : head.x, 1.035 + 0.05, faceZ + 0.15);
+      }
+      sfx.whoosh();
+      // 위로 살짝 들렸다가 손님 앞에 내려앉아요 (윗부분은 얼굴 반대쪽으로 살짝 기울여요)
+      await tween(0.8, (k) => { const e = ease.inOutCubic(k); P.position.lerpVectors(pos, to, e); P.position.y += Math.sin(k * PI) * 0.06; P.rotation.x = 0.12 * e; }, { ease: ease.linear });
+      // 혼자 온 손님은 두 손으로 잡아요. 꽃다발은 포장지 아랫부분을, 받침에 올린 물건은 받침 가장자리(손님 쪽 절반)를 잡아서
+      // 손이 물건 속으로 들어가거나 물건을 가리지 않게 해요. 여럿이 오면 가운데 두고 다 같이 손뼉을 쳐요
+      const hold = g && this.guests.length === 1;
+      if (hold) {
+        g.manual = true; g.talking = false;
+        let side = (sd: number) => to.clone().add(V(sd * 0.075, 0.05, 0.0));
+        if (this.craftKind !== 'flower') {
+          P.updateMatrixWorld(true);
+          const bb = new THREE.Box3().setFromObject(P), c = bb.getCenter(V()), hw = (bb.max.x - bb.min.x) / 2, hd = (bb.max.z - bb.min.z) / 2;
+          side = (sd: number) => V(c.x + sd * (hw + 0.025), bb.min.y + 0.035, c.z - hd * 0.5);
+        }
+        const fl = this.craftKind === 'flower';
+        g.setHandWorld(0, side(-1), fl ? V(1, 0.2, 0.3) : V(0.6, -0.2, 1)); g.setHandWorld(1, side(1), fl ? V(-1, 0.2, 0.3) : V(-0.6, -0.2, 1));
+      }
+      this.guests.forEach((ch) => { ch.setMood('delight'); if (!hold) ch.play('clap'); });
+      sfx.heart();
       this.guests.forEach((ch) => { ch.head.getWorldPosition(head); for (let k = 0; k < 3; k++) this.spawn(this.texHeart, head.clone().add(V(0.2 + k * 0.05, 0.3, 0.2)), V(0.05 * (k - 1), 0.35, 0), 2, 0.1, 0); });
-      await wait(0.9);
+      await wait(1.1);
+      if (hold) { g.manual = false; g.play('cheer'); }
     }
     await this.setView('guest', 0.8);
   }

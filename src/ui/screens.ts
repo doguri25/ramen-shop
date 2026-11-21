@@ -1,5 +1,6 @@
 import { CREDIT, MAX_STARS, ROUNDS } from '../config';
 import { EVENT } from '../event/flag';
+import { setTodDefault, todDefault, TOD_NAME, TODS, type Tod } from '../core/tod';
 import { icon } from '../event/icons';
 import { eulReul } from '../core/korean';
 import { sfx } from '../core/sound';
@@ -1187,6 +1188,11 @@ export const UI = {
       const qsel = h('div', { class: 'sel' });
       const drawQ = () => { qsel.innerHTML = ''; [['auto', '자동'], ['high', '높게'], ['mid', '보통'], ['low', '낮게']].forEach(([k, l]) => qsel.append(h('button', { class: q === k ? 'on' : '', onclick: () => { q = k; drawQ(); } }, l))); };
       drawQ();
+      // 골목과 가게 시간대 (이 기기의 기본값. 학생은 마음 골목에서 해·노을·달 단추로 바꿀 수 있어요)
+      let tod: Tod = todDefault();
+      const todSel = h('div', { class: 'sel' });
+      const drawTod = () => { todSel.innerHTML = ''; TODS.forEach((k) => todSel.append(h('button', { class: tod === k ? 'on' : '', onclick: () => { tod = k; drawTod(); } }, TOD_NAME[k]))); };
+      drawTod();
       const list = h('div', { class: 't-list' });
       const drawList = () => {
         list.innerHTML = '';
@@ -1206,6 +1212,8 @@ export const UI = {
         h('h2', null, '선생님 화면'),
         h('div', { class: 'sec' }, h('h3', null, '띵커벨 보드 주소'), url, h('div', { class: 'muted', style: 'margin-top:6px;font-size:15px' }, '비워 두면 config.ts에 적은 주소를 써요. 보드는 손님 참여와 이미지 올리기를 허용해 주세요.')),
         h('div', { class: 'sec' }, h('h3', null, '화질'), qsel),
+        EVENT ? null : h('div', { class: 'sec' }, h('h3', null, '골목과 가게 시간대'), todSel,
+          h('div', { class: 'muted', style: 'margin-top:6px;font-size:15px' }, '처음 열 때의 시간대예요. 학생은 마음 골목 오른쪽의 해·노을·달 단추로 바꿀 수 있어요.')),
         EVENT ? null : h('div', { class: 'sec' }, h('h3', null, 'AI 도우미 (업스테이지)'),
           h('div', { class: 'muted', style: 'font-size:15px;margin-bottom:8px' }, '손님 맞춤 한마디, 고른 까닭 생각 도우미, 고운 말 검사에 써요. 학생 이름은 보내지 않아요. 인터넷이 없으면 저절로 원래대로 돌아가요.'),
           aiSel, h('div', { style: 'margin-top:8px' }, aiUrl),
@@ -1215,7 +1223,7 @@ export const UI = {
           sumBtn, sumBox),
         o.rank ? rankSec(o.rank, () => wrap) : null,
         h('div', { class: 'sec' }, h('h3', null, '사장님 기록'), EVENT ? h('div', { class: 'muted', style: 'font-size:15px;margin-bottom:6px' }, '이 기기에 남은 기록만 지워요. 랭킹 서버에 모인 기록은 그대로 남아요.') : null, list),
-        h('div', { class: 'actions' }, h('button', { class: 'btn', onclick: () => { o.onSave(url.value.trim(), q, aiOn, aiUrl.value.trim()); sfx.pop(); wrap.remove(); res(); } }, '저장하고 닫기'))));
+        h('div', { class: 'actions' }, h('button', { class: 'btn', onclick: () => { o.onSave(url.value.trim(), q, aiOn, aiUrl.value.trim()); if (!EVENT) setTodDefault(tod); sfx.pop(); wrap.remove(); res(); } }, '저장하고 닫기'))));
       mount(wrap);
     });
   },

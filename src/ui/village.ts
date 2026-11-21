@@ -8,6 +8,7 @@ import { QUEST, QUESTS, type Quest } from '../data/quests';
 import { ALLEY_LINKS, KIND_EMOJI, LATER } from '../data/later';
 import type { Customer, Owner, RamenRecord } from '../data/types';
 import { josa } from '../data/text';
+import { getTod, onTod, setTod, TOD_DOODLE, TOD_LIGHT, TOD_LOOK, TOD_NAME, TODS, type Tod } from '../core/tod';
 import { tex } from '../paint/textures';
 import type { Look } from '../render/watercolor';
 import { Chibi, type Mood } from '../scene/chibi';
@@ -98,7 +99,17 @@ export function openVillage(o: {
       const cur = { pos: V(0, 120, 120), look: V(0, 0, -4) };
       let blend = 1; // 돌아다니기로 바꾼 뒤 내려앉는 동안 0→1
       // 마음 골목은 가게보다 화사하게: 채도·밝기를 올리고 그늘을 밝히고, 낮은 해에서 햇살이 비쳐요
-      const look = { sat: 1.18, bright: 1.04, lift: 0.35, rays: 0.25, sunDir: V(0.4, 0.17, 0.5).normalize(), skyD: 400, paper: 0.8, blot: 0.6 };
+      const look: Look & { rays: number } = { sat: 1.18, bright: 1.04, lift: 0.35, rays: 0.25, sunDir: V(0.4, 0.17, 0.5).normalize(), skyD: 400, paper: 0.8, blot: 0.6 };
+      // 시간대(낮·노을녘·밤): 하늘과 등불, 화면 빛깔을 함께 바꿔요
+      let rayK = 1;
+      const applyTod = (t: Tod) => {
+        const L = TOD_LOOK[t], P = TOD_LIGHT[t];
+        look.sat = L.sat; look.bright = L.bright; look.lift = L.lift; look.sunDir = L.sunDir; rayK = L.rayK;
+        if (t === 'day') { delete look.tint; delete look.lightW; delete look.sunCol; delete look.haze; } else { look.tint = P.tint; look.lightW = P.lightW; look.sunCol = P.sunCol; look.haze = P.haze; }
+        vil.setTod(t);
+        todBtn.replaceChildren(doodleImg(TOD_DOODLE[t]));
+        todBtn.setAttribute('aria-label', `시간대 바꾸기 (지금 ${TOD_NAME[t]})`); todBtn.title = `지금은 ${TOD_NAME[t]}`;
+      };
       const world: World = { scene, cam, update: () => {}, dof: { focus: 100, range: 40, amount: 0.8 }, look };
       const B = vil.bounds;
       const clampT = (t: THREE.Vector3) => { t.x = Math.max(B.minX + 6, Math.min(B.maxX - 6, t.x)); t.z = Math.max(B.minZ + 6, Math.min(B.maxZ - 6, t.z)); };
@@ -116,6 +127,21 @@ export function openVillage(o: {
       const turnTo = (p: THREE.Vector3, headY?: number) => {
         faceYaw = Math.atan2(p.x - fp.pos.x, p.z - fp.pos.z);
         facePitch = headY === undefined ? -0.06 : Math.atan2(headY - (fp.y + EYE), Math.max(0.5, Math.hypot(p.x - fp.pos.x, p.z - fp.pos.z)));
+      };
+
+      // 대화 전 시점: 이야기가 끝나면 그 자리(걷기는 보던 방향·고개, 전체 보기는 위치·확대)로 천천히 돌아가요
+      let preView: { mode: 'all' | 'walk'; yaw: number; pitch: number; target: THREE.Vector3; dist: number; ayaw: number } | null = null;
+      let faceBack = false;
+      // 되돌아가는 중에 다시 말을 걸면, 반쯤 돌아간 방향이 아니라 원래 보던 방향을 기억해요
+      const saveView = () => {
+        const back = faceBack && faceYaw !== null;
+        preView = { mode, yaw: back ? faceYaw! : fp.yaw, pitch: back ? facePitch ?? fp.pitch : fp.pitch, target: all.target.clone(), dist: all.dist, ayaw: all.yaw };
+      };
+      const restoreView = () => {
+        const v = preView; preView = null; faceBack = false;
+        if (!v || v.mode !== mode) { faceYaw = facePitch = null; return; }
+        if (mode === 'walk') { faceYaw = v.yaw; facePitch = v.pitch; faceBack = true; }
+        else { all.target.copy(v.target); all.dist = v.dist; all.yaw = v.ayaw; faceYaw = facePitch = null; }
       };
 
       // 집에서 손님이 나와요
@@ -140,7 +166,7 @@ export function openVillage(o: {
           shadows[i].position.set(p.x, vil.walkY(p.x, p.z) + 0.05, p.z);
         }), { ease: ease.linear });
         chs.forEach((ch) => { ch.walking = 0; ch.play('wave'); if (mode === 'walk') ch.look = eye(); });
-        if (mode === 'walk') turnTo(s.out, s.out.y + 0.8);
+        if (mode === 'walk') { saveView(); turnTo(s.out, s.out.y + 0.8); }
         await new Promise((r2) => setTimeout(r2, 350));
         await o.story(c, r);
         chs.forEach((ch) => { ch.look = null; ch.play('bow'); });
@@ -158,13 +184,14 @@ export function openVillage(o: {
         shadows.forEach((sh) => { scene.remove(sh); disposeTree(sh); });
         guest = null;
         busy = false;
-        faceYaw = facePitch = null;
+        restoreView();
       };
       const tapHouse = (k: number) => {
         const s = vil.houses[k];
         if (!s.h.lit) { sfx.back(); toast('아직 만나지 않은 손님의 집이에요. 라면을 끓여 주면 불이 켜져요.'); return; }
         sfx.tap();
         if (mode === 'all') {
+          saveView();
           all.target.copy(s.out); all.dist = 14; all.yaw = s.yaw;
           setTimeout(() => popGuest(k), 650);
         } else {
@@ -284,6 +311,13 @@ export function openVillage(o: {
       seg.append(
         h('button', { 'data-m': 'all', onclick: () => { sfx.tap(); setMode('all'); } }, doodleImg('map'), h('span', null, '전체 보기')),
         h('button', { 'data-m': 'walk', onclick: () => { sfx.tap(); setMode('walk'); } }, doodleImg('walk'), h('span', null, '돌아다니기')));
+      const todBtn = h('button', { class: 'v-tod', onclick: () => {
+        sfx.tap();
+        const t = TODS[(TODS.indexOf(getTod()) + 1) % TODS.length];
+        setTod(t);
+        toast(t === 'day' ? '해가 떴어요. 낮이에요' : t === 'dusk' ? '노을이 지고 있어요' : '밤이 되었어요. 집마다 불이 반짝여요');
+      } });
+      const offTod = onTod(applyTod);
       const zoom = h('div', { class: 'v-zoom' },
         h('button', { 'aria-label': '크게 보기', onclick: () => { sfx.tap(); all.dist = Math.max(18, all.dist * 0.72); } }, '+'),
         h('button', { 'aria-label': '작게 보기', onclick: () => { sfx.tap(); all.dist = Math.min(fitDist() * 1.1, all.dist / 0.72); } }, '−'));
@@ -322,7 +356,8 @@ export function openVillage(o: {
             stampChip, newsBox,
             h('div', { class: 'v-right' }, seg, h('button', { class: 'icon-btn v-help', 'aria-label': '마음 골목 안내', onclick: () => { sfx.tap(); showIntro(); } }, '?'), iconBtn(ICON.close, () => close(), '닫기'))),
           h('div', { class: 'v-row2' }, goalChip)),
-        hint, zoom, prompt, stickGhost, stick, townBar, talkBox, fade);
+        hint, h('div', { class: 'v-side' }, todBtn, zoom), prompt, stickGhost, stick, townBar, talkBox, fade);
+      applyTod(getTod());
       document.body.classList.add('village-open');
       loading.remove();
       mount(el);
@@ -444,7 +479,7 @@ export function openVillage(o: {
           if (!done.has(FOLKS[talk].id) && FOLKS[talk].type !== 'feel') n.ch.setMood('happy');
         } else { n.faceTo = null; n.hold = false; n.ch.setMood('happy'); }
         talk = null; talkBox.hidden = true; el.classList.remove('talking');
-        faceYaw = facePitch = null;
+        restoreView();
         drawGoal(); refreshBadges();
       };
       const feelStep = (i: number, f: Folk) => {
@@ -601,6 +636,7 @@ export function openVillage(o: {
         talk = i; n.hold = true;
         const meP = mode === 'walk' ? eye() : cur.pos.clone();
         n.faceTo = V(meP.x, 0, meP.z); n.ch.look = meP;
+        saveView();
         if (mode === 'walk') turnTo(n.ch.root.position, n.ch.root.position.y + 0.7); // 얼굴이 대화창 위에 오게 몸 아래쪽을 겨눠요
         else { all.target.copy(n.ch.root.position).setY(n.ch.root.position.y); all.dist = 14; }
         talkBox.hidden = false; el.classList.add('talking'); prompt.hidden = true;
@@ -941,6 +977,8 @@ export function openVillage(o: {
         }
         if (faceYaw !== null) fp.yaw += angDiff(faceYaw, fp.yaw) * Math.min(1, dt * 5);
         if (facePitch !== null) fp.pitch += (facePitch - fp.pitch) * Math.min(1, dt * 5);
+        // 대화 전 방향으로 다 돌아오면 손을 놓아요 (그다음은 다시 마음대로 둘러봐요)
+        if (faceBack && faceYaw !== null && Math.abs(angDiff(faceYaw, fp.yaw)) < 0.01 && Math.abs((facePitch ?? fp.pitch) - fp.pitch) < 0.01) { faceYaw = facePitch = null; faceBack = false; }
         toastCool = Math.max(0, toastCool - dt);
         fp.moving += (moving - fp.moving) * Math.min(1, dt * 8);
         fp.bob += dt * 9 * fp.moving;
@@ -1018,7 +1056,7 @@ export function openVillage(o: {
           const tn = talk !== null ? people[talk].ch.root.position : null;
           world.dof.focus = tn ? cam.position.distanceTo(tn) : 9; world.dof.range = tn ? 4 : 16; world.dof.amount = tn ? 0.4 : 0.18;
         } else { const fd = cur.pos.distanceTo(cur.look); world.dof.focus = fd; world.dof.range = fd * 0.42; world.dof.amount = 0.9; }
-        look.rays = mode === 'walk' ? 0.7 : 0.22;
+        look.rays = (mode === 'walk' ? 0.7 : 0.22) * rayK;
         // 걸어 다닐 때는 종이 결과 화면 얼룩을 옅게 (가까운 땅이 얼룩져 보이지 않게)
         look.paper = mode === 'walk' ? 0.5 : 0.8; look.blot = mode === 'walk' ? 0.15 : 0.6;
       };
@@ -1042,6 +1080,7 @@ export function openVillage(o: {
         window.removeEventListener('keyup', onKey);
         window.removeEventListener('blur', onBlur);
         clearTimeout(hintTimer);
+        offTod();
         el.remove();
         document.body.classList.remove('village-open');
         for (const s of [meMark, shopMark, ...badges]) { scene.remove(s); s.material.dispose(); }

@@ -21,7 +21,8 @@ import type { World } from './ui/village';
 import { catchUpOrder, customerForRound, makeOrder } from './game/schedule';
 import { fiveStars, hasHeart, isBackward, score } from './game/scoring';
 import { faceAtlas, paperCanvas, tex } from './paint/textures';
-import { LIGHT_W, QualityProbe, TIERS, WatercolorRenderer, type Tier, shared } from './render/watercolor';
+import { LIGHT_W, QualityProbe, TIERS, WatercolorRenderer, type Look, type Tier, shared } from './render/watercolor';
+import { getTod, onTod, TOD_LIGHT, TOD_SHOP_TINT, type Tod } from './core/tod';
 import { bakeLighting } from './render/bake';
 import * as THREE from 'three';
 import { setFaceTexture } from './scene/chibi';
@@ -96,6 +97,10 @@ export class App {
     setStatus('가게를 꾸미는 중…');
     await sleep(30);
     this.stage = new Stage(this.wcr);
+    // 시간대: 가게 창밖 그림과 등불, 화면 빛깔 (낮은 처음 모습 그대로, 행사용은 늘 낮)
+    const shopTod = (t: Tod) => { this.stage.shop.setTod(t); this.shopLook = t === 'day' ? null : { tint: TOD_SHOP_TINT[t], sunCol: TOD_LIGHT[t].sunCol }; };
+    if (getTod() !== 'day') shopTod(getTod());
+    onTod(shopTod);
     this.onResize();
     window.addEventListener('resize', () => this.onResize());
     setStatus('재료를 그리는 중…');
@@ -137,6 +142,7 @@ export class App {
   }
 
   private loopErrors = 0;
+  private shopLook: Look | null = null;
   private loop = (t: number) => {
     if (!this.running) return;
     // 다음 장면을 먼저 예약해요. 한 장면에서 문제가 나도 게임이 얼어붙지 않게요
@@ -157,7 +163,7 @@ export class App {
         this.stage.update(dt);
         const d = this.stage.dof;
         this.wcr.setDof(Math.max(0.2, d.focus - this.stage.focusShift), d.range, d.amount);
-        this.wcr.look = null;
+        this.wcr.look = this.shopLook;
         this.wcr.render(this.stage.scene, this.stage.cam);
       }
       this.probe.sample(raw);

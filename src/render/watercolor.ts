@@ -7,6 +7,8 @@ export const shared = {
   uPaper: { value: null as THREE.Texture | null },
   uBake: { value: 0 }, // 구운 광선추적 조명이 얼마나 들어갔는지 (0 → 1 로 스며들어요)
   uLift: { value: 0 }, // 그늘을 얼마나 밝게 들어 올릴지 (마음 골목처럼 화사한 곳에서만)
+  uTint: { value: new THREE.Color(1, 1, 1) }, // 시간대 빛깔 (노을녘·밤). 스스로 빛나는 것(창문·간판·하늘)은 그대로예요
+  uHaze: { value: new THREE.Vector4(1, 1, 1, 0) }, // 시간대 공기 빛 (rgb, 얼마나): 노을녘은 분홍빛, 밤은 푸른빛이 살짝 덮여요
 };
 export const LIGHT_W = new THREE.Vector3(0.4, 0.8, 0.5).normalize();
 
@@ -50,7 +52,7 @@ void main(){
 
 const FRAG = /* glsl */ `
 uniform vec3 uColor; uniform sampler2D uMap; uniform float uUseMap; uniform vec3 uLightV; uniform sampler2D uPaper;
-uniform float uRim; uniform float uAlpha; uniform float uGlow; uniform vec3 uGlowColor; uniform float uFlat; uniform float uNoiseScale; uniform float uSpec; uniform float uLift;
+uniform float uRim; uniform float uAlpha; uniform float uGlow; uniform vec3 uGlowColor; uniform float uFlat; uniform float uNoiseScale; uniform float uSpec; uniform float uLift; uniform vec3 uTint; uniform vec4 uHaze;
 varying vec3 vN; varying vec3 vV; varying vec3 vW; varying vec2 vUv;
 #ifdef BAKE
 uniform float uBake;
@@ -95,6 +97,9 @@ void main(){
     sp = smoothstep(0.25, 0.65, sp + (nz - 0.5) * 0.25);
     col = mix(col, vec3(1.0, 0.98, 0.93), sp * uSpec);
   }
+  float own = smoothstep(0.84, 0.9, uFlat);
+  col *= mix(uTint, vec3(1.0), own);
+  col = mix(col, uHaze.rgb * (0.55 + 0.45 * w), uHaze.a * (1.0 - own));
   col += uGlowColor * uGlow * (0.35 + 0.65 * fres);
   gl_FragColor = vec4(col, uAlpha * tx.a);
 }`;
@@ -122,6 +127,8 @@ export function wc(color: string | THREE.Color, o: WCOpts = {}) {
       uTime: shared.uTime,
       uBake: shared.uBake,
       uLift: shared.uLift,
+      uTint: shared.uTint,
+      uHaze: shared.uHaze,
     },
     side: o.side ?? THREE.FrontSide,
     transparent: o.transparent ?? (o.alpha !== undefined && o.alpha < 1),
@@ -207,7 +214,8 @@ void main(){
   gl_FragColor = vec4(c, 1.0);
 }`;
 
-export interface Look { sat?: number; bright?: number; lift?: number; rays?: number; sunDir?: THREE.Vector3; skyD?: number; paper?: number; blot?: number }
+export interface Look { sat?: number; bright?: number; lift?: number; rays?: number; sunDir?: THREE.Vector3; skyD?: number; paper?: number; blot?: number; tint?: THREE.Color; lightW?: THREE.Vector3; sunCol?: THREE.Color; haze?: THREE.Vector4 }
+const WHITE = new THREE.Color(1, 1, 1), SUN = new THREE.Color('#FFE6B0'), NOHAZE = new THREE.Vector4(1, 1, 1, 0);
 
 export class WatercolorRenderer {
   renderer: THREE.WebGLRenderer;
@@ -283,6 +291,7 @@ export class WatercolorRenderer {
     const u = this.post.uniforms, L = this.look;
     u.uSat.value = L?.sat ?? 1.08; u.uBright.value = L?.bright ?? 1; shared.uLift.value = L?.lift ?? 0;
     u.uPaperK.value = L?.paper ?? 0.95; u.uBlot.value = L?.blot ?? 1;
+    shared.uTint.value.copy(L?.tint ?? WHITE); u.uSunCol.value.copy(L?.sunCol ?? SUN); shared.uHaze.value.copy(L?.haze ?? NOHAZE);
     let rays = 0;
     if (L?.rays && L.sunDir) {
       // 해는 카메라에서 아주 먼 곳: 화면 위 자리를 구해요 (뒤에 있으면 빛줄기 없음)
@@ -297,7 +306,7 @@ export class WatercolorRenderer {
 
   render(scene: THREE.Scene, cam: THREE.PerspectiveCamera) {
     this.applyLook(cam);
-    this.tmp.copy(LIGHT_W).transformDirection(cam.matrixWorldInverse);
+    this.tmp.copy(this.look?.lightW ?? LIGHT_W).transformDirection(cam.matrixWorldInverse);
     shared.uLightV.value.copy(this.tmp);
     this.post.uniforms.uNear.value = cam.near;
     this.post.uniforms.uFar.value = cam.far;
@@ -320,9 +329,12 @@ export class WatercolorRenderer {
     this.renderer.setClearColor(clear, 1);
     this.tmp.copy(LIGHT_W).transformDirection(cam.matrixWorldInverse);
     shared.uLightV.value.copy(this.tmp);
+    // 도감·카드 그림은 시간대와 상관없이 늘 낮 빛깔로 찍어요
+    const tintKeep = shared.uTint.value.clone(), hazeKeep = shared.uHaze.value.clone(); shared.uTint.value.copy(WHITE); shared.uHaze.value.copy(NOHAZE);
     this.renderer.setRenderTarget(rt);
     this.renderer.clear();
     this.renderer.render(scene, cam);
+    shared.uTint.value.copy(tintKeep); shared.uHaze.value.copy(hazeKeep);
     const u = this.post.uniforms;
     const keep = { c: u.tColor.value, d: u.tDepth.value, r: u.uRes.value.clone(), n: u.uNear.value, f: u.uFar.value, dof: u.uDof.value, px: u.uPx.value, rays: u.uRays.value };
     u.uRays.value = 0;

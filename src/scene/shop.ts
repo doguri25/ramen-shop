@@ -37,8 +37,9 @@ export function makeShop() {
 
   // 창문 (마을 그림 + 흘러가는 구름 + 새). 오른쪽 벽시계와 겹치지 않게 조금 왼쪽에 둬요
   const village = tex(villageCanvas());
+  const todViews: Partial<Record<'day' | 'dusk' | 'night', THREE.Texture>> = { day: village };
   const win = group(root, [-0.28, 1.78, -1.72]);
-  mesh(new THREE.PlaneGeometry(1.9, 0.95), wc('#FFFFFF', { map: village, rim: 0, flat: 0.85 }), [0, 0, 0.01], 1, [0, 0, 0], win);
+  const winView = mesh(new THREE.PlaneGeometry(1.9, 0.95), wc('#FFFFFF', { map: village, rim: 0, flat: 0.85 }), [0, 0, 0.01], 1, [0, 0, 0], win);
   const cloudT = cloudsTex(); cloudT.wrapS = THREE.RepeatWrapping; cloudT.repeat.set(1, 1);
   const clouds = mesh(new THREE.PlaneGeometry(1.9, 0.46), new THREE.MeshBasicMaterial({ map: cloudT, transparent: true, depthWrite: false, opacity: 0.9 }), [0, 0.24, 0.016], 1, [0, 0, 0], win);
   clouds.renderOrder = 1;
@@ -180,6 +181,7 @@ export function makeShop() {
 
   // 천장 등과 불빛
   const lamps: THREE.Mesh[] = [];
+  const pools: THREE.Mesh[] = [], lampGlows: THREE.Sprite[] = [];
   const lampPivots: THREE.Group[] = [];
   for (const x of [-0.75, 0.75]) {
     const pv = group(root, [x, 3.04, -0.1]);
@@ -197,6 +199,7 @@ export function makeShop() {
     glow.position.y = -0.12;
     l.add(glow);
     const pool = mesh(new THREE.PlaneGeometry(1.1, 0.75), new THREE.MeshBasicMaterial({ map: glowTex(), color: '#FFDFA0', transparent: true, opacity: 0.2, depthWrite: false, blending: THREE.AdditiveBlending }), [x, 1.037, -0.05], 1, [-PI / 2, 0, 0], root);
+    pools.push(pool); lampGlows.push(glow);
     pool.renderOrder = 2;
   }
 
@@ -223,6 +226,20 @@ export function makeShop() {
   let t = 0;
   const shop = {
     root, bell, flames, pot, lamps, leaf,
+    // 시간대(수업용): 창밖·문밖 그림, 구름과 새, 햇살, 등불 밝기를 바꿔요. 낮은 처음 모습 그대로예요
+    setTod(tod: 'day' | 'dusk' | 'night') {
+      const views = todViews;
+      if (!views[tod]) views[tod] = tex(villageCanvas(tod));
+      for (const m of [winView, outside]) ((m.material as THREE.ShaderMaterial).uniforms.uMap.value = views[tod]);
+      const cm = clouds.material as THREE.MeshBasicMaterial;
+      cm.opacity = tod === 'day' ? 0.9 : tod === 'dusk' ? 0.75 : 0.16; cm.color.set(tod === 'day' ? '#FFFFFF' : tod === 'dusk' ? '#FFD2B4' : '#8A93C8');
+      birds.forEach((b) => { b.visible = tod !== 'night'; });
+      sun.group.visible = tod !== 'night';
+      sun.group.children.forEach((c) => { const m = (c as THREE.Mesh).material as THREE.MeshBasicMaterial; if ((c as THREE.Mesh).isMesh) { m.opacity = tod === 'dusk' ? 0.22 : 0.16; m.color.set(tod === 'dusk' ? '#FFB27A' : '#FFE8B0'); } });
+      lamps.forEach((l) => { (l.material as THREE.ShaderMaterial).uniforms.uGlow.value = tod === 'day' ? 0.6 : tod === 'dusk' ? 0.8 : 1.1; });
+      pools.forEach((pl) => { (pl.material as THREE.MeshBasicMaterial).opacity = tod === 'day' ? 0.2 : tod === 'dusk' ? 0.26 : 0.38; });
+      lampGlows.forEach((gl) => { gl.material.opacity = tod === 'day' ? 0.42 : tod === 'dusk' ? 0.5 : 0.62; });
+    },
     // 가게 봐 주기에서 빵집·꽃집으로 살짝 바꿔 꾸밀 것들
     theme: { sign, norenMat, plaques: plaqueMeshes, walls, shelf, shelfRows },
     // 드나드는 길은 문 가운데. 문짝은 활짝(100도쯤) 열려서 길을 비켜요

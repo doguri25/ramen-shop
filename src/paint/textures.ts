@@ -94,37 +94,48 @@ export function tileCanvas() {
 }
 
 // 창문 밖 마을 풍경 (직접 그린 그림)
-export function villageCanvas() {
+// 가게 창밖 마을 그림. 시간대(낮·노을녘·밤)에 따라 하늘과 빛깔이 달라져요 (낮은 예전 그림 그대로)
+export function villageCanvas(tod: 'day' | 'dusk' | 'night' = 'day') {
   const w = 1024, h = 512, c = makeCanvas(w, h), g = ctx2d(c), rnd = seeded(21);
+  const day = tod === 'day', night = tod === 'night';
+  // 땅·집·나무 빛깔: 노을녘은 주황빛, 밤은 푸른 그늘을 섞어요
+  const C = (col: string) => (day ? col : night ? mix(col, '#26305C', 0.58) : mix(col, '#E58A5C', 0.22));
   const sky = g.createLinearGradient(0, 0, 0, h);
-  sky.addColorStop(0, '#A9D3EE'); sky.addColorStop(0.55, '#DCEEF5'); sky.addColorStop(1, '#FBF1DE');
+  const stops: [string, string, string] = day ? ['#A9D3EE', '#DCEEF5', '#FBF1DE'] : night ? ['#18224A', '#34407A', '#6C6A9E'] : ['#F1906A', '#FBC08C', '#FFE4BC'];
+  sky.addColorStop(0, stops[0]); sky.addColorStop(0.55, stops[1]); sky.addColorStop(1, stops[2]);
   g.fillStyle = sky; g.fillRect(0, 0, w, h);
+  if (night) { const sr = seeded(77); for (let i = 0; i < 90; i++) { const x = sr() * w, y = sr() * 240, r = 0.8 + sr() * 1.8; g.fillStyle = `rgba(255,250,230,${0.5 + sr() * 0.5})`; g.beginPath(); g.arc(x, y, r, 0, 7); g.fill(); } }
   for (let i = 0; i < 7; i++) {
     const x = rnd() * w, y = 40 + rnd() * 120;
-    for (let k = 0; k < 4; k++) blob(g, x + (k - 1.5) * 34, y + (rnd() - 0.5) * 12, 40 + rnd() * 20, 18 + rnd() * 8, '#FFFFFF', rnd, { layers: 3, alpha: 0.35, edge: 0.05 });
+    for (let k = 0; k < 4; k++) blob(g, x + (k - 1.5) * 34, y + (rnd() - 0.5) * 12, 40 + rnd() * 20, 18 + rnd() * 8, day ? '#FFFFFF' : night ? '#4A5488' : '#FFD9C0', rnd, { layers: 3, alpha: night ? 0.25 : 0.35, edge: 0.05 });
   }
-  softGlow(g, 830, 90, 90, '#FFE9A8', 0.8);
-  blob(g, 830, 90, 32, 32, '#FFD86B', rnd, { layers: 4, alpha: 0.45, edge: 0.2 });
+  if (night) { softGlow(g, 830, 90, 80, '#C9D6FF', 0.6); blob(g, 830, 90, 28, 28, '#FFF6D8', rnd, { layers: 4, alpha: 0.6, edge: 0.2 }); }
+  else if (!day) { softGlow(g, 800, 215, 130, '#FFC58A', 0.9); blob(g, 800, 215, 38, 38, '#FF9A4A', rnd, { layers: 4, alpha: 0.5, edge: 0.2 }); }
+  else {
+    softGlow(g, 830, 90, 90, '#FFE9A8', 0.8);
+    blob(g, 830, 90, 32, 32, '#FFD86B', rnd, { layers: 4, alpha: 0.45, edge: 0.2 });
+  }
   const hill = (y: number, col: string, amp: number, f: number) => {
     wash(g, () => {
       g.beginPath(); g.moveTo(0, h);
       for (let x = 0; x <= w; x += 12) g.lineTo(x, y + Math.sin(x * f + y) * amp + Math.sin(x * f * 2.7) * amp * 0.3);
       g.lineTo(w, h); g.closePath();
-    }, col, rnd, { layers: 3, alpha: 0.4, edge: 0.2 });
+    }, C(col), rnd, { layers: 3, alpha: 0.4, edge: 0.2 });
   };
   hill(250, '#B9D7A6', 26, 0.006);
   hill(300, '#9FC98C', 18, 0.009);
   // 길
-  wash(g, () => { g.beginPath(); g.moveTo(420, h); g.quadraticCurveTo(520, 360, 600, 330); g.lineTo(640, 332); g.quadraticCurveTo(600, 380, 640, h); g.closePath(); }, '#EAD7B5', rnd, { layers: 3, alpha: 0.5, edge: 0.2 });
+  wash(g, () => { g.beginPath(); g.moveTo(420, h); g.quadraticCurveTo(520, 360, 600, 330); g.lineTo(640, 332); g.quadraticCurveTo(600, 380, 640, h); g.closePath(); }, C('#EAD7B5'), rnd, { layers: 3, alpha: 0.5, edge: 0.2 });
   const house = (x: number, y: number, s: number, wall: string, roof: string) => {
-    wash(g, () => { g.beginPath(); g.rect(x - s * 0.5, y - s * 0.7, s, s * 0.7); }, wall, rnd, { layers: 3, alpha: 0.55, edge: 0.4 });
-    wash(g, () => { g.beginPath(); g.moveTo(x - s * 0.65, y - s * 0.68); g.lineTo(x, y - s * 1.15); g.lineTo(x + s * 0.65, y - s * 0.68); g.closePath(); }, roof, rnd, { layers: 3, alpha: 0.55, edge: 0.45 });
-    wash(g, () => { g.beginPath(); g.rect(x - s * 0.12, y - s * 0.32, s * 0.24, s * 0.32); }, darken(wall, 0.35), rnd, { layers: 2, alpha: 0.5, edge: 0.3 });
-    wash(g, () => { g.beginPath(); g.rect(x - s * 0.38, y - s * 0.55, s * 0.18, s * 0.16); g.rect(x + s * 0.2, y - s * 0.55, s * 0.18, s * 0.16); }, '#FCE7A8', rnd, { layers: 2, alpha: 0.7, edge: 0.4 });
+    wash(g, () => { g.beginPath(); g.rect(x - s * 0.5, y - s * 0.7, s, s * 0.7); }, C(wall), rnd, { layers: 3, alpha: 0.55, edge: 0.4 });
+    wash(g, () => { g.beginPath(); g.moveTo(x - s * 0.65, y - s * 0.68); g.lineTo(x, y - s * 1.15); g.lineTo(x + s * 0.65, y - s * 0.68); g.closePath(); }, C(roof), rnd, { layers: 3, alpha: 0.55, edge: 0.45 });
+    wash(g, () => { g.beginPath(); g.rect(x - s * 0.12, y - s * 0.32, s * 0.24, s * 0.32); }, C(darken(wall, 0.35)), rnd, { layers: 2, alpha: 0.5, edge: 0.3 });
+    wash(g, () => { g.beginPath(); g.rect(x - s * 0.38, y - s * 0.55, s * 0.18, s * 0.16); g.rect(x + s * 0.2, y - s * 0.55, s * 0.18, s * 0.16); }, '#FCE7A8', rnd, { layers: 2, alpha: night ? 0.95 : 0.7, edge: 0.4 });
+    if (night) { softGlow(g, x - s * 0.29, y - s * 0.47, s * 0.22, '#FFD873', 0.55); softGlow(g, x + s * 0.29, y - s * 0.47, s * 0.22, '#FFD873', 0.55); }
   };
   const tree = (x: number, y: number, s: number) => {
-    wash(g, () => { g.beginPath(); g.rect(x - s * 0.06, y - s * 0.5, s * 0.12, s * 0.5); }, '#9A6E4C', rnd, { layers: 2, alpha: 0.6 });
-    blob(g, x, y - s * 0.75, s * 0.42, s * 0.38, rnd() < 0.5 ? '#7DB86A' : '#93C47D', rnd, { layers: 4, alpha: 0.4, edge: 0.3 });
+    wash(g, () => { g.beginPath(); g.rect(x - s * 0.06, y - s * 0.5, s * 0.12, s * 0.5); }, C('#9A6E4C'), rnd, { layers: 2, alpha: 0.6 });
+    blob(g, x, y - s * 0.75, s * 0.42, s * 0.38, C(rnd() < 0.5 ? '#7DB86A' : '#93C47D'), rnd, { layers: 4, alpha: 0.4, edge: 0.3 });
   };
   const roofs = ['#E07A5F', '#6FA3D6', '#E9A84A', '#B07CC6', '#D86A6A', '#5FB08A'];
   const walls = ['#FFF3E0', '#F7E3C6', '#FBEAD8', '#F1E6D6'];

@@ -774,7 +774,12 @@ body.village-open #ui > *:not(.village):not(.modal-wrap):not(.toast):not(.villag
 .village .v-goal .gd { font-size: 14px; color: #B5651D; min-width: 34px; }
 .village .v-hint { position: absolute; left: 50%; bottom: calc(70px + env(safe-area-inset-bottom)); transform: translateX(-50%); width: max-content; max-width: calc(100vw - 32px); padding: 6px 16px; border-radius: 999px; background: rgba(255,255,255,.92); font-size: 15px; text-align: center; word-break: keep-all; pointer-events: none; transition: opacity .6s; }
 .village .v-hint.hide { opacity: 0; }
-.village .v-zoom { position: absolute; right: 14px; top: 50%; transform: translateY(-50%); display: flex; flex-direction: column; gap: 10px; }
+.village .v-side { position: absolute; right: 14px; top: 50%; transform: translateY(-50%); display: flex; flex-direction: column; align-items: center; gap: 10px; }
+.village .v-zoom { display: flex; flex-direction: column; gap: 10px; }
+/* 시간대 단추: 누를 때마다 낮 → 노을녘 → 밤 */
+.village .v-tod { display: grid; place-items: center; width: 54px; height: 54px; padding: 0; border: 0; border-radius: 50%; background: #fff; box-shadow: var(--shadow-s); }
+.village .v-tod .dicon { width: 40px; height: 40px; }
+.village .v-tod:active { transform: scale(.95); }
 .village .v-zoom button { width: 54px; height: 54px; border: 0; border-radius: 50%; background: #fff; color: var(--ink); font-size: 30px; line-height: 1; box-shadow: var(--shadow-s); }
 .village .v-towns { position: absolute; left: 0; right: 0; bottom: max(12px, env(safe-area-inset-bottom)); display: flex; gap: 8px; padding: 0 12px; overflow-x: auto; scrollbar-width: none; justify-content: safe center; }
 .village .v-town { flex: 0 0 auto; display: flex; align-items: center; gap: 6px; padding: 8px 14px; border: 0; border-radius: 999px; background: #fff; font-family: var(--head); font-size: 16px; white-space: nowrap; box-shadow: var(--shadow-s); }
@@ -810,7 +815,7 @@ body.village-open #ui > *:not(.village):not(.modal-wrap):not(.toast):not(.villag
 .village .vt-note.soft { background: #FFF4DE; color: #9A5A12; }
 .village .vt-btns { display: flex; flex-wrap: wrap; gap: 8px; justify-content: flex-end; }
 .village .vt-btns .vt-opt { flex: 1 1 100%; justify-content: flex-start; min-height: 48px; height: auto; padding: 8px 16px; text-align: left; line-height: 1.35; white-space: normal; word-break: keep-all; font-size: 17px; }
-.village.talking .v-towns, .village.talking .v-hint, .village.talking .v-zoom, .village.talking .v-stick { visibility: hidden; }
+.village.talking .v-towns, .village.talking .v-hint, .village.talking .v-side, .village.talking .v-stick { visibility: hidden; }
 .village .v-stamp-pop { position: absolute; left: 50%; top: 42%; transform: translate(-50%, -50%); display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 14px 26px; border-radius: 24px; background: rgba(255,255,255,.95); box-shadow: var(--shadow); pointer-events: none; animation: vstamp 1.9s ease forwards; }
 .village .v-stamp-pop .sp { width: 86px; height: 86px; }
 .village .v-stamp-pop b { font-family: var(--head); font-size: 24px; color: #C0392B; }
@@ -886,6 +891,8 @@ body.village-open #ui > *:not(.village):not(.modal-wrap):not(.toast):not(.villag
   .village .v-hint { bottom: calc(56px + env(safe-area-inset-bottom)); font-size: 13px; }
   .village .v-town { padding: 6px 10px; font-size: 13px; }
   .village .v-zoom button { width: 44px; height: 44px; font-size: 24px; }
+  .village .v-tod { width: 44px; height: 44px; }
+  .village .v-tod .dicon { width: 32px; height: 32px; }
   .village .v-prompt { bottom: calc(96px + env(safe-area-inset-bottom)); min-height: 48px; font-size: 16px; }
   .village .v-prompt .dicon { width: 30px; height: 30px; }
   .village .v-talk { padding: 10px 14px 12px; border-radius: 20px; }
