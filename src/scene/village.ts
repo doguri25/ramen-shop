@@ -7,6 +7,7 @@ import { tex } from '../paint/textures';
 import { Chibi } from './chibi';
 import { makeGlow, makeShadow } from './fx';
 import { boxG, coneG, cylG, disposeTree, M, Mu, mesh, sphereG } from './geo';
+import { bakeSpec, placeProps, planProps } from './villageProps';
 
 // 3D 마음 골목: 동화 속 마을처럼 언덕과 냇가가 있고, 묶음마다 작은 마을이 있어요.
 // 라면을 끓여 준 손님 집에 불이 켜지고, 집을 누르면 손님이 문을 열고 나와요.
@@ -16,12 +17,16 @@ const V = (x = 0, y = 0, z = 0) => new THREE.Vector3(x, y, z);
 export interface VHouse { id: string; name: string; family: string; lit: boolean; stars: number; spec?: ChibiSpec | ChibiSpec[] }
 export interface VTown { family: string; name: string; color: string }
 export interface VHouseSpot { h: VHouse; hit: THREE.Mesh; door: THREE.Vector3; out: THREE.Vector3; yaw: number; town: number }
+// 동네 주민: hold이면 멈춰 서고, faceTo가 있으면 그쪽을 봐요
+export interface VNpc { ch: Chibi; hit: THREE.Mesh; hold: boolean; faceTo: THREE.Vector3 | null }
+export interface VShopSpot { hit: THREE.Mesh; kind: VShop['kind']; name: string; front: THREE.Vector3; yaw: number }
 export interface Village {
-  root: THREE.Group; ground: THREE.Mesh; hits: THREE.Mesh[]; shopHits: THREE.Mesh[];
+  root: THREE.Group; ground: THREE.Mesh; hits: THREE.Mesh[]; shopHits: THREE.Mesh[]; shops: VShopSpot[]; npcs: VNpc[];
   houses: VHouseSpot[]; towns: { center: THREE.Vector3; t: VTown; lit: number; total: number }[];
   shopDoor: THREE.Vector3; bounds: { minX: number; maxX: number; minZ: number; maxZ: number };
   heightAt: (x: number, z: number) => number; walkY: (x: number, z: number) => number; inWater: (x: number, z: number) => boolean; blocked: (x: number, z: number) => boolean;
-  update: (dt: number) => void; dispose: () => void;
+  update: (dt: number, eye?: THREE.Vector3) => void; dispose: () => void;
+  bakeSpec: () => unknown; baked: boolean;
 }
 
 // ── 땅 모양 ─────────────────────────────
@@ -262,8 +267,36 @@ export function buildVillage(houses: VHouse[], towns: VTown[], villagers: ChibiS
   const roads: THREE.CatmullRomCurve3[] = [];
   const near = (c: THREE.CatmullRomCurve3, p: THREE.Vector3) => { const a = c.getPointAt(0), b = c.getPointAt(1); return a.distanceTo(p) < b.distanceTo(p) ? a : b; };
   const far = (c: THREE.CatmullRomCurve3, p: THREE.Vector3) => { const a = c.getPointAt(0), b = c.getPointAt(1); return a.distanceTo(p) < b.distanceTo(p) ? b : a; };
+  // 냇물의 어느 쪽인지 (+1 / -1)
+  const riverSide = (p: THREE.Vector3) => {
+    let bi = 0, bd = 1e18;
+    for (let i = 0; i < rp.length; i++) { const d = (rp[i].x - p.x) ** 2 + (rp[i].z - p.z) ** 2; if (d < bd) { bd = d; bi = i; } }
+    const a = rp[Math.max(0, bi - 1)], b = rp[Math.min(rp.length - 1, bi + 1)];
+    return Math.sign((b.x - a.x) * (p.z - rp[bi].z) - (b.z - a.z) * (p.x - rp[bi].x)) || 1;
+  };
   const wind = (a: THREE.Vector3, b: THREE.Vector3, k: number, amt = 0.16) => {
     const dir = V().subVectors(b, a), len = dir.length(), n = V(-dir.z, 0, dir.x).normalize(), w = (k % 2 ? 1 : -1) * Math.min(10, len * amt);
+    if (riverSide(a) !== riverSide(b)) {
+      // 냇물을 건너는 길: 냇물과 직각으로 짧게 건너요 (냇물을 따라 길게 놓인 다리가 생기지 않게)
+      let bi = 0, bd = 1e18;
+      for (let i = 1; i < rp.length - 1; i++) {
+        const q = rp[i], u = Math.max(0, Math.min(1, ((q.x - a.x) * dir.x + (q.z - a.z) * dir.z) / (len * len)));
+        const d = (a.x + dir.x * u - q.x) ** 2 + (a.z + dir.z * u - q.z) ** 2;
+        if (d < bd) { bd = d; bi = i; }
+      }
+      const c = rp[bi], t = V().subVectors(rp[bi + 1], rp[bi - 1]).normalize(), rn = V(-t.z, 0, t.x);
+      if ((a.x - c.x) * rn.x + (a.z - c.z) * rn.z < 0) rn.negate();
+      const pa = c.clone().addScaledVector(rn, 10), pb = c.clone().addScaledVector(rn, -10);
+      const wa = Math.min(6, a.distanceTo(pa) * amt), wb = Math.min(6, b.distanceTo(pb) * amt);
+      const na = V(-(pa.z - a.z), 0, pa.x - a.x).normalize(), nb = V(-(b.z - pb.z), 0, b.x - pb.x).normalize();
+      const mid = (p: THREE.Vector3, q: THREE.Vector3, nn: THREE.Vector3, ww: number) => p.clone().lerp(q, 0.5).addScaledVector(nn, ww);
+      const ctrl = [a.clone()];
+      if (a.distanceTo(pa) > 14) ctrl.push(mid(a, pa, na, wa));
+      ctrl.push(pa, pb);
+      if (b.distanceTo(pb) > 14) ctrl.push(mid(pb, b, nb, -wb));
+      ctrl.push(b.clone());
+      return new THREE.CatmullRomCurve3(ctrl, false, 'centripetal');
+    }
     return new THREE.CatmullRomCurve3([a.clone(), a.clone().lerp(b, 0.33).addScaledVector(n, w), a.clone().lerp(b, 0.66).addScaledVector(n, -w * 0.9), b.clone()], false, 'centripetal');
   };
   lanes.forEach((ln, k) => roads.push(wind(door, near(ln, door), k)));
@@ -285,7 +318,8 @@ export function buildVillage(houses: VHouse[], towns: VTown[], villagers: ChibiS
       if (wet && s0 < 0) s0 = i;
       if ((!wet || i === pts.length - 1) && s0 >= 0) {
         const a = pts[Math.max(0, s0 - 1)], b = pts[i];
-        bridges.push({ a: a.clone(), b: b.clone(), ya: heightAt(a.x, a.z), yb: heightAt(b.x, b.z) });
+        // 냇물을 정말 건널 때만 다리를 놓아요 (냇가를 스치기만 하면 놓지 않아요)
+        if (riverSide(a) !== riverSide(b) && a.distanceTo(b) < 22) bridges.push({ a: a.clone(), b: b.clone(), ya: heightAt(a.x, a.z), yb: heightAt(b.x, b.z) });
         s0 = -1;
       }
     }
@@ -402,6 +436,20 @@ export function buildVillage(houses: VHouse[], towns: VTown[], villagers: ChibiS
       pl.rotation.set(-Math.cos(k * PI) * 0.18, yaw, 0, 'YXZ');
       if (i % 3 === 0) for (const s2 of [-1, 1]) mesh(boxG(0.12, 0.8, 0.12), M('#8A5E3C'), [x + Math.cos(yaw) * 1.25 * s2, y + 0.4, z - Math.sin(yaw) * 1.25 * s2], 1, [0, yaw, 0], stat);
     }
+    // 난간: 기둥 꼭대기를 따라 아치 모양으로
+    const rail = (k: number) => { const x = br.a.x + ab.x * k, z = br.a.z + ab.z * k; return V(x, br.ya * (1 - k) + br.yb * k + Math.sin(k * PI) * 0.9 + 0.78, z); };
+    for (let i = 0; i < n; i++) for (const s2 of [-1, 1]) {
+      const a = rail(i / n), b = rail((i + 1) / n), off = V(Math.cos(yaw) * 1.25 * s2, 0, -Math.sin(yaw) * 1.25 * s2);
+      a.add(off); b.add(off);
+      const len = a.distanceTo(b), mid = a.clone().add(b).multiplyScalar(0.5);
+      const r = mesh(boxG(0.09, 0.09, len + 0.02), M('#9A6B45'), [mid.x, mid.y, mid.z], 1, [0, 0, 0], stat);
+      r.lookAt(b.x, b.y, b.z);
+      // 다리 밑 받침보 (널빤지가 계단처럼 떠 보이지 않게)
+      const lo = V(0, -0.9, 0).addScaledVector(off, 0.84 - 1);
+      const sa = a.clone().add(lo), sb = b.clone().add(lo), sm = sa.clone().add(sb).multiplyScalar(0.5);
+      const st = mesh(boxG(0.16, 0.2, len + 0.04), M('#8A5E3C', { noise: 2 }), [sm.x, sm.y, sm.z], 1, [0, 0, 0], stat);
+      st.lookAt(sb.x, sb.y, sb.z);
+    }
   }
 
   // 라면 가게
@@ -411,7 +459,7 @@ export function buildVillage(houses: VHouse[], towns: VTown[], villagers: ChibiS
   const sgl = makeGlow('#FFD27A', 3, 0.35); sgl.position.set(SHOP.x + 1.2, shopY + 1.6, SHOP.z + 2.3); root.add(sgl);
 
   // ── 마을 가게들: 라면 가게에서 가까운 큰길 가 ──
-  const shopHits: { hit: THREE.Mesh; line: string }[] = [];
+  const shopHits: VShopSpot[] = [];
   const shopSpots: [number, number][] = [];
   SHOPS.forEach((sh, i) => {
     for (let tries = 0; tries < 12; tries++) {
@@ -430,8 +478,10 @@ export function buildVillage(houses: VHouse[], towns: VTown[], villagers: ChibiS
       const sg2 = new THREE.Mesh(new THREE.PlaneGeometry(3.0, 0.8), Mu('#FFFFFF', { map: sign(sh.name, 420, 112, '#FFFDF6', darken(sh.awn[0], 0.35), 52), flat: 0.9, rim: 0, side: THREE.DoubleSide }));
       sg2.userData.ownGeo = true; sg2.position.set(x, y + 3.25, z).addScaledVector(fwd, 2.1); sg2.rotation.set(-0.35, yaw, 0, 'YXZ'); root.add(sg2); own.push(sg2);
       const hit = new THREE.Mesh(new THREE.BoxGeometry(4.6, 4, 4.4), new THREE.MeshBasicMaterial({ visible: false }));
-      hit.position.set(x, y + 2, z); hit.rotation.y = yaw; hit.userData.shopLine = sh.line; hit.userData.ownGeo = true;
-      root.add(hit); shopHits.push({ hit, line: sh.line });
+      hit.position.set(x, y + 2, z); hit.rotation.y = yaw; hit.userData.shopLine = sh.line; hit.userData.shopKind = sh.kind; hit.userData.ownGeo = true;
+      root.add(hit);
+      const front = V(x, y, z).addScaledVector(fwd, 3.4); front.y = heightAt(front.x, front.z);
+      shopHits.push({ hit, kind: sh.kind, name: sh.name, front, yaw });
       shopSpots.push([x, z]);
       break;
     }
@@ -471,8 +521,10 @@ export function buildVillage(houses: VHouse[], towns: VTown[], villagers: ChibiS
   });
   // 마을 팻말 (골목 어귀)과 골목 끝 우물
   const townInfo: Village['towns'] = [];
+  const entries: THREE.Vector3[] = [];
   towns.forEach((t, k) => {
     const ln = lanes[k], entry = near(ln, door), endP = far(ln, door);
+    entries.push(entry.clone());
     const fromStart = ln.getPointAt(0).distanceTo(door) < ln.getPointAt(1).distanceTo(door);
     const list = houses.filter((h) => h.family === t.family), lit = list.filter((h) => h.lit).length;
     const tg = V().subVectors(ln.getPointAt(fromStart ? 0.04 : 0.96), entry).normalize();
@@ -494,10 +546,21 @@ export function buildVillage(houses: VHouse[], towns: VTown[], villagers: ChibiS
     townInfo.push({ center: c, t, lit, total: list.length });
   });
 
-  // 나무, 버섯: 길·냇물·집을 피해서
+  // ── 소품: 자리는 여기서 정하고, 놓이는 모양은 블렌더 물리로 구운 값을 써요 ──
+  const props = planProps({
+    rnd, heightAt, rdist, river: rp, paths: pathPtsEarly,
+    houses: plan.map((q) => ({ x: q.x, z: q.z, yaw: q.yaw })),
+    shops: shopHits.map((sh, i) => ({ x: shopSpots[i][0], z: shopSpots[i][1], yaw: sh.yaw })),
+    entries, solids, shop: SHOP, rect: { x0: X0, x1: X1, z0: Z0, z1: Z1 },
+  });
+  const placed0 = placeProps(props, stat, root, heightAt);
+  solids.push(...props.solids);
+  // 나무, 버섯: 길·냇물·집·소품을 피해서
   const pathPts = allPaths.flatMap((p) => p.getSpacedPoints(90));
   const clear = (x: number, z: number, pad: number) => {
     if (rdist(x, z) < 7) return false;
+    for (const sp of props.spots) if ((sp.x - x) ** 2 + (sp.z - z) ** 2 < (sp.r + 1.6 + pad) ** 2) return false;
+    for (const [lx, , lz] of props.lamps) if ((lx - x) ** 2 + (lz - z) ** 2 < (1.4 + pad) ** 2) return false;
     if (Math.hypot(x - SHOP.x, z - SHOP.z) < 10 + pad) return false;
     for (const q of plan) if ((q.x - x) ** 2 + (q.z - z) ** 2 < (4.2 + pad) ** 2) return false;
     for (const p of pathPts) if ((p.x - x) ** 2 + (p.z - z) ** 2 < (2.8 + pad) ** 2) return false;
@@ -528,13 +591,17 @@ export function buildVillage(houses: VHouse[], towns: VTown[], villagers: ChibiS
   disposeTree(stat);
 
   // 동네 사람들: 길과 골목을 따라 천천히 오가요
+  const npcHitGeo = new THREE.CylinderGeometry(0.75, 0.75, 2.2, 10);
   const npcs = villagers.map((s2, i) => {
     const ch = new Chibi(s2);
-    const p = allPaths[(i * 3) % allPaths.length];
+    const p = allPaths[(i * 5 + 1) % allPaths.length];
     const sh = makeShadow(0.7, 0.6, 0.45);
     root.add(ch.root); root.add(sh);
     ch.setMood(i % 3 ? 'happy' : 'neutral');
-    return { ch, sh, p, t: rnd(), dir: rnd() < 0.5 ? 1 : -1, speed: (0.9 + rnd() * 0.4) / p.getLength(), rest: 0 };
+    const hit = new THREE.Mesh(npcHitGeo, hitMat);
+    hit.position.y = 1.0; hit.userData.npc = i;
+    ch.root.add(hit);
+    return { ch, sh, p, hit, t: rnd(), dir: rnd() < 0.5 ? 1 : -1, speed: (0.9 + rnd() * 0.4) / p.getLength(), rest: 0, hold: false, faceTo: null as THREE.Vector3 | null };
   });
   const blocked = (x: number, z: number) => {
     if (inWater(x, z)) return true;
@@ -543,9 +610,26 @@ export function buildVillage(houses: VHouse[], towns: VTown[], villagers: ChibiS
     return x < X0 + 2 || x > X1 - 2 || z < Z0 + 2 || z > Z1 - 2;
   };
   const tmp = V();
-  const update = (dt: number) => {
+  let clock = 0;
+  const update = (dt: number, eye?: THREE.Vector3) => {
+    clock += dt;
+    for (const L of placed0.lines) {
+      if (eye && (L.group.position.x - eye.x) ** 2 + (L.group.position.z - eye.z) ** 2 > 90 * 90) continue;
+      L.update(clock);
+    }
     for (const n of npcs) {
-      if (n.rest > 0) { n.rest -= dt; n.ch.walking = 0; n.ch.update(dt); continue; }
+      // 멀리 있는 주민은 몸짓을 쉬어요 (태블릿이 버벅이지 않게)
+      const far = !!eye && (n.ch.root.position.x - eye.x) ** 2 + (n.ch.root.position.z - eye.z) ** 2 > 75 * 75;
+      if (n.hold) {
+        n.ch.walking = 0;
+        if (n.faceTo) {
+          const want = Math.atan2(n.faceTo.x - n.ch.root.position.x, n.faceTo.z - n.ch.root.position.z);
+          let d = want - n.ch.root.rotation.y; while (d > PI) d -= 2 * PI; while (d < -PI) d += 2 * PI;
+          n.ch.root.rotation.y += d * Math.min(1, dt * 8);
+        }
+        n.ch.update(dt); continue;
+      }
+      if (n.rest > 0) { n.rest -= dt; n.ch.walking = 0; if (!far) n.ch.update(dt); continue; }
       n.t += n.dir * n.speed * dt;
       if (n.t > 1 || n.t < 0) { n.dir *= -1; n.t = Math.max(0, Math.min(1, n.t)); n.rest = 2 + Math.random() * 3; }
       n.p.getPointAt(n.t, tmp);
@@ -554,17 +638,19 @@ export function buildVillage(houses: VHouse[], towns: VTown[], villagers: ChibiS
       n.ch.root.rotation.y = Math.atan2(ahead.x - tmp.x, ahead.z - tmp.z);
       n.sh.position.set(tmp.x, n.ch.root.position.y + 0.05, tmp.z);
       n.ch.walking = 1;
-      n.ch.update(dt);
+      if (!far) n.ch.update(dt);
     }
   };
   const dispose = () => {
-    hitGeo.dispose(); hitMat.dispose();
+    hitGeo.dispose(); hitMat.dispose(); npcHitGeo.dispose();
+    placed0.lines.forEach((L) => L.dispose());
     for (const o of own) { const m = (o as THREE.Mesh).material as THREE.ShaderMaterial; m.uniforms?.uMap?.value?.dispose?.(); }
     disposeTree(root);
   };
   void mix;
   return {
-    root, ground, hits, shopHits: shopHits.map((x) => x.hit), houses: spots, towns: townInfo, shopDoor: V(door.x, walkY(door.x, door.z), door.z),
+    root, ground, hits, shopHits: shopHits.map((x) => x.hit), shops: shopHits, npcs: npcs as VNpc[], houses: spots, towns: townInfo, shopDoor: V(door.x, walkY(door.x, door.z), door.z),
     bounds: { minX: X0, maxX: X1, minZ: Z0, maxZ: Z1 }, heightAt, walkY, inWater, blocked, update, dispose,
+    bakeSpec: () => bakeSpec(props, heightAt), baked: placed0.baked,
   };
 }

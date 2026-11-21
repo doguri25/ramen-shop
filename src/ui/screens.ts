@@ -10,6 +10,7 @@ import { ALLEY_LINKS, KIND_EMOJI, LATER, MAX_PROMISE, type Later, type TreatMood
 import type { Amount, Customer, GimbapRec, Ingredient, Owner, Picks, RamenRecord, Step, Treat } from '../data/types';
 import { EMPTY_G, GIMBAP, GING, GSTEPS, type GIng, type GPicks, type GStep } from '../data/gimbap';
 import { gimFaceCanvas } from '../scene/gimbap';
+import { doodleImg } from './doodles';
 import { faceImg, faceSrc, type FaceKind } from './faces';
 import { buildName, isBad, MAX_NAME, TEMPLATES, wordPools, type Template } from '../game/naming';
 import type { ClassStats } from '../ai/solar';
@@ -157,7 +158,7 @@ export const UI = {
       const el = mount(h('div', { class: 'scr-title' }, logo,
         h('button', { class: 'btn big pulse', onclick: () => { sfx.pop(); el.remove(); res(); } }, h('span', { class: 'gi-wrap', html: icon('bowl', 34) }), EVENT ? '도전하러 가기' : '가게 문 열기'),
         // 수업용: 가게에 들어가지 않고도 내 마음 골목(지금까지 도운 손님)을 볼 수 있어요
-        onAlley ? h('button', { class: 'btn soft title-alley', onclick: () => { sfx.tap(); onAlley(); } }, '🏘 마음 골목 보기') : null,
+        onAlley ? h('button', { class: 'btn soft title-alley', onclick: () => { sfx.tap(); onAlley(); } }, doodleImg('village', '', 'dicon big'), '마음 골목 보기') : null,
         aiStrip,
         h('div', { class: 'credit' },
           h('span', { class: 'cr-item' }, h('span', { class: 'cr-ic' }, '🧑‍🏫'), h('span', { class: 'cr-k' }, '만든이'), h('b', null, CREDIT.name)),
@@ -175,7 +176,7 @@ export const UI = {
       const close = (o: Owner | null) => { sfx.pop(); wrap.remove(); res(o); };
       wrap.addEventListener('click', (e) => { if (e.target === wrap) close(null); });
       wrap.append(h('div', { class: 'modal card pop-in alley-pick' },
-        h('h2', null, '🏘 누구의 마음 골목을 볼까요?'),
+        h('h2', null, doodleImg('village', '', 'dicon h2'), '누구의 마음 골목을 볼까요?'),
         h('p', { class: 'sub' }, '내 이름을 누르면 지금까지 라면을 끓여 준 손님 집에 불이 켜져 있어요.'),
         h('div', { class: 'ap-list' }, [...list].sort((a, b) => a.number - b.number).map((o) => h('button', { class: 'ap-owner', onclick: () => close(o) },
           h('span', { class: 'no' }, `${o.number}번`), h('b', null, o.name), h('span', { class: 'cnt' }, `불 켜진 집 ${lit.get(o.id) ?? 0}채`)))),
@@ -892,7 +893,7 @@ export const UI = {
           choosing
             ? [h('button', { class: 'btn ghost small', onclick: () => { sfx.back(); choosing = false; chosen = null; render(); } }, '취소'),
                h('button', { class: 'btn small', disabled: !chosen, onclick: () => { sfx.pop(); done(chosen); } }, '이 라면으로 카드 만들기')]
-            : [more?.alley ? h('button', { class: 'btn soft small', onclick: () => { sfx.tap(); more.alley!(); } }, '🏘 마음 골목') : null,
+            : [more?.alley ? h('button', { class: 'btn soft small', onclick: () => { sfx.tap(); more.alley!(); } }, doodleImg('village'), '마음 골목') : null,
                h('button', { class: `btn small ${ready && n ? 'pulse' : ''}`, disabled: !ready || !n, onclick: () => { sfx.pop(); choosing = true; render(); } }, '대표 라면 고르기'),
                iconBtn(ICON.close, () => { sfx.back(); done(null); }, '닫기')]);
         const bar = h('div', { class: 'bar10' }, `${Math.min(n, ROUNDS)}/${ROUNDS}그릇`, h('span', { class: 'bar' }, h('i', { style: `width:${Math.min(100, (n / ROUNDS) * 100)}%` })),

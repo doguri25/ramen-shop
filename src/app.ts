@@ -16,7 +16,7 @@ import { BODY, LATER, PROMISES, type BodyMood } from './data/later';
 import { FX } from './data/effects';
 import type { ChibiSpec, Customer, GimbapRec, Owner, Picks, RamenRecord, Step, Treat } from './data/types';
 import { GIMBAP, judgeGimbap } from './data/gimbap';
-import { openVillage, type World } from './ui/village';
+import type { World } from './ui/village';
 import { catchUpOrder, customerForRound, makeOrder } from './game/schedule';
 import { fiveStars, hasHeart, isBackward, score } from './game/scoring';
 import { faceAtlas, paperCanvas, tex } from './paint/textures';
@@ -227,7 +227,9 @@ export class App {
 
   // 3D 마음 골목: 열려 있는 동안은 가게 대신 골목을 그려요
   private world: World | null = null;
-  private openAlley(o: Owner, recs: RamenRecord[]) {
+  private async openAlley(o: Owner, recs: RamenRecord[]) {
+    // 골목(주민·물리 소품)은 열 때 불러와요 (첫 화면을 가볍게)
+    const { openVillage } = await import('./ui/village');
     return openVillage({ owner: o, recs, order: o.order, customer: (id) => CUSX.get(id), setWorld: (w) => { this.world = w; }, story: (c, r) => UI.alleyHouse(o, c, r, true) });
   }
 
