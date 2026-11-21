@@ -506,7 +506,7 @@ export function buildVillage(houses: VHouse[], towns: VTown[], villagers: ChibiS
       const hit = new THREE.Mesh(new THREE.BoxGeometry(4.6, 4, 4.4), new THREE.MeshBasicMaterial({ visible: false }));
       hit.position.set(x, y + 2, z); hit.rotation.y = yaw; hit.userData.shopLine = sh.line; hit.userData.shopKind = sh.kind; hit.userData.ownGeo = true;
       root.add(hit);
-      const front = V(x, y, z).addScaledVector(fwd, 3.4); front.y = heightAt(front.x, front.z);
+      const front = V(x, y, z).addScaledVector(fwd, 4.8); front.y = heightAt(front.x, front.z); // 간판이 한눈에 보이는 자리
       shopHits.push({ hit, kind: sh.kind, name: sh.name, front, yaw });
       shopSpots.push([x, z]);
       break;
@@ -605,8 +605,9 @@ export function buildVillage(houses: VHouse[], towns: VTown[], villagers: ChibiS
   for (let i = 0; i < 1400 && placed < 230; i++) {
     const x = X0 + 2 + rnd() * (X1 - X0 - 4), z = Z0 + 2 + rnd() * (Z1 - Z0 - 4);
     if (!clear(x, z, 0.4)) continue;
-    const t = tree(i, 0.9 + rnd() * 0.6, pickPal(x, z, 0.85)); t.position.set(x, heightAt(x, z) - 0.05, z); stat.add(t); placed++;
-    solids.push([x, z, 0.8]);
+    const sc = 0.9 + rnd() * 0.6;
+    const t = tree(i, sc, pickPal(x, z, 0.85)); t.position.set(x, heightAt(x, z) - 0.05, z); stat.add(t); placed++;
+    solids.push([x, z, 0.75 * sc + 0.35]); // 사장님 눈높이에서 잎 속으로 들어가지 않게
   }
   // 마을 바깥 숲: 산자락으로 갈수록 소나무가 많아요
   for (let i = 0, n = 0; i < 2600 && n < 520; i++) {

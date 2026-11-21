@@ -871,7 +871,7 @@ body.village-open #ui > *:not(.village):not(.modal-wrap):not(.toast):not(.villag
   .village .vt-who .vt-face { width: 38px; height: 38px; }
   .village .vt-line { font-size: 16px; margin: 6px 2px 10px; }
   .village .vt-btns .vt-opt { min-height: 42px; font-size: 15px; padding: 6px 12px; }
-  .village .v-stick.ghost { left: calc(76px + env(safe-area-inset-left)); bottom: calc(150px + env(safe-area-inset-bottom)); }
+  .village .v-stick.ghost { left: calc(76px + env(safe-area-inset-left)); bottom: calc(210px + env(safe-area-inset-bottom)); }
 }
 @media (max-height: 520px) { .village .v-stick.ghost { left: calc(90px + env(safe-area-inset-left)); bottom: calc(118px + env(safe-area-inset-bottom)); } }
 /* 폰 가로: 높이가 낮으면 대화창 단추를 옆으로 */

@@ -144,7 +144,8 @@ export function planProps(c: PropCtx): PropPlan {
     lamps.push([x, gy(x, z), z]); n++;
   }
   const solids: [number, number, number][] = [
-    ...carts.map((ct) => [ct.p[0], ct.p[2], 1.0] as [number, number, number]),
+    ...carts.map((ct) => [ct.p[0], ct.p[2], 1.7] as [number, number, number]),
+    ...spots.filter((sp) => sp.r === 1.1 || sp.r === 0.9).map((sp) => [sp.x, sp.z, sp.r + 0.5] as [number, number, number]), // 통·상자, 장작더미
     ...lines.flatMap((l) => [-1, 1].map((sd) => [l.p[0] + Math.cos(l.yaw) * LINE.half * sd, l.p[2] - Math.sin(l.yaw) * LINE.half * sd, 0.3] as [number, number, number])),
     ...lamps.map(([x, , z]) => [x, z, 0.3] as [number, number, number]),
   ];

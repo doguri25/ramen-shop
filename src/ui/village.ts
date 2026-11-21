@@ -21,7 +21,7 @@ const mount = <T extends HTMLElement>(el: T) => { (document.getElementById('ui')
 export interface World { scene: THREE.Scene; cam: THREE.PerspectiveCamera; update: (dt: number) => void; dof: { focus: number; range: number; amount: number }; look?: Look }
 
 const V = (x = 0, y = 0, z = 0) => new THREE.Vector3(x, y, z);
-const EYE = 1.2;            // 사장님 눈높이 (주민 얼굴과 비슷하게)
+const EYE = 1.45;           // 사장님 눈높이: 주민(키 1.7~2.0) 눈과 비슷하게 마주 봐요
 const WALK = 4.6, BACK = 2.4, TURN = 1.9;
 const TALK_R = 3.4;         // 이만큼 가까우면 말을 걸 수 있어요
 const SHOP_R = 5;           // 가게 앞 이만큼이면 물건을 받을 수 있어요
@@ -122,7 +122,7 @@ export function openVillage(o: {
           shadows[i].position.set(p.x, ch.root.position.y + 0.05, p.z);
         }), { ease: ease.linear });
         chs.forEach((ch) => { ch.walking = 0; ch.play('wave'); if (mode === 'walk') ch.look = eye(); });
-        if (mode === 'walk') turnTo(s.out, s.out.y + 0.9);
+        if (mode === 'walk') turnTo(s.out, s.out.y + 0.8);
         await new Promise((r2) => setTimeout(r2, 350));
         await o.story(c, r);
         chs.forEach((ch) => { ch.look = null; ch.play('bow'); });
@@ -357,7 +357,7 @@ export function openVillage(o: {
         talk = i; n.hold = true;
         const meP = mode === 'walk' ? eye() : cur.pos.clone();
         n.faceTo = V(meP.x, 0, meP.z); n.ch.look = meP;
-        if (mode === 'walk') turnTo(n.ch.root.position, n.ch.root.position.y + 0.85);
+        if (mode === 'walk') turnTo(n.ch.root.position, n.ch.root.position.y + 0.7); // 얼굴이 대화창 위에 오게 몸 아래쪽을 겨눠요
         else { all.target.copy(n.ch.root.position).setY(n.ch.root.position.y); all.dist = 14; }
         talkBox.hidden = false; el.classList.add('talking'); prompt.hidden = true;
         if (done.has(f.id) && !(errand?.npc === i)) { n.ch.play('wave'); say(f, 'happy', f.done, [btn('또 만나요!', () => closeTalk())]); return; }
@@ -531,6 +531,11 @@ export function openVillage(o: {
       const tmp = V();
       const tryMove = (nx: number, nz: number) => {
         const a = fp.pos;
+        // 주민 몸을 뚫고 지나가지 않게 (가까워지는 쪽으로는 못 가요)
+        for (const n of npcs) {
+          const p = n.ch.root.position, d1 = (p.x - nx) ** 2 + (p.z - nz) ** 2;
+          if (d1 < 0.85 * 0.85 && d1 < (p.x - a.x) ** 2 + (p.z - a.z) ** 2) return false;
+        }
         if (vil.blocked(nx, nz)) { if (!vil.blocked(nx, a.z)) nz = a.z; else if (!vil.blocked(a.x, nz)) nx = a.x; }
         if (vil.blocked(nx, nz)) return false;
         a.set(nx, 0, nz);
@@ -540,6 +545,9 @@ export function openVillage(o: {
       world.update = (dt: number) => {
         cam.aspect = innerWidth / innerHeight;
         cam.near = mode === 'walk' ? 0.08 : 0.3;
+        // 1인칭은 시야를 넓게: 가로로 75° 이상 보이게 (세로 폰은 위아래를 더 넓혀요)
+        const wantFov = mode === 'walk' ? Math.min(85, Math.max(58, (2 * Math.atan(Math.tan((37.5 * Math.PI) / 180) / cam.aspect) * 180) / Math.PI)) : 42;
+        cam.fov += (wantFov - cam.fov) * Math.min(1, dt * 4);
         cam.updateProjectionMatrix();
         const e0 = mode === 'walk' ? eye() : cur.pos;
         vil.update(dt, e0);
