@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { mulberry32 } from '../core/rng';
 import BAKE from '../data/village-bake.json';
+import { makeGlow } from './fx';
 import { boxG, cylG, M, mesh, sphereG, torusG } from './geo';
 
 // 마음 골목 소품: 놓일 자리는 게임이 정하고, 어떻게 놓이는지(굴러가고 쏟아지고 기울어지고)는
@@ -292,7 +293,10 @@ export function placeProps(plan: PropPlan, stat: THREE.Object3D, root: THREE.Obj
     bodyMesh(b, stat, p, q);
   });
   for (const c of plan.carts) cartMesh(stat, V(...c.p), new THREE.Quaternion(...c.q));
-  for (const [x, y, z] of plan.lamps) lampMesh(stat, x, y, z);
+  for (const [x, y, z] of plan.lamps) {
+    lampMesh(stat, x, y, z);
+    const gl = makeGlow('#FFE3A0', 1.9, 0.5); gl.position.set(x, y + 2.5, z); root.add(gl); // 등불 빛무리
+  }
   const lines = plan.lines.map((l, i) => { const L = laundry(l, i, ok ? bake.cloth : null); root.add(L.group); return L; });
   return { lines, baked: ok };
 }

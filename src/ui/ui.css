@@ -780,7 +780,7 @@ body.village-open #ui > *:not(.village):not(.modal-wrap):not(.toast):not(.villag
 .village .v-stick[hidden] { display: none; }
 .village .v-stick i { position: absolute; left: 50%; top: 50%; width: 56px; height: 56px; border-radius: 50%; background: rgba(255,255,255,.95); box-shadow: var(--shadow-s); transform: translate(-50%, -50%); }
 .village .v-stick.ghost { left: calc(90px + env(safe-area-inset-left)); top: auto; bottom: calc(150px + env(safe-area-inset-bottom)); margin: 0 0 -62px -62px; opacity: .85; animation: vghost 2s ease-in-out infinite; }
-.village .v-stick.ghost span { position: absolute; left: 50%; top: 100%; transform: translate(-50%, 6px); white-space: nowrap; padding: 2px 10px; border-radius: 999px; background: rgba(255,255,255,.92); font: 13px var(--head); color: var(--ink-2); }
+.village .v-stick.ghost span { position: absolute; left: 50%; bottom: 100%; transform: translate(-50%, -6px); white-space: nowrap; padding: 2px 10px; border-radius: 999px; background: rgba(255,255,255,.92); font: 13px var(--head); color: var(--ink-2); }
 @keyframes vghost { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.06); } }
 .village.walk .v-towns { justify-content: flex-start; }
 .village .v-fade { position: absolute; inset: 0; background: #FFF4E6; opacity: 0; pointer-events: none; transition: opacity .25s; }
@@ -804,6 +804,37 @@ body.village-open #ui > *:not(.village):not(.modal-wrap):not(.toast):not(.villag
 .village .v-stamp-pop b { font-family: var(--head); font-size: 24px; color: #C0392B; }
 .village .v-stamp-pop span { font-size: 15px; color: var(--ink-2); }
 @keyframes vstamp { 0% { transform: translate(-50%, -50%) scale(.4) rotate(-12deg); opacity: 0; } 18% { transform: translate(-50%, -50%) scale(1.08) rotate(3deg); opacity: 1; } 30% { transform: translate(-50%, -50%) scale(1) rotate(0); } 80% { opacity: 1; } 100% { transform: translate(-50%, -60%) scale(1); opacity: 0; } }
+/* 처음 여는 안내 */
+.village .v-help { background: #fff; box-shadow: var(--shadow-s); font-family: var(--head); font-size: 22px; color: var(--accent); }
+.village .v-intro { position: absolute; inset: 0; z-index: 5; display: grid; place-items: center; padding: 16px; background: rgba(255, 248, 236, .55); transition: opacity .2s; }
+.village .v-intro.out { opacity: 0; }
+.village .vi-card { width: min(520px, 100%); max-height: calc(100% - 24px); overflow-y: auto; padding: 20px 22px 18px; border-radius: 28px; box-shadow: var(--shadow); }
+.village .vi-head { display: flex; align-items: center; gap: 12px; }
+.village .vi-head .vi-logo { width: 64px; height: 64px; }
+.village .vi-head h2 { margin: 0; font-family: var(--head); font-size: 26px; color: var(--accent); }
+.village .vi-head p { margin: 2px 0 0; color: var(--ink-2); font-size: 15px; word-break: keep-all; }
+.village .vi-card ul { list-style: none; margin: 14px 0 16px; padding: 0; display: flex; flex-direction: column; gap: 10px; }
+.village .vi-card li { display: flex; align-items: flex-start; gap: 10px; padding: 10px 12px; border-radius: 16px; background: #FFF8EE; }
+.village .vi-card li .dicon { width: 38px; height: 38px; margin-top: 2px; }
+.village .vi-card li b { display: block; font-family: var(--head); font-size: 17px; }
+.village .vi-card li span { font-size: 15px; line-height: 1.45; color: var(--ink); word-break: keep-all; }
+.village .vi-btns { display: flex; gap: 8px; justify-content: flex-end; flex-wrap: wrap; }
+.village .vi-btns .dicon { width: 26px; height: 26px; }
+@media (max-width: 640px), (max-height: 520px) {
+  .village .vi-card { padding: 14px 16px 14px; border-radius: 22px; }
+  .village .vi-head .vi-logo { width: 46px; height: 46px; }
+  .village .vi-head h2 { font-size: 21px; }
+  .village .vi-card ul { margin: 10px 0 12px; gap: 6px; }
+  .village .vi-card li { padding: 8px 10px; }
+  .village .vi-card li .dicon { width: 30px; height: 30px; }
+  .village .vi-card li span { font-size: 13.5px; }
+  .village .v-help { width: 40px; height: 40px; font-size: 18px; }
+}
+@media (max-height: 520px) {
+  .village .vi-card { width: min(760px, 100%); }
+  .village .vi-card ul { flex-direction: row; }
+  .village .vi-card li { flex: 1; flex-direction: column; align-items: flex-start; gap: 4px; }
+}
 .village-loading { position: absolute; inset: 0; z-index: 12; display: grid; place-items: center; background: rgba(246,235,221,.82); pointer-events: auto; }
 .village-loading .vl-in { display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 22px 30px; border-radius: 22px; background: #fff; box-shadow: var(--shadow); }
 .village-loading .dicon.vl { width: 72px; height: 72px; }

@@ -6,6 +6,7 @@ import { FOLKS, ITEM_DOODLE, type FeelOpt, type Folk, type FolkMood, type ShopKi
 import { ALLEY_LINKS, KIND_EMOJI, LATER } from '../data/later';
 import type { Customer, Owner, RamenRecord } from '../data/types';
 import { tex } from '../paint/textures';
+import type { Look } from '../render/watercolor';
 import { Chibi, type Mood } from '../scene/chibi';
 import { makeShadow } from '../scene/fx';
 import { disposeTree } from '../scene/geo';
@@ -17,7 +18,7 @@ import { faceImg, type FaceKind } from './faces';
 const mount = <T extends HTMLElement>(el: T) => { (document.getElementById('ui') ?? document.body).appendChild(el); return el; };
 
 // 3D 마음 골목 보기: 전체 보기(모형처럼 내려다보기)와 돌아다니기(사장님 눈으로 직접 걸어 다니기)
-export interface World { scene: THREE.Scene; cam: THREE.PerspectiveCamera; update: (dt: number) => void; dof: { focus: number; range: number; amount: number } }
+export interface World { scene: THREE.Scene; cam: THREE.PerspectiveCamera; update: (dt: number) => void; dof: { focus: number; range: number; amount: number }; look?: Look }
 
 const V = (x = 0, y = 0, z = 0) => new THREE.Vector3(x, y, z);
 const EYE = 1.2;            // 사장님 눈높이 (주민 얼굴과 비슷하게)
@@ -78,7 +79,9 @@ export function openVillage(o: {
       const all = { target: V(0, 2, -13), dist: fitDist(), yaw: 0 };
       const cur = { pos: V(0, 120, 120), look: V(0, 0, -4) };
       let blend = 1; // 돌아다니기로 바꾼 뒤 내려앉는 동안 0→1
-      const world: World = { scene, cam, update: () => {}, dof: { focus: 100, range: 40, amount: 0.8 } };
+      // 마음 골목은 가게보다 화사하게: 채도·밝기를 올리고 그늘을 밝히고, 낮은 해에서 햇살이 비쳐요
+      const look = { sat: 1.18, bright: 1.04, lift: 0.35, rays: 0.25, sunDir: V(0.4, 0.17, 0.5).normalize(), skyD: 400 };
+      const world: World = { scene, cam, update: () => {}, dof: { focus: 100, range: 40, amount: 0.8 }, look };
       const B = vil.bounds;
       const clampT = (t: THREE.Vector3) => { t.x = Math.max(B.minX + 6, Math.min(B.maxX - 6, t.x)); t.z = Math.max(B.minZ + 6, Math.min(B.maxZ - 6, t.z)); };
       const eye = () => V(fp.pos.x, fp.y + EYE + Math.sin(fp.bob) * 0.035 * fp.moving, fp.pos.z);
@@ -246,7 +249,7 @@ export function openVillage(o: {
             h('div', { class: 'v-title' }, doodleImg('village'), '마음 골목', h('small', null, `${o.owner.number}번 ${o.owner.name} 사장님`)),
             h('span', { class: 'chip v-count' }, `불 켜진 집 ${lit} / ${houses.length}`),
             stampChip,
-            seg, iconBtn(ICON.close, () => close(), '닫기')),
+            seg, h('button', { class: 'icon-btn v-help', 'aria-label': '마음 골목 안내', onclick: () => { sfx.tap(); showIntro(); } }, '?'), iconBtn(ICON.close, () => close(), '닫기')),
           h('div', { class: 'v-row2' }, newsBox, goalChip)),
         hint, zoom, prompt, stickGhost, stick, townBar, talkBox, fade);
       document.body.classList.add('village-open');
@@ -254,6 +257,25 @@ export function openVillage(o: {
       mount(el);
       let stickUsed = false;
       setMode('all');
+      // ── 처음 열면 짧은 안내 ──
+      let intro: HTMLElement | null = null;
+      const hideIntro = () => { if (!intro) return; const it = intro; intro = null; it.classList.add('out'); setTimeout(() => it.remove(), 220); };
+      function showIntro() {
+        if (intro) return;
+        const row = (k: DoodleKind, b: string, t: string) => h('li', null, doodleImg(k), h('div', null, h('b', null, b), h('span', null, t)));
+        intro = h('div', { class: 'v-intro' }, h('div', { class: 'vi-card card pop-in' },
+          h('div', { class: 'vi-head' }, doodleImg('village', '', 'dicon vi-logo'), h('div', null, h('h2', null, '마음 골목'), h('p', null, '라면을 끓여 준 손님들이 사는 마을이에요.'))),
+          h('ul', null,
+            row('village', '불 켜진 집', '내가 라면을 끓여 준 손님 집이에요. 누르면 손님이 나와 뒷이야기를 들려줘요.'),
+            row('talk', '동네 주민', '머리 위에 표시가 뜬 주민에게 말을 걸어 봐요. 마음을 알아주면 마음 도장을 받아요.'),
+            row('walk', '돌아다니기', PC ? '사장님 눈으로 걸어요. 화살표 키로 걷고, 끌어서 둘러봐요.' : '사장님 눈으로 걸어요. 왼쪽을 눌러 걷고, 오른쪽을 밀어 둘러봐요.')),
+          h('div', { class: 'vi-btns' },
+            h('button', { class: 'btn ghost small', onclick: () => { sfx.tap(); hideIntro(); } }, '전체 보기로 둘러보기'),
+            h('button', { class: 'btn small', onclick: () => { sfx.pop(); hideIntro(); setMode('walk'); } }, doodleImg('walk'), '걸어 다니기'))));
+        intro.addEventListener('click', (e) => { if (e.target === intro) hideIntro(); });
+        el.appendChild(intro);
+      }
+      showIntro();
 
       // ── 심부름 안내 ──
       const drawGoal = () => {
@@ -489,6 +511,7 @@ export function openVillage(o: {
         const t = e.target as HTMLElement | null;
         if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return;
         if (document.querySelector('.modal-wrap')) { keys.clear(); return; } // 손님 이야기 창이 열려 있으면 쉬어요
+        if (intro) { if (['Enter', 'Space', 'Escape'].includes(e.code) || MOVE_KEYS.includes(e.code)) { e.preventDefault(); hideIntro(); if (MOVE_KEYS.includes(e.code)) setMode('walk'); } return; }
         if (MOVE_KEYS.includes(e.code)) {
           e.preventDefault();
           if (talk !== null) return;
@@ -605,6 +628,7 @@ export function openVillage(o: {
           }
         }
         prompt.hidden = !promptAct;
+        stickGhost.hidden = !(mode === 'walk' && !PC && !stickUsed && !promptAct && talk === null);
         // 심부름 방향
         const gp = goalPos();
         if (gp && !goalChip.hidden) {
@@ -616,6 +640,7 @@ export function openVillage(o: {
           const tn = talk !== null ? npcs[talk].ch.root.position : null;
           world.dof.focus = tn ? cam.position.distanceTo(tn) : 9; world.dof.range = tn ? 4 : 16; world.dof.amount = tn ? 0.4 : 0.18;
         } else { const fd = cur.pos.distanceTo(cur.look); world.dof.focus = fd; world.dof.range = fd * 0.42; world.dof.amount = 0.9; }
+        look.rays = mode === 'walk' ? 0.7 : 0.22;
       };
       let toastCool = 0;
       let promptKey = '';

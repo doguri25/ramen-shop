@@ -5,7 +5,7 @@ import type { ChibiSpec } from '../data/types';
 import { blob, ctx2d, darken, lighten, makeCanvas, mix } from '../paint/brush';
 import { tex } from '../paint/textures';
 import { Chibi } from './chibi';
-import { makeGlow, makeShadow } from './fx';
+import { glowTex, makeGlow, makeShadow } from './fx';
 import { boxG, coneG, cylG, disposeTree, M, Mu, mesh, sphereG } from './geo';
 import { bakeSpec, placeProps, planProps } from './villageProps';
 
@@ -98,16 +98,33 @@ function makeHouse(h: VHouse, roofColor: string, seed: number): THREE.Group {
   return o;
 }
 
-function tree(seed: number, s = 1) {
+// 동화풍 알록달록 나무: 벚꽃·은행·단풍·연두·라벤더·하늘꽃·살구빛. 마을마다 주인공 색이 조금씩 달라요
+export const TREE_PAL: Record<string, string[]> = {
+  cherry: ['#F4A9BE', '#F8C0CF', '#FCD6E1'],
+  ginkgo: ['#F2C94C', '#F7D96E', '#FBE79A'],
+  maple: ['#EE8B47', '#F3A464', '#F7BD84'],
+  red: ['#E8736A', '#F08C80', '#F6A99C'],
+  mint: ['#93D07C', '#AEDD93', '#C6E9AA'],
+  lav: ['#B39DE8', '#C6B5F0', '#D9CDF6'],
+  sky: ['#93BFEC', '#AECFF2', '#C7DFF6'],
+  peach: ['#F7A98A', '#F9BEA3', '#FCD3BF'],
+  green: ['#8CC26A', '#A2CE7A', '#B8DA8C'],
+};
+const COLORFUL = ['cherry', 'ginkgo', 'maple', 'red', 'lav', 'sky', 'peach', 'mint'];
+export const TOWN_PAL = ['cherry', 'maple', 'mint', 'ginkgo', 'sky', 'lav', 'red', 'mint'];
+function tree(seed: number, s = 1, pal = 'green') {
   const o = new THREE.Group(), rnd = mulberry32(seed);
-  const pine = rnd() < 0.35;
-  mesh(cylG(0.13 * s, 0.18 * s, 1.3 * s, 7), M('#8A5E3C'), [0, 0.65 * s, 0], 1, [0, 0, 0], o);
+  const pine = rnd() < (pal === 'green' ? 0.35 : 0.12);
+  mesh(cylG(0.13 * s, 0.18 * s, 1.3 * s, 7), M(pal === 'cherry' || pal === 'lav' ? '#7E5A44' : '#8A5E3C'), [0, 0.65 * s, 0], 1, [0, 0, 0], o);
   if (pine) {
-    for (let i = 0; i < 3; i++) mesh(coneG((1.1 - i * 0.25) * s, 1.3 * s, 9), M(i % 2 ? '#7FB06A' : '#6FA35E', { noise: 3 }), [0, (1.3 + i * 0.7) * s, 0], 1, [0, rnd(), 0], o);
+    const pc = seed % 3 === 0 ? ['#5FAE8C', '#74BC9B'] : ['#6FA35E', '#7FB06A'];
+    for (let i = 0; i < 3; i++) mesh(coneG((1.1 - i * 0.25) * s, 1.3 * s, 9), M(pc[i % 2], { noise: 3 }), [0, (1.3 + i * 0.7) * s, 0], 1, [0, rnd(), 0], o);
   } else {
-    const c = ['#8FBF6A', '#A3CB78', '#7DB36A', '#B5D27E'][seed % 4];
-    for (let i = 0; i < 3; i++) mesh(sphereG((0.75 - i * 0.1) * s, 10, 8), M(i ? lighten(c, 0.08 * i) : c, { noise: 4 }), [(rnd() - 0.5) * 0.5 * s, (1.55 + i * 0.42) * s, (rnd() - 0.5) * 0.5 * s], 1, [0, 0, 0], o);
-    if (rnd() < 0.3) for (let i = 0; i < 4; i++) mesh(sphereG(0.09 * s, 6, 5), M('#E3645A'), [Math.cos(i * 1.7) * 0.6 * s, (1.5 + rnd() * 0.6) * s, Math.sin(i * 1.7) * 0.6 * s], 1, [0, 0, 0], o);
+    const c = TREE_PAL[pal] ?? TREE_PAL.green;
+    for (let i = 0; i < 3; i++) mesh(sphereG((0.75 - i * 0.1) * s, 10, 8), M(c[i], { noise: 4 }), [(rnd() - 0.5) * 0.5 * s, (1.55 + i * 0.42) * s, (rnd() - 0.5) * 0.5 * s], 1, [0, 0, 0], o);
+    if (pal === 'green' && rnd() < 0.3) for (let i = 0; i < 4; i++) mesh(sphereG(0.09 * s, 6, 5), M('#E3645A'), [Math.cos(i * 1.7) * 0.6 * s, (1.5 + rnd() * 0.6) * s, Math.sin(i * 1.7) * 0.6 * s], 1, [0, 0, 0], o);
+    // 꽃잎·낙엽이 나무 밑에 떨어져 있어요
+    if (pal !== 'green') for (let i = 0; i < 7; i++) { const a = rnd() * PI * 2, r = (0.35 + rnd() * 0.75) * s; mesh(cylG(0.09 + rnd() * 0.06, 0.09, 0.02, 6), M(c[(i % 2) + 1], { flat: 0.3 }), [Math.cos(a) * r, 0.08, Math.sin(a) * r], 1, [0, rnd() * 3, 0], o); }
   }
   return o;
 }
@@ -342,7 +359,7 @@ export function buildVillage(houses: VHouse[], towns: VTown[], villagers: ChibiS
   const TW = 2400, TH = Math.round(TW * (Z1 - Z0) / (X1 - X0));
   const cv = makeCanvas(TW, TH), g = ctx2d(cv);
   const px = (x: number) => mapU(x) * TW, pz = (z: number) => mapV(z) * TH, pm = (IN * TW) / (X1 - X0);
-  g.fillStyle = '#CFE4A2'; g.fillRect(0, 0, TW, TH);
+  g.fillStyle = '#CDEAA6'; g.fillRect(0, 0, TW, TH);
   // 바깥 산: 높을수록 짙은 숲빛, 꼭대기는 바위빛
   {
     const step = 6;
@@ -352,11 +369,11 @@ export function buildVillage(houses: VHouse[], towns: VTown[], villagers: ChibiS
       const x = u < OUTU ? BX0 + (u / OUTU) * (X0 - BX0) : u > 1 - OUTU ? X1 + ((u - 1 + OUTU) / OUTU) * (BX1 - X1) : X0 + ((u - OUTU) / IN) * (X1 - X0);
       const z = v < OUTU ? BZ0 + (v / OUTU) * (Z0 - BZ0) : v > 1 - OUTU ? Z1 + ((v - 1 + OUTU) / OUTU) * (BZ1 - Z1) : Z0 + ((v - OUTU) / IN) * (Z1 - Z0);
       const hm = mountains(x, z);
-      g.fillStyle = hm > 22 ? mix('#9FB98A', '#C9C2B6', Math.min(1, (hm - 22) / 8)) : mix('#C8E09B', '#8FB877', Math.min(1, hm / 18));
+      g.fillStyle = hm > 22 ? mix('#A9C595', '#D6CFC4', Math.min(1, (hm - 22) / 8)) : mix('#CFE6A0', '#9DC583', Math.min(1, hm / 18));
       g.fillRect(xx, yy, step, step);
     }
   }
-  for (let i = 0; i < 360; i++) blob(g, rnd() * TW, rnd() * TH, 30 + rnd() * 90, 20 + rnd() * 60, rnd() < 0.5 ? '#DDEDB4' : '#BCD98F', rnd, { layers: 2, alpha: 0.16, edge: 0 });
+  for (let i = 0; i < 360; i++) blob(g, rnd() * TW, rnd() * TH, 30 + rnd() * 90, 20 + rnd() * 60, rnd() < 0.5 ? '#E6F4BE' : '#C3DF94', rnd, { layers: 2, alpha: 0.16, edge: 0 });
   const stroke = (pts: THREE.Vector3[], color: string, width: number, alpha = 1, dash?: number[]) => {
     g.save(); g.globalAlpha = alpha; g.strokeStyle = color; g.lineWidth = width * pm; g.lineCap = 'round'; g.lineJoin = 'round';
     if (dash) g.setLineDash(dash.map((x) => x * pm));
@@ -368,6 +385,15 @@ export function buildVillage(houses: VHouse[], towns: VTown[], villagers: ChibiS
   // 집 앞 작은 마당
   for (const q of plan) { g.fillStyle = '#E6D5B2'; g.globalAlpha = 0.55; g.beginPath(); g.ellipse(px(q.x), pz(q.z), 3.2 * pm, 3.2 * pm, 0, 0, 7); g.fill(); }
   g.globalAlpha = 1;
+  // 들꽃: 더 많이, 더 화사하게 (색은 따로 골라 다른 자리는 그대로)
+  const flRnd = mulberry32(777);
+  for (let i = 0; i < 900; i++) {
+    const x = X0 + flRnd() * (X1 - X0), z = Z0 + flRnd() * (Z1 - Z0);
+    if (rdist(x, z) < 8) continue;
+    g.fillStyle = ['#FF9FB7', '#FFD95E', '#FFFFFF', '#B9A2F2', '#FFB27A', '#8FD3F5'][i % 6];
+    g.globalAlpha = 0.85;
+    for (let k = 0; k < 4; k++) { g.beginPath(); g.arc(px(x) + (flRnd() - 0.5) * 12, pz(z) + (flRnd() - 0.5) * 12, 2.2 + flRnd() * 2.4, 0, 7); g.fill(); }
+  }
   for (let i = 0; i < 1100; i++) {
     const x = X0 + rnd() * (X1 - X0), z = Z0 + rnd() * (Z1 - Z0);
     if (rdist(x, z) < 8) continue;
@@ -402,7 +428,7 @@ export function buildVillage(houses: VHouse[], towns: VTown[], villagers: ChibiS
   ground.userData.ownGeo = true;
   root.add(ground); own.push(ground);
   const skyCv = makeCanvas(8, 256), sg = ctx2d(skyCv), gr = sg.createLinearGradient(0, 0, 0, 256);
-  gr.addColorStop(0, '#9FCDEE'); gr.addColorStop(0.42, '#D6EAF5'); gr.addColorStop(0.5, '#FFF2DE'); gr.addColorStop(0.52, '#CFE4A2'); gr.addColorStop(1, '#CFE4A2');
+  gr.addColorStop(0, '#8FCBF2'); gr.addColorStop(0.36, '#CDE8F8'); gr.addColorStop(0.47, '#FFF0D6'); gr.addColorStop(0.5, '#FFE9C8'); gr.addColorStop(0.52, '#CDEAA6'); gr.addColorStop(1, '#CDEAA6');
   sg.fillStyle = gr; sg.fillRect(0, 0, 8, 256);
   const sky = new THREE.Mesh(new THREE.SphereGeometry(520, 32, 16), Mu('#FFFFFF', { map: tex(skyCv), flat: 1, rim: 0, side: THREE.BackSide }));
   sky.userData.ownGeo = true; root.add(sky); own.push(sky);
@@ -422,7 +448,7 @@ export function buildVillage(houses: VHouse[], towns: VTown[], villagers: ChibiS
     });
     const wg = new THREE.BufferGeometry();
     wg.setAttribute('position', new THREE.Float32BufferAttribute(vs, 3)); wg.setIndex(ix); wg.computeVertexNormals();
-    const water = new THREE.Mesh(wg, Mu('#8CC8EA', { flat: 0.55, spec: 0.7, rim: 0.2, alpha: 0.92, side: THREE.DoubleSide }));
+    const water = new THREE.Mesh(wg, Mu('#86CDF0', { flat: 0.5, spec: 0.9, rim: 0.2, alpha: 0.9, side: THREE.DoubleSide }));
     water.userData.ownGeo = true; root.add(water);
     for (let i = 0; i < 46; i++) { const p = river.getPointAt(rnd()); mesh(boxG(0.9 + rnd(), 0.02, 0.12), M('#FFFFFF', { flat: 1, alpha: 0.8 }), [p.x + (rnd() - 0.5) * 3, WATER + 0.03, p.z + (rnd() - 0.5) * 3], 1, [0, rnd() * 3, 0], stat); }
     for (let i = 0; i < 80; i++) { const p = river.getPointAt(rnd()), a = rnd() * PI * 2, r = 3.6 + rnd() * 1.6; const x = p.x + Math.cos(a) * r, z = p.z + Math.sin(a) * r; mesh(sphereG(0.3 + rnd() * 0.35, 8, 6), M(rnd() < 0.5 ? '#C9C2B6' : '#B6AEA2', { noise: 3 }), [x, heightAt(x, z) + 0.05, z], [1, 0.55, 0.8], [0, rnd() * 3, 0], stat); }
@@ -539,7 +565,7 @@ export function buildVillage(houses: VHouse[], towns: VTown[], villagers: ChibiS
     board.userData.ownGeo = true; board.position.copy(sp).setY(sp.y + 1.9).add(V(Math.sin(yaw) * 0.12, 0, Math.cos(yaw) * 0.12)); board.rotation.y = yaw;
     root.add(board); own.push(board);
     const wp = endP.clone().addScaledVector(V().subVectors(endP, ln.getPointAt(fromStart ? 0.9 : 0.1)).normalize(), 3.2); wp.y = heightAt(wp.x, wp.z);
-    const mid = k % 2 ? well() : tree(k * 11 + 3, 1.5);
+    const mid = k % 2 ? well() : tree(k * 11 + 3, 1.5, TOWN_PAL[k % TOWN_PAL.length]);
     mid.position.copy(wp); stat.add(mid);
     solids.push([wp.x, wp.z, 1.5]);
     const c = ln.getPointAt(0.5); c.y = heightAt(c.x, c.z);
@@ -566,11 +592,20 @@ export function buildVillage(houses: VHouse[], towns: VTown[], villagers: ChibiS
     for (const p of pathPts) if ((p.x - x) ** 2 + (p.z - z) ** 2 < (2.8 + pad) ** 2) return false;
     return true;
   };
+  // 나무 색: 가까운 마을의 주인공 색 → 그 밖의 알록달록한 색 → 초록 (자리는 그대로, 색만 따로 골라요)
+  const palRnd = mulberry32(9090);
+  const nearTown = (x: number, z: number) => { let bk = 0, bd = 1e9; townInfo.forEach((t, k) => { const d = (t.center.x - x) ** 2 + (t.center.z - z) ** 2; if (d < bd) { bd = d; bk = k; } }); return bk; };
+  const pickPal = (x: number, z: number, colorful: number) => {
+    const r = palRnd();
+    if (r < colorful * 0.5) return TOWN_PAL[nearTown(x, z) % TOWN_PAL.length];
+    if (r < colorful) return COLORFUL[Math.floor(palRnd() * COLORFUL.length)];
+    return 'green';
+  };
   let placed = 0;
   for (let i = 0; i < 1400 && placed < 230; i++) {
     const x = X0 + 2 + rnd() * (X1 - X0 - 4), z = Z0 + 2 + rnd() * (Z1 - Z0 - 4);
     if (!clear(x, z, 0.4)) continue;
-    const t = tree(i, 0.9 + rnd() * 0.6); t.position.set(x, heightAt(x, z) - 0.05, z); stat.add(t); placed++;
+    const t = tree(i, 0.9 + rnd() * 0.6, pickPal(x, z, 0.85)); t.position.set(x, heightAt(x, z) - 0.05, z); stat.add(t); placed++;
     solids.push([x, z, 0.8]);
   }
   // 마을 바깥 숲: 산자락으로 갈수록 소나무가 많아요
@@ -578,13 +613,33 @@ export function buildVillage(houses: VHouse[], towns: VTown[], villagers: ChibiS
     const x = BX0 + 6 + rnd() * (BX1 - BX0 - 12), z = BZ0 + 6 + rnd() * (BZ1 - BZ0 - 12);
     const dx = Math.max(X0 - x, 0, x - X1), dz = Math.max(Z0 - z, 0, z - Z1), d = Math.hypot(dx, dz);
     if (d < 3 || rdist(x, z) < 9 || rnd() > 0.35 + smooth(0, 40, d) * 0.65) continue;
-    const t = tree(1000 + i, 1.1 + rnd() * 0.9); t.position.set(x, heightAt(x, z) - 0.1, z); stat.add(t); n++;
+    const t = tree(1000 + i, 1.1 + rnd() * 0.9, pickPal(x, z, 0.38 - smooth(0, 60, d) * 0.2)); t.position.set(x, heightAt(x, z) - 0.1, z); stat.add(t); n++;
   }
   for (let i = 0, n = 0; i < 500 && n < 50; i++) {
     const x = X0 + rnd() * (X1 - X0), z = Z0 + rnd() * (Z1 - Z0);
     if (!clear(x, z, -1.2)) continue;
     const m = mushroom(i); m.position.set(x, heightAt(x, z), z); stat.add(m); n++;
   }
+  // ── 빛: 냇물 위 반짝임과 불 켜진 집 둘레를 떠도는 빛 알갱이 ──
+  const fxRnd = mulberry32(5150);
+  const glints: { s: THREE.Sprite; ph: number; sp: number }[] = [];
+  for (let i = 0; i < 70; i++) {
+    const p = river.getPointAt(fxRnd());
+    if (p.x < X0 - 20 || p.x > X1 + 20) continue;
+    const sm = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTex(), color: '#FFFFFF', transparent: true, opacity: 0, depthWrite: false, blending: THREE.AdditiveBlending }));
+    sm.position.set(p.x + (fxRnd() - 0.5) * 5, WATER + 0.12, p.z + (fxRnd() - 0.5) * 5);
+    sm.scale.setScalar(0.5 + fxRnd() * 0.6); sm.renderOrder = 6;
+    root.add(sm); glints.push({ s: sm, ph: fxRnd() * 10, sp: 1.5 + fxRnd() * 2 });
+  }
+  const moteSrc: THREE.Vector3[] = [];
+  for (const sp of spots) if (sp.h.lit) for (let k = 0; k < 5; k++) moteSrc.push(V(sp.door.x + (fxRnd() - 0.5) * 4, sp.door.y + 0.4 + fxRnd() * 1.8, sp.door.z + (fxRnd() - 0.5) * 4));
+  for (let k = 0; k < 24; k++) moteSrc.push(V(SHOP.x + (fxRnd() - 0.5) * 12, shopY + 0.5 + fxRnd() * 2.5, SHOP.z + 2 + (fxRnd() - 0.5) * 10));
+  const moteGeo = new THREE.BufferGeometry();
+  const motePos = new Float32Array(Math.max(1, moteSrc.length) * 3);
+  moteGeo.setAttribute('position', new THREE.BufferAttribute(motePos, 3));
+  const motes = new THREE.Points(moteGeo, new THREE.PointsMaterial({ map: glowTex(), color: '#FFE7A6', size: 0.34, sizeAttenuation: true, transparent: true, opacity: 0.85, depthWrite: false, blending: THREE.AdditiveBlending }));
+  motes.renderOrder = 7; motes.frustumCulled = false;
+  root.add(motes);
   const merged = new THREE.Group();
   root.add(merged);
   mergeStatic(stat, merged);
@@ -613,6 +668,13 @@ export function buildVillage(houses: VHouse[], towns: VTown[], villagers: ChibiS
   let clock = 0;
   const update = (dt: number, eye?: THREE.Vector3) => {
     clock += dt;
+    for (const g2 of glints) { const k = Math.sin(clock * g2.sp + g2.ph); g2.s.material.opacity = Math.max(0, k) ** 6 * 0.85; }
+    moteSrc.forEach((p, i) => {
+      motePos[i * 3] = p.x + Math.sin(clock * 0.5 + i * 1.7) * 0.5;
+      motePos[i * 3 + 1] = p.y + Math.sin(clock * 0.8 + i) * 0.35;
+      motePos[i * 3 + 2] = p.z + Math.cos(clock * 0.45 + i * 2.3) * 0.5;
+    });
+    moteGeo.attributes.position.needsUpdate = true;
     for (const L of placed0.lines) {
       if (eye && (L.group.position.x - eye.x) ** 2 + (L.group.position.z - eye.z) ** 2 > 90 * 90) continue;
       L.update(clock);
@@ -642,7 +704,8 @@ export function buildVillage(houses: VHouse[], towns: VTown[], villagers: ChibiS
     }
   };
   const dispose = () => {
-    hitGeo.dispose(); hitMat.dispose(); npcHitGeo.dispose();
+    hitGeo.dispose(); hitMat.dispose(); npcHitGeo.dispose(); moteGeo.dispose();
+    (motes.material as THREE.Material).dispose(); glints.forEach((g2) => g2.s.material.dispose());
     placed0.lines.forEach((L) => L.dispose());
     for (const o of own) { const m = (o as THREE.Mesh).material as THREE.ShaderMaterial; m.uniforms?.uMap?.value?.dispose?.(); }
     disposeTree(root);

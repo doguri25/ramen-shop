@@ -6,6 +6,7 @@ export const shared = {
   uTime: { value: 0 },
   uPaper: { value: null as THREE.Texture | null },
   uBake: { value: 0 }, // 구운 광선추적 조명이 얼마나 들어갔는지 (0 → 1 로 스며들어요)
+  uLift: { value: 0 }, // 그늘을 얼마나 밝게 들어 올릴지 (마음 골목처럼 화사한 곳에서만)
 };
 export const LIGHT_W = new THREE.Vector3(0.4, 0.8, 0.5).normalize();
 
@@ -49,7 +50,7 @@ void main(){
 
 const FRAG = /* glsl */ `
 uniform vec3 uColor; uniform sampler2D uMap; uniform float uUseMap; uniform vec3 uLightV; uniform sampler2D uPaper;
-uniform float uRim; uniform float uAlpha; uniform float uGlow; uniform vec3 uGlowColor; uniform float uFlat; uniform float uNoiseScale; uniform float uSpec;
+uniform float uRim; uniform float uAlpha; uniform float uGlow; uniform vec3 uGlowColor; uniform float uFlat; uniform float uNoiseScale; uniform float uSpec; uniform float uLift;
 varying vec3 vN; varying vec3 vV; varying vec3 vW; varying vec2 vUv;
 #ifdef BAKE
 uniform float uBake;
@@ -74,6 +75,7 @@ void main(){
   vec4 tx = uUseMap > 0.5 ? texture2D(uMap, vUv) : vec4(1.0);
   vec3 base = uColor * tx.rgb;
   vec3 shade = base * vec3(0.74, 0.72, 0.84) + vec3(0.02, 0.015, 0.04);
+  shade = mix(shade, base * vec3(0.9, 0.88, 0.96), uLift);
   vec3 mid = base * vec3(0.90, 0.88, 0.90);
   vec3 lit = min(base * 1.05 + vec3(0.025, 0.02, 0.0), vec3(1.0));
   vec3 col = mix(shade, mid, t1);
@@ -119,6 +121,7 @@ export function wc(color: string | THREE.Color, o: WCOpts = {}) {
       uWave: { value: o.wave ?? 0 },
       uTime: shared.uTime,
       uBake: shared.uBake,
+      uLift: shared.uLift,
     },
     side: o.side ?? THREE.FrontSide,
     transparent: o.transparent ?? (o.alpha !== undefined && o.alpha < 1),
@@ -132,6 +135,7 @@ export const setColor = (m: THREE.Material, c: string) => (m as THREE.ShaderMate
 const POST_FRAG = /* glsl */ `
 uniform sampler2D tColor; uniform sampler2D tDepth; uniform sampler2D tPaper; uniform vec2 uRes; uniform float uNear; uniform float uFar; uniform float uEdge; uniform float uTime;
 uniform float uFocus; uniform float uFocusRange; uniform float uDof; uniform float uWarm; uniform float uPx;
+uniform float uSat; uniform float uBright; uniform float uRays; uniform vec2 uSun; uniform vec3 uSunCol; uniform float uSkyD;
 varying vec2 vUv;
 float lum(vec3 c){ return dot(c, vec3(0.299, 0.587, 0.114)); }
 float h2(vec2 p){ return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
@@ -181,12 +185,29 @@ void main(){
   c = mix(c, c * (0.95 + bloom * 0.08), 0.6);
   float vig = smoothstep(1.25, 0.35, length((vUv - 0.5) * vec2(1.0, 0.9)) * 1.45);
   c *= mix(0.9, 1.0, vig);
-  // 따뜻한 색감과 살짝 진한 채도
+  // 햇살: 하늘이 보이는 틈으로 해 쪽에서 빛줄기가 번져요 (마음 골목에서만)
+  if (uRays > 0.0) {
+    vec2 toSun = uSun - vUv;
+    vec2 st = toSun / 12.0;
+    vec2 p = vUv + st * h2(gl_FragCoord.xy);
+    float sky = 0.0;
+    for (int i = 0; i < 12; i++) { sky += step(uSkyD, lin(clamp(p, 0.001, 0.999))); p += st; }
+    sky /= 12.0;
+    float r = length(toSun * asp);
+    float fall = exp(-r * 1.7);
+    vec3 add = uSunCol * (sky * fall * 0.38 + exp(-r * 6.0) * 0.22) * uRays;
+    c = 1.0 - (1.0 - c) * (1.0 - add); // 스크린 섞기: 하얗게 날아가지 않게
+  }
+  // 따뜻한 색감과 살짝 진한 채도 (마음 골목은 더 화사하게)
   float L = lum(c);
-  c = mix(vec3(L), c, 1.08);
+  c = mix(vec3(L), c, uSat);
+  c *= uBright;
+  c += smoothstep(0.72, 1.0, L) * 0.05 * (uBright - 1.0) * 10.0;
   c *= mix(vec3(1.0), vec3(1.03, 1.0, 0.95), uWarm);
   gl_FragColor = vec4(c, 1.0);
 }`;
+
+export interface Look { sat?: number; bright?: number; lift?: number; rays?: number; sunDir?: THREE.Vector3; skyD?: number }
 
 export class WatercolorRenderer {
   renderer: THREE.WebGLRenderer;
@@ -215,6 +236,7 @@ export class WatercolorRenderer {
         tColor: { value: this.rt.texture }, tDepth: { value: this.rt.depthTexture }, tPaper: { value: paper },
         uRes: { value: new THREE.Vector2(4, 4) }, uNear: { value: 0.05 }, uFar: { value: 30 }, uEdge: { value: 1 }, uTime: { value: 0 },
         uFocus: { value: 2.2 }, uFocusRange: { value: 1.6 }, uDof: { value: 0 }, uWarm: { value: 1 }, uPx: { value: 1 },
+        uSat: { value: 1.08 }, uBright: { value: 1 }, uRays: { value: 0 }, uSun: { value: new THREE.Vector2(0.5, 1.2) }, uSunCol: { value: new THREE.Color('#FFE6B0') }, uSkyD: { value: 480 },
       },
       depthTest: false, depthWrite: false,
     });
@@ -255,7 +277,25 @@ export class WatercolorRenderer {
     this.post.uniforms.uPx.value = dpr / 1.6;
   }
 
+  // 장면마다 다른 색감과 햇살 (null이면 가게 기본값)
+  look: Look | null = null;
+  private applyLook(cam: THREE.PerspectiveCamera) {
+    const u = this.post.uniforms, L = this.look;
+    u.uSat.value = L?.sat ?? 1.08; u.uBright.value = L?.bright ?? 1; shared.uLift.value = L?.lift ?? 0;
+    let rays = 0;
+    if (L?.rays && L.sunDir) {
+      // 해는 카메라에서 아주 먼 곳: 화면 위 자리를 구해요 (뒤에 있으면 빛줄기 없음)
+      const fwd = this.tmp.set(0, 0, -1).applyQuaternion(cam.quaternion);
+      const facing = fwd.dot(L.sunDir);
+      const p = L.sunDir.clone().multiplyScalar(400).add(cam.position).project(cam);
+      if (facing > -0.2) { u.uSun.value.set(p.x * 0.5 + 0.5, p.y * 0.5 + 0.5); rays = L.rays * Math.min(1, (facing + 0.2) / 0.6); }
+      u.uSkyD.value = L.skyD ?? 480;
+    }
+    u.uRays.value = this.dofOn || rays === 0 ? rays : rays * 0.6;
+  }
+
   render(scene: THREE.Scene, cam: THREE.PerspectiveCamera) {
+    this.applyLook(cam);
     this.tmp.copy(LIGHT_W).transformDirection(cam.matrixWorldInverse);
     shared.uLightV.value.copy(this.tmp);
     this.post.uniforms.uNear.value = cam.near;
@@ -283,14 +323,15 @@ export class WatercolorRenderer {
     this.renderer.clear();
     this.renderer.render(scene, cam);
     const u = this.post.uniforms;
-    const keep = { c: u.tColor.value, d: u.tDepth.value, r: u.uRes.value.clone(), n: u.uNear.value, f: u.uFar.value, dof: u.uDof.value, px: u.uPx.value };
+    const keep = { c: u.tColor.value, d: u.tDepth.value, r: u.uRes.value.clone(), n: u.uNear.value, f: u.uFar.value, dof: u.uDof.value, px: u.uPx.value, rays: u.uRays.value };
+    u.uRays.value = 0;
     u.tColor.value = rt.texture; u.tDepth.value = rt.depthTexture; u.uRes.value.set(w, h); u.uNear.value = cam.near; u.uFar.value = cam.far; u.uDof.value = 0; u.uPx.value = 1;
     this.renderer.setRenderTarget(out);
     this.renderer.render(this.postScene, this.postCam);
     const px = new Uint8Array(w * h * 4);
     this.renderer.readRenderTargetPixels(out, 0, 0, w, h, px);
     this.renderer.setRenderTarget(null);
-    u.tColor.value = keep.c; u.tDepth.value = keep.d; u.uRes.value.copy(keep.r); u.uNear.value = keep.n; u.uFar.value = keep.f; u.uDof.value = keep.dof; u.uPx.value = keep.px;
+    u.tColor.value = keep.c; u.tDepth.value = keep.d; u.uRes.value.copy(keep.r); u.uNear.value = keep.n; u.uFar.value = keep.f; u.uDof.value = keep.dof; u.uPx.value = keep.px; u.uRays.value = keep.rays;
     this.renderer.setClearColor(prevClear, 1);
     const c = document.createElement('canvas'); c.width = w; c.height = h;
     const g = c.getContext('2d')!;

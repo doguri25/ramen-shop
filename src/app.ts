@@ -150,11 +150,13 @@ export class App {
         this.world.update(raw);
         const d = this.world.dof;
         this.wcr.setDof(d.focus, d.range, d.amount);
+        this.wcr.look = this.world.look ?? null;
         this.wcr.render(this.world.scene, this.world.cam);
       } else {
         this.stage.update(dt);
         const d = this.stage.dof;
         this.wcr.setDof(Math.max(0.2, d.focus - this.stage.focusShift), d.range, d.amount);
+        this.wcr.look = null;
         this.wcr.render(this.stage.scene, this.stage.cam);
       }
       this.probe.sample(raw);
