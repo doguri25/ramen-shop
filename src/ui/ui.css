@@ -992,6 +992,34 @@ body.shop-sit #ui > *:not(.dialog):not(.memo):not(.cook):not(.info):not(.toast):
 .village .vb-folk { display: flex; align-items: center; gap: 4px; padding: 6px 8px; border: 2px solid #EFE6D8; border-radius: 12px; background: #fff; font-family: var(--head); font-size: 14px; color: var(--ink-2); cursor: pointer; }
 .village .vb-folk .dicon { width: 24px; height: 24px; flex: none; }
 .village .vb-folk.on { border-color: #F2A7A0; background: #FFF1EF; color: #C0392B; }
+/* 마음 배지: 받을 때 톡, 마음 수첩의 배지 쪽 */
+.village .v-badge-pop { position: absolute; left: 50%; top: 40%; transform: translate(-50%, -50%); display: flex; flex-direction: column; align-items: center; gap: 2px; width: min(320px, calc(100vw - 32px)); padding: 16px 22px 14px; border-radius: 26px; background: rgba(255,255,255,.97); border: 3px solid var(--bc, #F0974A); box-shadow: var(--shadow); text-align: center; pointer-events: none; z-index: 6; animation: vbadge 2.8s ease forwards; }
+.village .v-badge-pop .bp-img { width: 104px; height: 104px; }
+.village .v-badge-pop em { font-style: normal; font-family: var(--head); font-size: 15px; color: var(--bc, #F0974A); }
+.village .v-badge-pop b { font-family: var(--head); font-size: 24px; color: var(--ink); word-break: keep-all; }
+.village .v-badge-pop span { font-size: 14px; line-height: 1.4; color: var(--ink-2); word-break: keep-all; }
+@keyframes vbadge { 0% { transform: translate(-50%, -50%) scale(.3); opacity: 0; } 14% { transform: translate(-50%, -50%) scale(1.08); opacity: 1; } 24% { transform: translate(-50%, -50%) scale(1); } 85% { opacity: 1; } 100% { transform: translate(-50%, -56%); opacity: 0; } }
+.village .vb-tabs { display: flex; gap: 6px; margin-top: 12px; padding: 4px; border-radius: 999px; background: #F4ECDF; }
+.village .vb-tab { flex: 1; min-height: 38px; padding: 0 10px; border: 0; border-radius: 999px; background: transparent; font-family: var(--head); font-size: 15px; color: var(--ink-2); cursor: pointer; }
+.village .vb-tab.on { background: #fff; color: var(--accent); box-shadow: 0 1px 4px rgba(90, 58, 40, .16); }
+.village .vb-bc { font-style: normal; margin-left: 6px; padding: 1px 8px; border-radius: 999px; background: #EDE6DA; font-family: var(--body); font-size: 13px; }
+.village .vb-badges { display: grid; grid-template-columns: repeat(auto-fill, minmax(132px, 1fr)); gap: 8px; }
+.village .vb-badge { display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 10px 8px; border-radius: 16px; background: #F7F4EF; border: 2px solid #EFE6D8; text-align: center; }
+.village .vb-badge .vb-bimg { width: 64px; height: 64px; filter: grayscale(1); opacity: .4; }
+.village .vb-badge b { font-family: var(--head); font-size: 14px; color: #9A928A; word-break: keep-all; }
+.village .vb-badge span { font-size: 12px; line-height: 1.35; color: #9A928A; word-break: keep-all; }
+.village .vb-badge.on { background: var(--bs); border-color: var(--bc); }
+.village .vb-badge.on .vb-bimg { filter: none; opacity: 1; }
+.village .vb-badge.on b { color: var(--ink); }
+.village .vb-badge.on span { color: var(--ink-2); }
+@media (max-width: 640px), (max-height: 520px) {
+  .village .vb-badges { grid-template-columns: repeat(auto-fill, minmax(104px, 1fr)); gap: 6px; }
+  .village .vb-badge { padding: 8px 6px; }
+  .village .vb-badge .vb-bimg { width: 50px; height: 50px; }
+  .village .vb-tab { min-height: 34px; font-size: 14px; }
+  .village .v-badge-pop .bp-img { width: 78px; height: 78px; }
+  .village .v-badge-pop b { font-size: 20px; }
+}
 @media (max-width: 640px), (max-height: 520px) {
   .village .v-stamp .v-book-ic { width: 20px; height: 20px; }
   .village .v-stamp .v-book-ic .dicon { width: 16px; height: 16px; }

@@ -48,7 +48,7 @@ export const db = {
       // 수업용: 손님들이 끓여 준 라면 사진과 마음 골목 기록도 함께 지워요
       await db.delPhoto('treat-' + id);
       if (treatKey && treatKey !== 'treat-' + id) await db.delPhoto(treatKey); // 다른 태블릿에서 불러온 기록
-      try { for (const k of ['folk', 'shop', 'quest']) localStorage.removeItem(`ramen-alley-${k}:${id}`); } catch { /* 못 지워도 계속해요 */ }
+      try { for (const k of ['folk', 'shop', 'quest', 'badge']) localStorage.removeItem(`ramen-alley-${k}:${id}`); } catch { /* 못 지워도 계속해요 */ }
     }
   },
 };

@@ -7,6 +7,7 @@ import { blob, ctx2d, darken, lighten, makeCanvas, mix } from '../paint/brush';
 import { tex } from '../paint/textures';
 import { Chibi, LEG } from './chibi';
 import { glowTex, makeGlow, makeShadow } from './fx';
+import { buildGarden, GARDEN_D, GARDEN_W, type Garden } from './garden';
 import { boxG, coneG, cylG, disposeTree, M, Mu, mesh, sphereG } from './geo';
 import { bakeSpec, placeProps, planProps } from './villageProps';
 
@@ -19,7 +20,7 @@ export interface VHouse { id: string; name: string; family: string; lit: boolean
 export interface VTown { family: string; name: string; color: string }
 export interface VHouseSpot { h: VHouse; hit: THREE.Mesh; door: THREE.Vector3; out: THREE.Vector3; yaw: number; town: number }
 // 동네 주민: hold이면 멈춰 서고, faceTo가 있으면 그쪽을 봐요
-export interface VNpc { ch: Chibi; hit: THREE.Mesh; sh: THREE.Object3D; hold: boolean; faceTo: THREE.Vector3 | null; at: THREE.Vector3 | null; goHome?: boolean }
+export interface VNpc { ch: Chibi; hit: THREE.Mesh; sh: THREE.Object3D; hold: boolean; faceTo: THREE.Vector3 | null; at: THREE.Vector3 | null; goHome?: boolean; pace?: number }
 // 불 켜진 집 손님: 자기 마을 골목을 산책해요
 export interface VWalker extends VNpc { house: number }
 export interface VShopSpot { hit: THREE.Mesh; kind: VShop['kind']; name: string; front: THREE.Vector3; yaw: number }
@@ -39,6 +40,10 @@ export interface Village {
   bakeSpec: () => unknown; baked: boolean;
   // 냇물을 건너는 다리 (양 끝 자리와 높이)
   bridges: { a: THREE.Vector3; b: THREE.Vector3; ya: number; yb: number }[];
+  // 마음 텃밭 (텃밭 심부름): 자리를 못 찾으면 null
+  garden: Garden | null;
+  // 마을마다 골목 끝 우물·큰 나무 자리 (잃어버린 물건 찾기의 단서 자리)
+  ends: { pos: THREE.Vector3; well: boolean }[];
 }
 
 // ── 땅 모양 ─────────────────────────────
@@ -701,6 +706,7 @@ export function buildVillage(houses: VHouse[], towns: VTown[], villagers: ChibiS
   // 마을 팻말 (골목 어귀)과 골목 끝 우물
   const townInfo: Village['towns'] = [];
   const entries: THREE.Vector3[] = [];
+  const ends: Village['ends'] = [];
   towns.forEach((t, k) => {
     const ln = lanes[k], entry = near(ln, door), endP = far(ln, door);
     entries.push(entry.clone());
@@ -720,6 +726,7 @@ export function buildVillage(houses: VHouse[], towns: VTown[], villagers: ChibiS
     const wp = endP.clone().addScaledVector(V().subVectors(endP, ln.getPointAt(fromStart ? 0.9 : 0.1)).normalize(), 3.2); wp.y = heightAt(wp.x, wp.z);
     const mid = k % 2 ? well() : tree(k * 11 + 3, 1.5, TOWN_PAL[k % TOWN_PAL.length]);
     mid.position.copy(wp); stat.add(mid);
+    ends.push({ pos: wp.clone(), well: k % 2 === 1 });
     solids.push([wp.x, wp.z, 1.5]);
     const c = ln.getPointAt(0.5); c.y = heightAt(c.x, c.z);
     townInfo.push({ center: c, t, lit, total: list.length });
@@ -734,6 +741,48 @@ export function buildVillage(houses: VHouse[], towns: VTown[], villagers: ChibiS
   });
   const placed0 = placeProps(props, stat, root, heightAt);
   solids.push(...props.solids);
+  // ── 마음 텃밭: 라면 가게 가까이, 큰길을 바라보는 고른 빈 땅 (소품 자리를 정한 뒤에 골라서 소품은 그대로예요) ──
+  const garden: Garden | null = (() => {
+    const dense = allPaths.flatMap((p) => p.getSpacedPoints(Math.ceil(p.getLength() / 0.7)));
+    const hx = GARDEN_W / 2, hz = GARDEN_D / 2;
+    const find = (rMax: number, slope: number) => {
+      let best: { x: number; z: number; yaw: number; s: number } | null = null;
+      for (let r = 13; r <= rMax; r += 1.5) for (let a = 0; a < PI * 2; a += 0.12) {
+        const x = SHOP.x + Math.cos(a) * r, z = SHOP.z + Math.sin(a) * r;
+        let np = dense[0], nd = 1e18;
+        for (const p of dense) { const d = (p.x - x) ** 2 + (p.z - z) ** 2; if (d < nd) { nd = d; np = p; } }
+        nd = Math.sqrt(nd);
+        if (nd < hz + 1.6 || nd > hz + 5) continue; // 앞(입구)이 가까운 길을 바라봐요
+        const yaw = Math.atan2(np.x - x, np.z - z), cs = Math.cos(yaw), sn = Math.sin(yaw);
+        const inR = (px: number, pz: number, pad: number) => { const dx = px - x, dz = pz - z; return Math.abs(dx * cs - dz * sn) < hx + pad && Math.abs(dx * sn + dz * cs) < hz + pad; };
+        if (dense.some((p) => inR(p.x, p.z, 1.6))) continue;
+        if (plan.some((q) => inR(q.x, q.z, 4.5)) || shopSpots.some(([sx, sz]) => inR(sx, sz, 5.5))) continue;
+        if (props.spots.some((sp) => inR(sp.x, sp.z, sp.r + 1.2)) || props.lamps.some(([lx, , lz]) => inR(lx, lz, 1.2))) continue;
+        if (solids.some(([sx, sz, sr]) => inR(sx, sz, sr + 0.8))) continue;
+        if (inR(SHOP.x, SHOP.z, 5) || Math.hypot(x - PLAZA.x, z - PLAZA.z) < PLAZA_R + hz + 6) continue;
+        let lo = 1e9, hi = -1e9, bad = false;
+        for (let i = -2; i <= 2; i++) for (let j = -2; j <= 2; j++) {
+          const px = x + (i / 2) * hx * cs + (j / 2) * hz * sn, pz = z - (i / 2) * hx * sn + (j / 2) * hz * cs;
+          const hh = heightAt(px, pz); lo = Math.min(lo, hh); hi = Math.max(hi, hh);
+          if (rdist(px, pz) < 8 || px < X0 + 8 || px > X1 - 8 || pz < Z0 + 8 || pz > Z1 - 8) bad = true;
+        }
+        if (bad || hi - lo > slope) continue;
+        const sc = r + (hi - lo) * 8;
+        if (!best || sc < best.s) best = { x, z, yaw, s: sc };
+      }
+      return best;
+    };
+    const spot = find(40, 1.2) ?? find(70, 2.2);
+    if (!spot) return null;
+    const gd = buildGarden(spot.x, spot.z, spot.yaw, heightAt);
+    stat.add(gd.stat); root.add(gd.group); solids.push(...gd.solids);
+    // 땅 그림에 흙빛 텃밭 자리를 칠해요
+    g.save(); g.fillStyle = '#C9A275'; g.globalAlpha = 0.9; g.beginPath();
+    gd.corners.forEach((c, i) => (i ? g.lineTo(px(c.x), pz(c.z)) : g.moveTo(px(c.x), pz(c.z)))); g.closePath(); g.fill();
+    g.globalAlpha = 0.5; g.strokeStyle = '#B48A5E'; g.lineWidth = 0.8 * pm; g.stroke(); g.restore();
+    groundTex.needsUpdate = true;
+    return gd;
+  })();
   // 나무, 버섯: 길·냇물·집·소품을 피해서
   const pathPts = allPaths.flatMap((p) => p.getSpacedPoints(90));
   const clear = (x: number, z: number, pad: number) => {
@@ -760,8 +809,9 @@ export function buildVillage(houses: VHouse[], towns: VTown[], villagers: ChibiS
   for (let i = 0; i < 2200 && placed < 330; i++) {
     const x = X0 + 2 + rnd() * (X1 - X0 - 4), z = Z0 + 2 + rnd() * (Z1 - Z0 - 4);
     if (!clear(x, z, 0.4)) continue;
-    const sc = 0.9 + rnd() * 0.6;
-    const t = tree(i, sc, pickPal(x, z, 0.85)); t.position.set(x, heightAt(x, z) - 0.05, z); stat.add(t); placed++;
+    const sc = 0.9 + rnd() * 0.6, pal = pickPal(x, z, 0.85);
+    if (garden?.inside(x, z, 2.2)) continue; // 텃밭 자리 (다른 나무 자리와 색은 그대로)
+    const t = tree(i, sc, pal); t.position.set(x, heightAt(x, z) - 0.05, z); stat.add(t); placed++;
     solids.push([x, z, 0.75 * sc + 0.35]); // 사장님 눈높이에서 잎 속으로 들어가지 않게
   }
   // 마을 바깥 숲: 산자락으로 갈수록 소나무가 많아요
@@ -773,7 +823,7 @@ export function buildVillage(houses: VHouse[], towns: VTown[], villagers: ChibiS
   }
   for (let i = 0, n = 0; i < 700 && n < 70; i++) {
     const x = X0 + rnd() * (X1 - X0), z = Z0 + rnd() * (Z1 - Z0);
-    if (!clear(x, z, -1.2)) continue;
+    if (!clear(x, z, -1.2) || garden?.inside(x, z, 0.8)) continue;
     const m = mushroom(i); m.position.set(x, heightAt(x, z), z); stat.add(m); n++;
   }
   // ── 빛: 냇물 위 반짝임과 불 켜진 집 둘레를 떠도는 빛 알갱이 ──
@@ -814,6 +864,7 @@ export function buildVillage(houses: VHouse[], towns: VTown[], villagers: ChibiS
       if (!clear(x, z, -1.6)) continue;
       const y = heightAt(x, z) + 0.05, sc = 0.8 + fRnd() * 0.6;
       e.set((fRnd() - 0.5) * 0.4, fRnd() * PI * 2, (fRnd() - 0.5) * 0.4); q.setFromEuler(e);
+      if (garden?.inside(x, z, 0.6)) { n++; continue; }
       const m = new THREE.Matrix4().compose(V(x, y, z), q, V(sc, sc, sc));
       spots2[n % cols.length].push(m); all.push(m); n++;
     }
@@ -909,6 +960,7 @@ export function buildVillage(houses: VHouse[], towns: VTown[], villagers: ChibiS
       motePos[i * 3 + 2] = p.z + Math.cos(clock * 0.45 + i * 2.3) * 0.5;
     });
     moteGeo.attributes.position.needsUpdate = true;
+    garden?.update(dt, eye);
     for (const L of placed0.lines) {
       if (eye && (L.group.position.x - eye.x) ** 2 + (L.group.position.z - eye.z) ** 2 > 90 * 90) continue;
       L.update(clock);
@@ -929,7 +981,7 @@ export function buildVillage(houses: VHouse[], towns: VTown[], villagers: ChibiS
           if (d2 > lim && tD2 > lim) P.set(n.at.x, standY(n.at.x, n.at.z, n.ch), n.at.z);
           else {
             // 멀리서 오는 길은 빠르게: 사장님 눈에서 먼(40m 밖) 동안은 서둘러 오고, 가까워지면 걸어요
-            const st = Math.min(d, dt * (d > 26 ? (d2 > 40 * 40 ? 12 : 4) : 2.4));
+            const st = Math.min(d, dt * (d > 26 ? (d2 > 40 * 40 ? 12 : 4) : (n.pace ?? 2.4)));
             P.x += (dx / d) * st; P.z += (dz / d) * st; P.y = standY(P.x, P.z, n.ch);
             n.ch.root.rotation.y = Math.atan2(dx, dz); n.ch.walking = 1;
           }
@@ -962,6 +1014,7 @@ export function buildVillage(houses: VHouse[], towns: VTown[], villagers: ChibiS
     hitGeo.dispose(); hitMat.dispose(); npcHitGeo.dispose(); pawnBody.dispose(); pawnHead.dispose(); moteGeo.dispose(); flowerGeos.forEach((g2) => g2.dispose());
     (motes.material as THREE.Material).dispose(); glints.forEach((g2) => g2.s.material.dispose());
     placed0.lines.forEach((L) => L.dispose());
+    garden?.dispose();
     for (const o of own) { const m = (o as THREE.Mesh).material as THREE.ShaderMaterial; m.uniforms?.uMap?.value?.dispose?.(); }
     disposeTree(root);
   };
@@ -988,6 +1041,6 @@ export function buildVillage(houses: VHouse[], towns: VTown[], villagers: ChibiS
     root, ground, hits, shopHits: shopHits.map((x) => x.hit), shops: shopHits, npcs, walkers, houses: spots, towns: townInfo, shopDoor: V(door.x, walkY(door.x, door.z), door.z),
     plaza: V(PLAZA.x, heightAt(PLAZA.x, PLAZA.z), PLAZA.z), plazaR: PLAZA_R, festival,
     bounds: { minX: X0, maxX: X1, minZ: Z0, maxZ: Z1 }, heightAt, walkY, standY, inWater, blocked, update, dispose, setTod,
-    bakeSpec: () => bakeSpec(props, heightAt), baked: placed0.baked, bridges,
+    bakeSpec: () => bakeSpec(props, heightAt), baked: placed0.baked, bridges, garden, ends,
   };
 }

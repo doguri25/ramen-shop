@@ -6,7 +6,7 @@ import { CUS_14 } from '../data/customers14';
 import type { Amount, FinishPick, GimbapRec, Owner, Picks, RamenRecord, Treat } from '../data/types';
 
 const MAGIC = 'ramen-shop-records';
-const ALLEY = ['folk', 'shop', 'quest'] as const;
+const ALLEY = ['folk', 'shop', 'quest', 'badge'] as const;
 type AlleyKey = (typeof ALLEY)[number];
 interface Pack {
   app: typeof MAGIC;
@@ -126,7 +126,7 @@ export async function exportRecords(onProgress?: (done: number, total: number) =
   return { blob: new Blob(parts, { type: 'application/json' }), name, owners: owners.length, bowls, photos: count };
 }
 
-// 마음 골목 기록 합치기: 도장·끝낸 미션은 모두 모으고, 가게 봐 주기는 더 좋은 기록을 남겨요
+// 마음 골목 기록 합치기: 도장·끝낸 미션·마음 배지는 모두 모으고, 가게 봐 주기는 더 좋은 기록을 남겨요
 function mergeAlley(id: string, src: Obj) {
   const folkIn = strs(parse(src.folk));
   if (folkIn.length) lsSet(lsKey('folk', id), JSON.stringify([...new Set([...strs(parse(lsGet(lsKey('folk', id)))), ...folkIn])]));
@@ -150,6 +150,16 @@ function mergeAlley(id: string, src: Obj) {
     // 하는 중인 미션: 이 태블릿에서 하던 걸 먼저 이어 가요
     const c = [a.cur, qIn.cur].find(ok);
     lsSet(lsKey('quest', id), JSON.stringify(c ? { done, cur: { id: c.id, step: int0(c.step), got: strs(c.got) } } : { done }));
+  }
+  const bIn = parse(src.badge);
+  if (isObj(bIn)) {
+    const bm = parse(lsGet(lsKey('badge', id))), a = isObj(bm) ? bm : {};
+    const out: Record<string, unknown> = {};
+    for (const k of ['got', 'feel', 'veg', 'kind', 'tods', 'houses', 'walkers']) out[k] = [...new Set([...strs(a[k]), ...strs(bIn[k])])];
+    const nums = (x: unknown) => (Array.isArray(x) ? x.filter((v): v is number => Number.isInteger(v) && v >= 0 && v < 64) : []);
+    out.towns = [...new Set([...nums(a.towns), ...nums(bIn.towns)])];
+    out.bridge = a.bridge || bIn.bridge ? 1 : 0;
+    lsSet(lsKey('badge', id), JSON.stringify(out));
   }
 }
 

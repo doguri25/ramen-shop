@@ -5,7 +5,9 @@ import { blob, ctx2d, darken, inkLine, makeCanvas, softGlow, wash } from '../pai
 export type DoodleKind =
   | 'village' | 'map' | 'walk' | 'news' | 'stamp' | 'talk' | 'bang' | 'worry' | 'heart' | 'me'
   | 'bread' | 'flower' | 'letter' | 'book' | 'icecream' | 'tea' | 'fruit' | 'music'
-  | 'notebook' | 'party' | 'chain' | 'group' | 'shopsit' | 'sun' | 'dusk' | 'moon';
+  | 'notebook' | 'party' | 'chain' | 'group' | 'shopsit' | 'sun' | 'dusk' | 'moon'
+  | 'sprout' | 'radish' | 'potato' | 'sweetpotato' | 'carrot'
+  | 'hat' | 'key' | 'doll' | 'search' | 'box' | 'ball' | 'bridge';
 
 const INK = '#5B3A29';
 type P = [number, number];
@@ -153,6 +155,110 @@ function paint(kind: DoodleKind, size: number): HTMLCanvasElement {
       poly(g, [[18, 66], [110, 66], [96, 110], [32, 110]], '#D9A066', rnd, 0.6);
       for (const y of [78, 92]) inkLine(g, [[22, y], [106, y]], '#9A5F32', 2.4, rnd, 0.6);
       inkLine(g, ring([[18, 66], [110, 66], [96, 110], [32, 110]]), INK, 2.6, rnd, 0.7);
+      break;
+    }
+    case 'sprout': {
+      // 텃밭: 흙 두둑 위에 돋은 새싹 둘
+      blob(g, 64, 98, 50, 16, '#B98552', rnd, { layers: 4, alpha: 0.5, edge: 0.4 });
+      inkLine(g, [[18, 96], [40, 88], [64, 86], [88, 88], [110, 96]], '#8A5E3C', 2.6, rnd, 0.6);
+      for (const [x, s] of [[46, 1], [82, 0.85]] as const) {
+        inkLine(g, [[x, 90], [x, 90 - 34 * s]], '#3F8A3A', 4, rnd, 0.8);
+        wash(g, () => { g.beginPath(); g.ellipse(x - 13 * s, 90 - 40 * s, 14 * s, 8 * s, -0.5, 0, Math.PI * 2); }, '#6DBE5A', rnd, { layers: 4, alpha: 0.55, edge: 0.6, edgeWidth: 2.2 });
+        wash(g, () => { g.beginPath(); g.ellipse(x + 13 * s, 90 - 44 * s, 15 * s, 8 * s, 0.5, 0, Math.PI * 2); }, '#8DD06A', rnd, { layers: 4, alpha: 0.55, edge: 0.6, edgeWidth: 2.2 });
+      }
+      break;
+    }
+    case 'radish': {
+      // 무: 하얀 몸, 연두 어깨, 큰 잎
+      for (const [a, c] of [[-0.5, '#4F9A44'], [0, '#6DBE5A'], [0.5, '#4F9A44']] as const) wash(g, () => { g.beginPath(); g.ellipse(64 + a * 34, 30, 11, 24, a, 0, Math.PI * 2); }, c, rnd, { layers: 4, alpha: 0.55, edge: 0.6, edgeWidth: 2.2 });
+      wash(g, () => { g.beginPath(); g.moveTo(44, 56); g.bezierCurveTo(44, 46, 84, 46, 84, 56); g.bezierCurveTo(84, 86, 70, 108, 64, 118); g.bezierCurveTo(58, 108, 44, 86, 44, 56); g.closePath(); }, '#FBF7EE', rnd, { layers: 5, alpha: 0.7, edge: 0.6, edgeWidth: 2.4 });
+      blob(g, 64, 56, 18, 8, '#CDE6A6', rnd, { layers: 3, alpha: 0.55, edge: 0.3 });
+      inkLine(g, [[50, 74], [58, 76]], '#D9CFC0', 2, rnd); inkLine(g, [[68, 90], [76, 92]], '#D9CFC0', 2, rnd);
+      break;
+    }
+    case 'potato': {
+      // 감자 둘
+      blob(g, 50, 74, 30, 24, '#C99A62', rnd, { layers: 5, alpha: 0.55, edge: 0.6 });
+      blob(g, 84, 80, 24, 20, '#B98552', rnd, { layers: 5, alpha: 0.55, edge: 0.6 });
+      for (const [x, y] of [[40, 66], [58, 82], [50, 62], [80, 74], [90, 88]] as const) blob(g, x, y, 2.6, 2.2, '#7A5634', rnd, { layers: 2, alpha: 0.6, edge: 0.2 });
+      inkLine(g, [[64, 46], [66, 34]], '#3F8A3A', 3, rnd);
+      blob(g, 72, 32, 10, 6, '#6DBE5A', rnd, { layers: 3, alpha: 0.55, edge: 0.4 });
+      break;
+    }
+    case 'sweetpotato': {
+      // 고구마: 길쭉한 자줏빛
+      wash(g, () => { g.beginPath(); g.ellipse(62, 76, 44, 20, -0.35, 0, Math.PI * 2); }, '#B5507A', rnd, { layers: 5, alpha: 0.6, edge: 0.6, edgeWidth: 2.4 });
+      blob(g, 54, 70, 22, 8, '#D57A9C', rnd, { layers: 3, alpha: 0.4, edge: 0.2 });
+      inkLine(g, [[100, 58], [112, 46], [116, 30]], '#8E5A7A', 3, rnd, 0.7);
+      wash(g, () => { g.beginPath(); g.ellipse(108, 26, 12, 9, 0.4, 0, Math.PI * 2); }, '#6DBE5A', rnd, { layers: 3, alpha: 0.5, edge: 0.5, edgeWidth: 2 });
+      break;
+    }
+    case 'carrot': {
+      // 당근: 주황 원뿔과 깃털 잎
+      for (const a of [-0.45, 0, 0.45]) inkLine(g, [[64, 46], [64 + Math.sin(a) * 26, 46 - Math.cos(a) * 32]], '#4F9A44', 3.4, rnd, 0.8);
+      for (const a of [-0.45, 0, 0.45]) blob(g, 64 + Math.sin(a) * 26, 46 - Math.cos(a) * 32, 9, 7, '#6DBE5A', rnd, { layers: 3, alpha: 0.5, edge: 0.4 });
+      wash(g, () => { g.beginPath(); g.moveTo(44, 50); g.lineTo(84, 50); g.lineTo(66, 120); g.closePath(); }, '#F08A2E', rnd, { layers: 5, alpha: 0.65, edge: 0.6, edgeWidth: 2.4 });
+      for (const y of [66, 82, 98]) inkLine(g, [[52 + (y - 50) * 0.2, y], [60 + (y - 50) * 0.2, y + 2]], '#C9631C', 2, rnd);
+      break;
+    }
+    case 'hat': {
+      // 뜨개 털모자: 줄무늬 몸통과 방울
+      wash(g, () => { g.beginPath(); g.moveTo(24, 90); g.bezierCurveTo(24, 40, 104, 40, 104, 90); g.closePath(); }, '#E3645A', rnd, { layers: 5, alpha: 0.6, edge: 0.6, edgeWidth: 2.4 });
+      for (const y of [60, 74]) inkLine(g, [[30, y + 4], [64, y - 4], [98, y + 4]], '#F7B3AB', 3, rnd, 0.7);
+      wash(g, () => { g.beginPath(); g.roundRect(18, 86, 92, 18, 8); }, '#F6E2B8', rnd, { layers: 4, alpha: 0.6, edge: 0.5, edgeWidth: 2 });
+      for (let x = 26; x < 106; x += 10) inkLine(g, [[x, 88], [x, 102]], '#D9C08E', 1.8, rnd);
+      blob(g, 64, 32, 13, 12, '#FFFDF6', rnd, { layers: 4, alpha: 0.8, edge: 0.5 });
+      break;
+    }
+    case 'key': {
+      // 동그란 손잡이 열쇠
+      wash(g, () => { g.beginPath(); g.arc(40, 56, 22, 0, Math.PI * 2); g.moveTo(52, 56); g.arc(40, 56, 10, 0, Math.PI * 2, true); }, '#F2B72D', rnd, { layers: 5, alpha: 0.6, edge: 0.6, edgeWidth: 2.4 });
+      wash(g, () => { g.beginPath(); g.rect(58, 50, 52, 12); g.rect(88, 62, 8, 14); g.rect(100, 62, 8, 20); }, '#F2B72D', rnd, { layers: 5, alpha: 0.6, edge: 0.6, edgeWidth: 2.2 });
+      blob(g, 34, 48, 6, 4, '#FFF1BF', rnd, { layers: 2, alpha: 0.6, edge: 0.2 });
+      break;
+    }
+    case 'doll': {
+      // 곰 인형
+      for (const x of [40, 88]) blob(g, x, 30, 12, 12, '#B98552', rnd, { layers: 4, alpha: 0.6, edge: 0.5 });
+      blob(g, 64, 48, 30, 26, '#C99A62', rnd, { layers: 5, alpha: 0.6, edge: 0.6 });
+      blob(g, 64, 96, 30, 24, '#C99A62', rnd, { layers: 5, alpha: 0.6, edge: 0.6 });
+      blob(g, 64, 58, 12, 8, '#F3DCC2', rnd, { layers: 3, alpha: 0.7, edge: 0.3 });
+      for (const x of [52, 76]) blob(g, x, 44, 3.4, 3.4, INK, rnd, { layers: 2, alpha: 0.8, edge: 0.2 });
+      blob(g, 64, 55, 4, 3, INK, rnd, { layers: 2, alpha: 0.8, edge: 0.2 });
+      inkLine(g, [[52, 74], [64, 80], [76, 74]], '#E3645A', 4, rnd, 0.8);
+      break;
+    }
+    case 'search': {
+      // 돋보기
+      wash(g, () => { g.beginPath(); g.arc(54, 54, 32, 0, Math.PI * 2); }, '#CFE8F7', rnd, { layers: 4, alpha: 0.55, edge: 0.6, edgeWidth: 3 });
+      inkLine(g, arc(54, 54, 32, 32, 0, Math.PI * 2, 24), INK, 4, rnd, 0.8);
+      blob(g, 42, 42, 9, 6, '#FFFFFF', rnd, { layers: 2, alpha: 0.7, edge: 0.2 });
+      inkLine(g, [[78, 78], [110, 110]], '#8A5E3C', 10, rnd, 0.9);
+      break;
+    }
+    case 'box': {
+      // 끈으로 묶은 상자
+      poly(g, [[22, 50], [106, 50], [106, 108], [22, 108]], '#D9A066', rnd, 0.6);
+      poly(g, [[22, 50], [42, 30], [126, 30], [106, 50]], '#E9BC84', rnd, 0.5);
+      inkLine(g, ring([[22, 50], [106, 50], [106, 108], [22, 108]]), INK, 2.6, rnd, 0.7);
+      inkLine(g, [[64, 50], [64, 108]], '#C2563A', 4, rnd, 0.8); inkLine(g, [[22, 78], [106, 78]], '#C2563A', 4, rnd, 0.8);
+      break;
+    }
+    case 'ball': {
+      // 알록달록 공
+      wash(g, () => { g.beginPath(); g.arc(64, 64, 42, 0, Math.PI * 2); }, '#FFFDF6', rnd, { layers: 4, alpha: 0.7, edge: 0.6, edgeWidth: 2.6 });
+      wash(g, () => { g.beginPath(); g.moveTo(64, 22); g.bezierCurveTo(40, 40, 40, 88, 64, 106); g.bezierCurveTo(52, 80, 52, 48, 64, 22); }, '#E3645A', rnd, { layers: 3, alpha: 0.55, edge: 0.4 });
+      wash(g, () => { g.beginPath(); g.moveTo(22, 64); g.bezierCurveTo(44, 50, 84, 50, 106, 64); g.bezierCurveTo(84, 58, 44, 58, 22, 64); }, '#6FB3E0', rnd, { layers: 3, alpha: 0.55, edge: 0.4 });
+      wash(g, () => { g.beginPath(); g.moveTo(64, 22); g.bezierCurveTo(88, 40, 88, 88, 64, 106); g.bezierCurveTo(76, 80, 76, 48, 64, 22); }, '#F6CF3E', rnd, { layers: 3, alpha: 0.55, edge: 0.4 });
+      inkLine(g, arc(64, 64, 42, 42, 0, Math.PI * 2, 24), INK, 2.6, rnd, 0.7);
+      break;
+    }
+    case 'bridge': {
+      // 냇물 위 나무다리
+      blob(g, 64, 100, 58, 12, '#9ED4F0', rnd, { layers: 4, alpha: 0.55, edge: 0.4 });
+      wash(g, () => { g.beginPath(); g.moveTo(10, 86); g.quadraticCurveTo(64, 40, 118, 86); g.lineTo(118, 96); g.quadraticCurveTo(64, 52, 10, 96); g.closePath(); }, '#B98552', rnd, { layers: 5, alpha: 0.6, edge: 0.6, edgeWidth: 2.4 });
+      inkLine(g, [[14, 72], [40, 54], [64, 48], [88, 54], [114, 72]], '#8A5E3C', 3, rnd, 0.8);
+      for (const x of [22, 44, 64, 84, 106]) { const y = 86 - Math.sin(((x - 10) / 108) * Math.PI) * 30; inkLine(g, [[x, y], [x, y - 16]], '#8A5E3C', 3, rnd, 0.8); }
       break;
     }
     case 'music': {
