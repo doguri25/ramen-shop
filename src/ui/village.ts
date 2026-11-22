@@ -92,7 +92,7 @@ export function openVillage(o: {
         const i = waitNpc; waitNpc = -1;
         if (i < 0 || i === talk) return;
         const n = people[i];
-        if (!n.at && !(i < NN && holdFor(i))) n.hold = false;
+        if ((!n.at || n.goHome) && !(i < NN && holdFor(i))) n.hold = false;
       };
       let faceYaw: number | null = null, facePitch: number | null = null; // 말 걸 때 주민 쪽으로 고개를 돌려요
       // 전체 보기에서 내가 있는 곳 표시
@@ -208,7 +208,7 @@ export function openVillage(o: {
           setTimeout(() => popGuest(k), 650);
         } else {
           const stand = s.out.clone().addScaledVector(V(Math.sin(s.yaw), 0, Math.cos(s.yaw)), 2.2);
-          goal = stand; onArrive = () => popGuest(k);
+          cancelGoal(); goal = stand; onArrive = () => popGuest(k);
         }
       };
 
@@ -780,7 +780,7 @@ export function openVillage(o: {
         if (need().includes(kind)) {
           const sh = shopOf(kind)!;
           if (mode === 'all' || Math.hypot(sh.front.x - fp.pos.x, sh.front.z - fp.pos.z) <= SHOP_R + 1) { takeItem(kind); return; }
-          sfx.tap(); goal = sh.front.clone(); onArrive = () => takeItem(kind); return;
+          sfx.tap(); cancelGoal(); goal = sh.front.clone(); onArrive = () => takeItem(kind); return;
         }
         sfx.tap(); toast(hit.userData.shopLine);
       };
@@ -809,7 +809,7 @@ export function openVillage(o: {
             h('div', null, h('b', null, q.title, h('em', null, state)), h('span', null, text + prog)),
             !fin && (open || doing) ? h('button', { class: 'btn small ghost', onclick: () => {
               sfx.tap();
-              if (doing) { const gp = goalPos(); hideBook(); if (gp) { if (mode === 'all') { all.target.copy(gp); all.dist = 24; } else { const sh = nearShop(); if (sh) { goal = sh.front.clone(); onArrive = () => takeItem(sh.kind); } else { const t = nearTo(); if (t !== null) tapNpc(t); } } } }
+              if (doing) { const gp = goalPos(); hideBook(); if (gp) { if (mode === 'all') { all.target.copy(gp); all.dist = 24; } else { const sh = nearShop(); if (sh) { cancelGoal(); goal = sh.front.clone(); onArrive = () => takeItem(sh.kind); } else { const t = nearTo(); if (t !== null) tapNpc(t); } } } }
               else guideTo(gi);
             } }, '찾아가기') : null);
         };
@@ -844,7 +844,7 @@ export function openVillage(o: {
         if (hh && near(hh.distance, hg)) { tapHouse(hh.object.userData.house); return; }
         if (hg && mode === 'walk') {
           if (vil.inWater(hg.point.x, hg.point.z)) { toast('냇물은 다리로 건너요'); return; }
-          goal = hg.point.clone(); onArrive = null; sfx.tap();
+          cancelGoal(); goal = hg.point.clone(); sfx.tap();
         } else if (hg && mode === 'all') { all.target.copy(hg.point).setY(0); clampT(all.target); }
       };
       touch.addEventListener('pointerdown', (e) => {
@@ -994,7 +994,7 @@ export function openVillage(o: {
               } else {
                 cancelGoal();
                 if (vil.inWater(fp.pos.x + (d.x / L), fp.pos.z + (d.z / L))) toast('냇물은 다리로 건너요');
-                people.forEach((n, i) => { if (n.hold && !n.at && talk !== i && !holdFor(i)) n.hold = false; });
+                people.forEach((n, i) => { if (n.hold && (!n.at || n.goHome) && talk !== i && !holdFor(i)) n.hold = false; });
               }
             }
           }

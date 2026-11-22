@@ -532,13 +532,16 @@ export class App {
       if (quitting || document.querySelector('.sit-quit')) return;
       sfx.tap();
       const wrap = h('div', { class: 'modal-wrap fade-in craft-ok sit-quit', style: 'z-index:30' });
-      const close = () => wrap.remove();
+      const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') { e.preventDefault(); close(); } };
+      const close = () => { wrap.remove(); window.removeEventListener('keydown', onKey); };
+      window.addEventListener('keydown', onKey);
       wrap.append(h('div', { class: 'modal card pop-in', style: 'width:min(460px,100%)' },
         h('h2', null, '가게 봐 주기를 그만둘까요?'),
         h('p', { class: 'sub' }, '지금 나가면 이번에 받은 별과 마음 도장은 남지 않아요.'),
         h('div', { class: 'actions' },
           h('button', { class: 'btn ghost', onclick: () => { sfx.back(); close(); } }, '계속 봐 주기'),
           h('button', { class: 'btn', onclick: () => {
+            if (!exitBtn.isConnected) { close(); return; } // 손님을 다 맞고 주인이 돌아오는 중이면 그만두지 않아요
             sfx.pop(); close(); quitting = true;
             window.speechSynthesis?.cancel();
             document.querySelectorAll('#ui > .dialog, #ui > .memo, #ui > .cook, #ui > .info, #ui > .yum, #ui > .confetti, #ui > .stars, #ui > .modal-wrap.craft-ok').forEach((d) => d.remove());
@@ -586,8 +589,8 @@ export class App {
         await go(st.leave());
         st.clearGuests();
       }
-      // 주인이 돌아와서 고맙다고 해요 (여기부터는 나가기 단추를 치워요)
-      exitBtn.remove();
+      // 주인이 돌아와서 고맙다고 해요 (여기부터는 나가기 단추와 확인 창을 치워요)
+      exitBtn.remove(); document.querySelector('.sit-quit')?.remove();
       const total = stars.reduce((a, b) => a + b, 0);
       const ownerC: Customer = { id: `owner-${kind}`, name: S.owner.name, source: 'new', chibi: S.owner.spec, greet: '', story: [], needs: { effect: '고마움', sub: 'love' }, feelingWords: [], reactions: { 3: [], 2: [], 1: [] }, prop: '', propModel: '' };
       await st.setView('door', 0.9);
@@ -613,6 +616,7 @@ export class App {
       await wait(1.5);
     } finally {
       exitBtn.remove(); document.querySelector('.sit-quit')?.remove();
+      st.showPaws(false); // 재료를 고르다 나가도 앞발이 카메라 앞에 남지 않게
       window.speechSynthesis?.cancel();
       document.querySelectorAll('.dialog, .memo').forEach((d) => d.remove());
       banner.remove();

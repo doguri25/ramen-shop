@@ -115,7 +115,7 @@ export const MINI: Record<MiniKind, CraftShop> = {
     kind: 'tea', shop: '포근 찻집', short: '차', product: '차', mini: true,
     owner: { name: '느긋 카피바라', spec: { kind: 'capybara', fur: '#B98A62', fur2: '#E2C6A6', cloth: '#9FD8B8' } },
     order: '안녕하세요. 마음이 포근해지는 차 한 잔 부탁해요.', go: '차 차리러 가기!', done: '차 내기 ▶',
-    plaques: ['오늘의 차', '포근 찻잔', '곁들임', '느긋 자리'], nameStep: 'tea', nameTail: '한 상',
+    plaques: ['오늘의 차', '포근 찻잔', '곁들임', '느긋 자리'], nameStep: 'tea', nameTail: '한 잔',
     steps: TEA_STEPS,
     items: shopItems('tea', TEA_STEPS, [
       [['두 손 머그잔', '두 손으로 감싸면 안긴 것처럼 따뜻해요.', '#F7C3CC', 'mug'],
@@ -137,7 +137,7 @@ export const MINI: Record<MiniKind, CraftShop> = {
         ['반 나눠 약과', '반으로 나누며 친구 마음을 생각해요. 고마워!', '#B8763E', 'cookie'],
         ['반짝 별 젤리', '별 젤리처럼 두근두근, 힘이 나요.', '#FFD95E', 'star']],
     ]),
-    taste: [['(호로록) {name}을 마시니 마음이 포근해져요.', "제게 꼭 필요했던 '{fx}' 마음이 찻잔 가득 들어 있어요. 고마워요!"], ['(호로록) {name}, 따뜻해요.', '마음이 조금 느긋해졌어요. 고마워요.'], ['(호로록) {name} 고마워요.', "그런데 제게는 '{fx}' 같은 마음이 더 필요했어요."]],
+    taste: [['(호로록) {name}을 마시니 마음이 포근해져요.', "제게 꼭 필요했던 '{fx}' 마음이 찻잔 가득 들어 있어요. 고마워요!"], ['(호로록) {name}, 맛있어요.', '마음이 조금 느긋해졌어요. 고마워요.'], ['(호로록) {name} 고마워요.', "그런데 제게는 '{fx}' 같은 마음이 더 필요했어요."]],
   },
   fruit: {
     kind: 'fruit', shop: '새콤 과일가게', short: '과일 바구니', product: '과일 바구니', mini: true,

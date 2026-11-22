@@ -402,6 +402,8 @@ body.cooking .prog .bar { display: none; }
 .cook { padding: 8px 12px 10px; }
 .cook-top { display: flex; align-items: center; gap: 10px; }
 .cook-top .tabs { flex: 1; min-width: 0; }
+/* 수업용 폰 세로: 단계 탭을 한 줄로 따로 두고 '다음' 단추는 아래 오른쪽에 (탭이 단추에 가려 잘리지 않게) */
+@media (max-width: 560px) { body.cls .cook-top { flex-wrap: wrap; row-gap: 6px; } body.cls .cook-top .tabs { flex: 1 1 100%; } body.cls .cook-top .next { margin-left: auto; } body.cls .cook-top .tab { padding: 0 11px; font-size: 16px; min-height: 38px; gap: 4px; } body.cls .cook-top .tab .n { font-size: 13px; } }
 .cook .next { flex: 0 0 auto; min-height: 50px; font-size: 20px; }
 .cards { grid-auto-flow: column; grid-template-rows: none; padding: 10px 2px 4px; gap: 10px; }
 .icard { width: 118px; padding: 6px 6px 8px; }
@@ -698,6 +700,15 @@ body.cooking .prog .bar { display: none; }
 .treat-show h2 { margin: 2px 0 4px; }
 .treat-show .ts-mood { display: inline-flex; align-items: center; gap: 4px; padding: 3px 12px; border-radius: 999px; background: #EEF6FF; color: #2E5E9E; font-size: 16px; }
 .treat-show .ts-face { width: 26px; height: 26px; }
+/* 그날 내 마음 얼굴은 알약 안의 작은 얼굴로 (사진 칸 규칙이 덮지 않게) */
+.treat-show .ts-mood .ts-face { width: 26px; height: 26px; border-radius: 0; box-shadow: none; background: none; font-size: inherit; display: inline-block; }
+/* 수업용: 낱말이 줄 중간에서 끊기지 않게 */
+body.cls .modal .sub, body.cls .modal .muted, body.cls .treat-mood .tm-l, body.cls .dialog .visit-tag span, body.cls .body-quiz .bq-t, body.cls .body-quiz .bq-q, body.cls .steps { word-break: keep-all; }
+body.cls .dialog .visit-tag { flex-wrap: wrap; }
+/* 수업용: 김밥처럼 재료가 두세 개뿐인 단계는 카드를 왼쪽부터 붙여요 */
+body.cls .cards { justify-content: start; }
+/* 수업용: 폰 세로에서 몸짓 퀴즈 카드를 아래쪽에 넓게 (손님 얼굴을 가리지 않게) */
+@media (max-width: 640px) { body.cls .body-quiz { left: 12px; right: 12px; width: auto; top: auto; bottom: 12px; max-height: 46vh; } }
 .treat-show .ts-list { margin-top: 14px; display: grid; gap: 8px; }
 .treat-show .ts-row { padding: 8px 12px; border-radius: 14px; background: #fff; box-shadow: var(--shadow-s); }
 .treat-show .ts-row b { font-family: var(--head); font-weight: normal; color: var(--accent); margin-right: 8px; }
@@ -947,7 +958,7 @@ body.village-open #ui > .toast { top: auto; bottom: calc(184px + env(safe-area-i
 /* 마음 골목 '가게 봐 주기': 가게 안에서는 첫 화면·골목·위쪽 단추를 숨기고 손님 맞이 화면만 보여요 */
 body.shop-sit #ui > *:not(.dialog):not(.memo):not(.cook):not(.info):not(.toast):not(.craft-ok):not(.yum):not(.confetti):not(.stars) { display: none !important; }
 /* 가게 봐 주기 나가기 단추: 왼쪽 위 (메모 위) */
-.sit-exit { position: absolute; top: max(12px, env(safe-area-inset-top)); left: 12px; z-index: 7; }
+.sit-exit { position: absolute; top: max(12px, env(safe-area-inset-top)); left: 12px; z-index: 11; }
 @media (max-width: 640px), (max-height: 520px) { .btn.sit-exit { min-height: 38px; font-size: 15px; padding: 0 14px; } }
 .sit-quit h2, .sit-quit .sub { word-break: keep-all; }
 .sit-banner { position: absolute; top: max(12px, env(safe-area-inset-top)); right: 12px; z-index: 6; padding: 8px 18px; border-radius: 999px; font-family: var(--head); font-size: 18px; color: var(--accent); white-space: nowrap; box-shadow: var(--shadow-s); pointer-events: none; }

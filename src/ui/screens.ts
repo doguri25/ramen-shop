@@ -1,8 +1,9 @@
 import { CREDIT, MAX_STARS, ROUNDS } from '../config';
+import { downloadBlob, exportRecords, importRecords } from '../storage/backup';
 import { EVENT } from '../event/flag';
 import { setTodDefault, todDefault, TOD_NAME, TODS, type Tod } from '../core/tod';
 import { icon } from '../event/icons';
-import { eulReul } from '../core/korean';
+import { eulReul, hasBatchim } from '../core/korean';
 import { sfx } from '../core/sound';
 import { FAMILY, FX } from '../data/effects';
 import { AMOUNTS, ING, INGREDIENTS, STEPS } from '../data/ingredients';
@@ -59,10 +60,8 @@ export const fxChip = (effect: string) => {
   return h('span', { class: 'fxchip', style: `background:${f.soft}` }, h('span', { class: 'dot', style: `background:${f.color}` }), effect);
 };
 const speakerName = (c: Customer, line: string) => {
-  if (Array.isArray(c.chibi) && c.name.includes('와 ')) {
-    const [a, b] = c.name.split('와 ');
-    return line.startsWith('@1 ') ? b : a;
-  }
+  const m = Array.isArray(c.chibi) ? c.name.match(EVENT ? /^(.+?)와 (.+)$/ : /^(.+?)[와과] (.+)$/) : null;
+  if (m) return line.startsWith('@1 ') ? m[2] : m[1];
   return c.name;
 };
 const stripSpeaker = (l: string) => l.replace(/^@\d /, '');
@@ -387,7 +386,7 @@ export const UI = {
   }): Promise<Picks> {
     return new Promise((res) => {
       const picks: Picks = JSON.parse(JSON.stringify(o.start));
-      let step = 0, busy = false;
+      let step = 0, busy = false; let stepAt = 0;
       document.body.classList.add('cooking');
       const panel = h('div', { class: 'cook slide-up' });
       const info = h('div', { class: 'info card fade-in' });
@@ -441,8 +440,9 @@ export const UI = {
           disabled: last ? !allOk : !ok(st.id),
           onclick: () => {
             if (busy && last) return; // 재료가 냄비에 들어가는 중에는 끝내지 않아요
+            if (!EVENT && performance.now() - stepAt < 450) return; // 수업용: 두 번 눌러 다음 단계를 건너뛰지 않게
             sfx.pop();
-            if (!last) { step++; showInfo(null); render(); return; }
+            if (!last) { step++; stepAt = performance.now(); showInfo(null); render(); return; }
             // 앞 단계는 '다음'을 눌러야 넘어오므로 빠진 단계가 없지만, 혹시 있으면 그 단계로 돌아가요
             const miss = STEPS.findIndex((s) => !ok(s.id));
             if (miss >= 0) { step = miss; showInfo(null); render(); toast(`${eulReul(STEPS[miss].name)} 아직 안 골랐어요`); return; }
@@ -513,7 +513,7 @@ export const UI = {
   gimbap(o: { thumbs: Map<string, string>; need: string; onSet: (p: GPicks) => Promise<void> }): Promise<GPicks> {
     return new Promise((res) => {
       const p = EMPTY_G();
-      let step = 0, busy = false;
+      let step = 0, busy = false; let stepAt = 0;
       const fx = FX.get(o.need)!, fam = FAMILY.get(fx.family)!;
       document.body.classList.add('cooking');
       const panel = h('div', { class: 'cook slide-up' });
@@ -554,9 +554,9 @@ export const UI = {
         const nextBtn = h('button', {
           class: `btn next ${last ? 'pulse' : ''}`, disabled: !ok(step),
           onclick: () => {
-            if (busy) return;
+            if (busy || performance.now() - stepAt < 450) return; // 두 번 눌러 마무리 단계를 건너뛰지 않게
             sfx.pop();
-            if (!last) { step++; showInfo(null); render(); return; }
+            if (!last) { step++; stepAt = performance.now(); showInfo(null); render(); return; }
             finish();
           },
         }, label);
@@ -606,7 +606,7 @@ export const UI = {
     return new Promise((res) => {
       const S = CRAFT[o.kind], steps = S.steps;
       const p = emptyPicks(o.kind);
-      let step = 0, busy = false;
+      let step = 0, busy = false; let stepAt = 0;
       document.body.classList.add('cooking');
       const panel = h('div', { class: 'cook slide-up' });
       const info = h('div', { class: 'info card fade-in' });
@@ -643,7 +643,7 @@ export const UI = {
         const label = last ? S.done : st.optional && !p[st.id].length ? '건너뛰기 ▶' : `다음: ${steps[step + 1].label} ▶`;
         const nextBtn = h('button', {
           class: `btn next ${last ? 'pulse' : ''}`, disabled: !ok(step),
-          onclick: () => { if (busy) return; sfx.pop(); if (!last) { step++; showInfo(null); render(); return; } finish(); },
+          onclick: () => { if (busy || performance.now() - stepAt < 450) return; sfx.pop(); if (!last) { step++; stepAt = performance.now(); showInfo(null); render(); return; } finish(); },
         }, label);
         const cards = h('div', { class: 'cards' }, S.items.filter((g) => g.step === st.id).map((g) => h('button', {
           class: `icard ${isOn(g) ? 'on' : ''}`, onclick: () => tap(g),
@@ -856,7 +856,7 @@ export const UI = {
 
   // 다시 들른 손님 대화창 위에 붙는 작은 표 (언제 끓여 준 라면인지)
   visitTag(ramenName: string) {
-    return h('div', { class: 'visit-tag' }, '👋 다시 들른 손님', h('span', null, `'${ramenName}'을 먹은 손님이에요`));
+    return h('div', { class: 'visit-tag' }, '👋 다시 들른 손님', h('span', null, `'${ramenName}'${hasBatchim(ramenName) ? '을' : '를'} 먹은 손님이에요`));
   },
 
   // 손님이 먹는 동안: 처음 마음에서 나아진 마음 쪽으로 막대가 차올라요 (별이 많을수록 끝까지)
@@ -1164,7 +1164,9 @@ export const UI = {
       const sumBox = h('div', { class: 'ai-sum', hidden: true });
       const sumBtn = h('button', { class: 'btn soft small', onclick: async () => {
         sumBtn.disabled = true; sumBtn.textContent = '정리하는 중… (30초쯤)';
-        const { stats: st, text } = await o.onSummary();
+        let got: Awaited<ReturnType<typeof o.onSummary>>;
+        try { got = await o.onSummary(); } catch { sumBtn.disabled = false; sumBtn.textContent = '우리 반 요약 만들기'; toast('요약을 만들지 못했어요. 다시 눌러 주세요.'); return; }
+        const { stats: st, text } = got;
         sumBtn.disabled = false; sumBtn.textContent = '우리 반 요약 다시 만들기';
         sumBox.hidden = false; sumBox.innerHTML = '';
         const facts = [
@@ -1183,6 +1185,42 @@ export const UI = {
             } }, '글 복사하기')), h('div', { class: 'muted', style: 'font-size:13px;margin-top:4px' }, 'AI가 쓴 글이에요. 숫자는 위 기록과 맞는지 한 번 확인해 주세요.'));
         } else sumBox.append(h('div', { class: 'muted', style: 'margin-top:6px' }, st.bowls ? 'AI 요약은 만들지 못했어요. 위 숫자는 태블릿 기록 그대로예요.' : '아직 끓인 라면이 없어요.'));
       } }, '우리 반 요약 만들기');
+      // 기록 옮기기 (수업용): 반 전체를 파일 하나로 내려받고, 다른 태블릿에서 불러와 합쳐요
+      const bkState = h('div', { class: 'muted bk-state', style: 'font-size:15px;margin-top:8px;word-break:keep-all' });
+      const fileIn = h('input', { type: 'file', accept: '.json,application/json', hidden: true }) as HTMLInputElement;
+      const expBtn = h('button', { class: 'btn soft small', onclick: async () => {
+        expBtn.disabled = impBtn.disabled = true; bkState.textContent = '기록을 모으는 중…';
+        try {
+          const r = await exportRecords((d, t) => { bkState.textContent = `도감 사진을 담는 중… ${d}/${t}`; });
+          downloadBlob(r.blob, r.name);
+          bkState.textContent = `사장님 ${r.owners}명, 라면 ${r.bowls}그릇, 사진 ${r.photos}장을 담았어요. 내려받은 파일을 옮길 태블릿에서 '기록 불러오기'로 열어 주세요.`;
+        } catch { bkState.textContent = '내보내지 못했어요. 다시 해 주세요.'; }
+        expBtn.disabled = impBtn.disabled = false;
+      } }, '기록 내보내기');
+      const impBtn = h('button', { class: 'btn ghost small', onclick: () => fileIn.click() }, '기록 불러오기');
+      fileIn.addEventListener('change', async () => {
+        const f = fileIn.files?.[0]; fileIn.value = '';
+        if (!f) return;
+        expBtn.disabled = impBtn.disabled = true; bkState.textContent = '불러오는 중…';
+        try {
+          const r = await importRecords(f, (d, t) => { bkState.textContent = `합치는 중… 사장님 ${d}/${t}`; });
+          const list = (a: string[]) => `${a.slice(0, 6).join(', ')}${a.length > 6 ? ` 외 ${a.length - 6}명` : ''}`;
+          const nm = (r.byName.length ? ` 번호와 이름이 같아 한 사장님으로 합쳤어요: ${list(r.byName)}.` : '') + (r.sameNo.length ? ` 번호는 같은데 이름이 달라 따로 넣었어요: ${list(r.sameNo)}.` : '');
+          bkState.textContent = `사장님 ${r.owners}명(새로 ${r.added}명, 합친 사장님 ${r.merged}명), 라면 ${r.bowls}그릇, 사진 ${r.photos}장을 불러왔어요.${nm} 잠시 뒤 화면을 새로 고쳐요.`;
+          sfx.pop();
+          setTimeout(() => location.reload(), nm ? 7000 : 2600);
+        } catch (e) {
+          const m = (e as Error).message;
+          bkState.textContent = m === 'format' ? "마음라면 기록 파일이 아니에요. '기록 내보내기'로 만든 파일을 골라 주세요."
+            : m === 'space' ? '태블릿 저장 공간이 모자라 다 불러오지 못했어요. 그때까지 불러온 사장님은 남아 있어요. 공간을 비우고 같은 파일을 다시 불러오면 이어서 합쳐요.'
+            : m === 'big' ? '파일이 너무 커서 이 기기에서 열지 못했어요. 메모리가 넉넉한 기기에서 다시 해 주세요.'
+            : m === 'read' ? '이 태블릿의 사장님 목록을 읽지 못했어요. 화면을 새로 고친 뒤 다시 해 주세요.'
+            : m === 'empty' ? '이 파일에는 옮길 수업용 사장님 기록이 없어요.'
+            : '불러오지 못했어요. 다시 해 주세요.';
+          if (m === 'space') setTimeout(() => location.reload(), 6000);
+          expBtn.disabled = impBtn.disabled = false;
+        }
+      });
       const wrap = h('div', { class: 'modal-wrap fade-in' });
       const url = h('input', { class: 'inp', value: o.url, placeholder: o.defaultUrl || 'https://www.tkbell.co.kr/…', style: 'width:100%' }) as HTMLInputElement;
       let q = o.quality;
@@ -1201,8 +1239,13 @@ export const UI = {
         o.owners.slice().sort((a, b) => (a.ev && b.ev ? a.ev.key.localeCompare(b.ev.key, 'ko', { numeric: true }) || a.ev.runNo - b.ev.runNo : a.number - b.number)).forEach((ow) => list.append(h('div', { class: 't-row' }, h('span', null, ow.ev ? `${ow.ev.grade}학년 ${ow.ev.cls}반 ${ow.number}번 ${ow.name} · ${ow.ev.runNo}판 · ${ow.round}그릇 · ★ ${ow.ev.total}` : `${ow.number}번 ${ow.name} · ${o.counts.get(ow.id) ?? 0}그릇`),
           h('button', { class: 'btn ghost small', onclick: async (e: Event) => {
             const b = e.currentTarget as HTMLButtonElement;
-            if (b.dataset.sure !== '1') { b.dataset.sure = '1'; b.dataset.at = String(performance.now()); b.textContent = '정말 지울까요?'; return; }
+            if (b.dataset.sure !== '1') {
+              b.dataset.sure = '1'; b.dataset.at = String(performance.now()); b.textContent = '정말 지울까요?';
+              if (!EVENT) setTimeout(() => { if (b.isConnected && b.dataset.sure === '1' && !b.disabled) { b.dataset.sure = ''; b.textContent = '지우기'; } }, 5000);
+              return;
+            }
             if (performance.now() - Number(b.dataset.at) < 500) return; // 빠른 두 번 누름으로 지워지지 않게
+            if (!EVENT) { if (b.disabled) return; b.disabled = true; b.textContent = '지우는 중…'; }
             await o.onDelete(ow);
             o.owners = o.owners.filter((x) => x.id !== ow.id);
             drawList();
@@ -1222,6 +1265,9 @@ export const UI = {
         EVENT ? null : h('div', { class: 'sec' }, h('h3', null, '우리 반 요약'),
           h('div', { class: 'muted', style: 'font-size:15px;margin-bottom:8px' }, '이 태블릿에 있는 모든 사장님 기록을 모아 정리해요. 수업 결과를 쓸 때 참고해 주세요.'),
           sumBtn, sumBox),
+        EVENT ? null : h('div', { class: 'sec' }, h('h3', null, '기록 옮기기'),
+          h('div', { class: 'muted', style: 'font-size:15px;margin-bottom:8px;word-break:keep-all' }, '이 태블릿의 사장님, 라면 기록, 도감 사진, 마음 골목 기록을 파일 하나로 내려받아요. 다른 태블릿에서 불러오면 그 태블릿 기록에 합쳐져요. 원래 있던 기록은 지우지 않아요.'),
+          h('div', { style: 'display:flex;gap:8px;flex-wrap:wrap' }, expBtn, impBtn), fileIn, bkState),
         o.rank ? rankSec(o.rank, () => wrap) : null,
         h('div', { class: 'sec' }, h('h3', null, '사장님 기록'), EVENT ? h('div', { class: 'muted', style: 'font-size:15px;margin-bottom:6px' }, '이 기기에 남은 기록만 지워요. 랭킹 서버에 모인 기록은 그대로 남아요.') : null, list),
         h('div', { class: 'actions' }, h('button', { class: 'btn', onclick: () => { o.onSave(url.value.trim(), q, aiOn, aiUrl.value.trim()); if (!EVENT && todTouched) setTodDefault(tod); /* 시간대를 고른 때만 바꿔요 (학생이 바꾼 시간대를 괜히 되돌리지 않게) */ sfx.pop(); wrap.remove(); res(); } }, '저장하고 닫기'))));

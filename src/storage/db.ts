@@ -1,4 +1,4 @@
-import { createStore, del as d0, get as g0, set as s0 } from 'idb-keyval';
+import { createStore, del as d0, get as g0, getMany as gm, set as s0 } from 'idb-keyval';
 import { EVENT } from '../event/flag';
 import type { Owner, RamenRecord } from '../data/types';
 
@@ -19,7 +19,9 @@ export const db = {
   async owners(): Promise<Owner[]> {
     try { const v = await get<Owner[]>('owners'); ownersRead = true; return v ?? []; } catch (e) { console.warn('[db]', e); ownersRead = false; return []; }
   },
-  saveOwners: (o: Owner[]) => (ownersRead ? safe(set('owners', o), undefined) : (console.warn('[db] 목록을 못 읽어서 저장을 건너뛰어요'), Promise.resolve(undefined))),
+  saveOwners: (o: Owner[]) => (ownersRead ? safe(set('owners', o).then(() => true), false) : (console.warn('[db] 목록을 못 읽어서 저장을 건너뛰어요'), Promise.resolve(false))),
+  // 기록 불러오기용: 목록을 못 읽으면 조용히 빈 목록으로 넘어가지 않고 멈춰요
+  async ownersOrThrow(): Promise<Owner[]> { const v = await get<Owner[]>('owners'); ownersRead = true; return v ?? []; },
   records: (ownerId: string) => safe(get<RamenRecord[]>('records:' + ownerId).then((v) => v ?? []), [] as RamenRecord[]),
   // 저장이 됐는지 알려 줘요 (공간이 모자라면 false)
   // 읽기가 한 번 실패해 빈 목록으로 시작했어도, 이미 저장된 그릇을 지우지 않게 합쳐서 저장해요
@@ -30,11 +32,13 @@ export const db = {
     return true;
   })(), false),
   photo: (key: string) => safe(get<Blob>('photo:' + key), undefined),
-  savePhoto: (key: string, b: Blob) => safe(set('photo:' + key, b), undefined),
+  savePhoto: (key: string, b: Blob) => safe(set('photo:' + key, b).then(() => true), false),
+  photos: (keys: string[]) => safe(gm<Blob>(keys.map((k) => 'photo:' + k), store), [] as (Blob | undefined)[]),
   delPhoto: (key: string) => safe(del('photo:' + key), undefined),
   teacher: () => safe(get<TeacherSettings>('teacher').then((v) => v ?? {}), {} as TeacherSettings),
   saveTeacher: (t: TeacherSettings) => safe(set('teacher', t), undefined),
   async deleteOwner(id: string) {
+    const treatKey = EVENT ? undefined : (await db.owners()).find((o) => o.id === id)?.treat?.photoKey;
     const recs = await db.records(id);
     for (const r of recs) await db.delPhoto(r.photoKey);
     await safe(del('records:' + id), undefined);
@@ -43,6 +47,7 @@ export const db = {
     if (!EVENT) {
       // 수업용: 손님들이 끓여 준 라면 사진과 마음 골목 기록도 함께 지워요
       await db.delPhoto('treat-' + id);
+      if (treatKey && treatKey !== 'treat-' + id) await db.delPhoto(treatKey); // 다른 태블릿에서 불러온 기록
       try { for (const k of ['folk', 'shop', 'quest']) localStorage.removeItem(`ramen-alley-${k}:${id}`); } catch { /* 못 지워도 계속해요 */ }
     }
   },

@@ -75,7 +75,20 @@ function finishLayer(it: CItem, into: THREE.Object3D) {
 function fillBlob(it: CItem, into: THREE.Object3D) {
   const g = new THREE.Group(); into.add(g);
   // 칼집 사이로 속이 살짝 보여요
-  mesh(sphereG(1, 14, 10), M(it.color, { noise: 2, spec: 0.3 }), [0, topY(0, 0) - 0.004, 0], [0.03, 0.014, 0.022], [0, 0, 0], g);
+  const y0 = topY(0, 0) - 0.004;
+  mesh(sphereG(1, 14, 10), M(it.color, { noise: 2, spec: 0.3 }), [0, y0, 0], [0.03, 0.014, 0.022], [0, 0, 0], g);
+  // 노란 속끼리도 구별되게 작은 표시를 보태요
+  switch (it.shape) {
+    case 'custard': mesh(torusG(0.009, 0.0035, 6, 14), M(lighten(it.color, 0.12), { spec: 0.6 }), [0, y0 + 0.013, 0], 1, [PI / 2, 0, 0], g); break;
+    case 'lemon': {
+      const sl = new THREE.Group(); sl.position.set(0.004, y0 + 0.014, 0); sl.rotation.set(1.2, 0, 0.2); g.add(sl);
+      mesh(cylG(0.011, 0.011, 0.003, 16), M('#FFF6C8'), [0, 0, 0], 1, [0, 0, 0], sl);
+      mesh(cylG(0.0095, 0.0095, 0.0034, 16), M(it.color), [0, 0, 0], 1, [0, 0, 0], sl);
+      break;
+    }
+    case 'cheese': mesh(cylG(0.014, 0.014, 0.01, 3), M(darken(it.color, 0.05)), [0, y0 + 0.013, 0], 1, [0, 0.4, 0], g); break;
+    case 'corn': for (let i = 0; i < 7; i++) { const a = (i / 7) * PI * 2; mesh(sphereG(1, 6, 4), M(lighten(it.color, 0.08), { spec: 0.5 }), [Math.cos(a) * 0.013, y0 + 0.012, Math.sin(a) * 0.009], [0.0045, 0.004, 0.0035], [0, 0, 0], g); } break;
+  }
   return g;
 }
 function tray(into: THREE.Object3D) {
@@ -242,11 +255,11 @@ export function craftItemModel(it: CItem): THREE.Group {
     } else if (it.step === 'top') {
       // 밝은 토핑(마시멜로·깨·귀리)은 나무 접시에 올려야 잘 보여요
       const L = luma(it.color);
-      plate(0.12, L > 0.8 ? '#D9B98A' : '#FFFFFF');
+      plate(0.12, L > 0.8 ? '#B98552' : '#FFFFFF');
       const base = new THREE.Group(); base.position.y = -LOAF.y + 0.005; base.scale.set(1.2, 0.4, 1.2); o.add(base);
       const k = it.shape === 'seed' || it.shape === 'oat' ? 2.3 : it.shape === 'leaf' ? 1.8 : it.shape === 'puff' || it.shape === 'dots' ? 1.6 : 1.3;
       const few = !['seed', 'oat', 'sprinkle', 'dots'].includes(it.shape);
-      for (const seed of few ? [3, 8] : [3]) { const t = topping(it, base, seed); t.scale.set(1, 2.5, 1); t.children.forEach((m) => m.scale.multiplyScalar(k)); }
+      for (const seed of few ? [3, 8] : [3]) { const t = topping(it, base, seed); t.scale.set(1, 2.5, 1); t.children.forEach((m) => { m.scale.multiplyScalar(k); m.position.y = LOAF.y + 0.02; }); }
     }
     else {
       // 마무리: 가루는 체, 바르는 건 병, 줄무늬는 짤주머니
@@ -259,7 +272,7 @@ export function craftItemModel(it: CItem): THREE.Group {
   if (it.step === 'main' || it.step === 'side') {
     mesh(cylG(0.004, 0.005, 0.18, 6), M('#6FA35E'), [0, 0.09, 0], 1, [0, 0, 0.1], o);
     const bell = it.shape === 'bell';
-    const h = flowerHead(it, bell ? 1.6 : it.step === 'main' ? 2.0 : 2.1); h.position.set(bell ? -0.009 : 0.009, bell ? 0.178 : it.step === 'main' ? 0.16 : 0.18, 0); h.rotation.x = bell ? 0.15 : 0.5; o.add(h);
+    const h = flowerHead(it, bell ? 1.6 : it.step === 'main' ? 2.0 : 1.9); h.position.set(bell ? -0.009 : 0.009, bell ? 0.178 : it.step === 'main' ? 0.16 : 0.168, 0); h.rotation.x = bell ? 0.15 : 0.5; o.add(h);
     if (bell) o.position.x = -0.04; // 꽃대가 오른쪽으로 뻗으니 카드 가운데로
     mesh(sphereG(1, 8, 6), M('#7DB86A'), [0.02, 0.07, 0], [0.022, 0.006, 0.01], [0, 0, 0.5], o);
   } else if (it.step === 'leaf') { const l = leafSprig(it, 1.5); l.rotation.z = 0.15; o.add(l); }

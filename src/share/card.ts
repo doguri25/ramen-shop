@@ -1,6 +1,6 @@
 import { MAX_STARS } from '../config';
 import { EVENT } from '../event/flag';
-import { eulReul, gwaWa, listKo } from '../core/korean';
+import { eulReul, gwaWa, hasBatchim, listKo } from '../core/korean';
 import { FAMILY, FX } from '../data/effects';
 import { ING } from '../data/ingredients';
 import type { Customer, Picks, RamenRecord } from '../data/types';
@@ -149,7 +149,8 @@ export function drawCard(d: CardInput): HTMLCanvasElement {
   g.fillStyle = INK; g.textBaseline = 'top';
   const why = d.reason.trim() ? `내가 이 라면을 고른 까닭은 ${d.reason.trim()} 때문이에요.` : '내가 이 라면을 고른 까닭은 ________ 때문이에요.';
   const whoLine = d.who.trim() ? `${d.who.trim()}에게 이 라면을 끓여 주고 싶어요.` : '';
-  const pledge = d.rec.promise?.trim() ? `오늘의 마음 한 그릇 약속은 '${d.rec.promise.trim()}'예요.` : '';
+  const pmz = d.rec.promise?.trim() ?? '';
+  const pledge = pmz ? `오늘의 마음 한 그릇 약속은 '${pmz}'${hasBatchim(pmz) ? '이에요' : '예요'}.` : '';
   // 글이 길면 글자를 조금씩 줄여서 "때문이에요."까지 다 들어가게 해요
   let lines: string[] = [], lh = 27;
   const room = EVENT ? 80 : 86;
