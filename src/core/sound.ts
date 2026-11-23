@@ -98,6 +98,8 @@ export const sfx = {
   heart() { tone(660, 0.12, 'sine', 0.2); tone(990, 0.25, 'sine', 0.18, 0.1); },
   whoosh() { noise(0.35, 0.1, 500, 0, 0.7, 'bandpass', 4); },
   camera() { noise(0.06, 0.2, 3000, 0, 1, 'highpass'); tone(1200, 0.05, 'square', 0.05, 0.05); },
+  // 마음 골목을 걸을 때 작은 발자국 소리: 사박 (걸음마다 조금씩 다르게)
+  step() { const r = Math.random(); noise(0.07, 0.045, 520 + r * 260, 0, 0.9, 'lowpass'); tone(95 + r * 30, 0.06, 'sine', 0.035, 0, 0.6); },
 };
 
 export function startBubble() {

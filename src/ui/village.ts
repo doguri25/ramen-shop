@@ -30,6 +30,7 @@ export interface World { scene: THREE.Scene; cam: THREE.PerspectiveCamera; updat
 const V = (x = 0, y = 0, z = 0) => new THREE.Vector3(x, y, z);
 const EYE = 1.45;           // 사장님 눈높이: 주민(키 1.7~2.0) 눈과 비슷하게 마주 봐요
 const WALK = 4.6, BACK = 2.4, TURN = 1.9;
+const FP_ZOOM: [number, number] = [0.85, 2.4]; // 돌아다니기에서 줌으로 넓게·당겨 보는 범위
 const TALK_R = 3.4;         // 이만큼 가까우면 말을 걸 수 있어요
 const SHOP_R = 5;           // 가게 앞 이만큼이면 물건을 받을 수 있어요
 
@@ -107,6 +108,9 @@ export function openVillage(o: {
 
       // ── 사장님(나): 돌아다니기에서는 사장님 눈으로 봐요 ──
       const fp = { pos: V(), yaw: 0, pitch: -0.06, y: 0, bob: 0, moving: 0 };
+      // 돌아다니기 줌: 1보다 크면 당겨 보고(시야를 좁혀요), 작으면 조금 넓게 봐요
+      let fpZoom = 1, stepPh = 0;
+      const zoomWalk = (k: number) => { fpZoom = Math.max(FP_ZOOM[0], Math.min(FP_ZOOM[1], fpZoom * k)); };
       { const sp = vil.shopDoor.clone().add(V(0, 0, 3)); fp.pos.set(sp.x, 0, sp.z); fp.y = vil.walkY(sp.x, sp.z); }
       let goal: THREE.Vector3 | null = null;
       let onArrive: (() => void) | null = null;
@@ -351,13 +355,12 @@ export function openVillage(o: {
         seg.querySelectorAll('button').forEach((b) => b.classList.toggle('on', b.dataset.m === m));
         hint.textContent = m === 'all'
           ? (PC ? '끌어서 둘러보고, 휠이나 +·− 단추로 크게 봐요. 불 켜진 집이나 주민을 누르면 만나요.' : '밀어서 둘러보고, 두 손가락으로 크게 봐요. 불 켜진 집이나 주민을 누르면 만나요.')
-          : (PC ? '↑↓ 걷기 · ←→ 돌기 · 끌어서 둘러보기 · 스페이스로 말 걸기' : '왼쪽을 눌러 걷고, 오른쪽을 밀어 둘러봐요. 주민 가까이 가면 말을 걸 수 있어요.');
+          : (PC ? '↑↓ 걷기 · ←→ 돌기 · 끌어서 둘러보기 · 휠·+−로 당겨 보기 · 스페이스로 말 걸기' : '왼쪽을 눌러 걷고, 오른쪽을 밀어 둘러봐요. 두 손가락으로 당겨 보고, 주민 가까이 가면 말을 걸어요.');
         hint.classList.remove('hide');
         clearTimeout(hintTimer);
         hintTimer = window.setTimeout(() => hint.classList.add('hide'), m === 'walk' ? 7000 : 9000);
         if (m === 'all' && prev === 'walk') { all.target.set(fp.pos.x, 0, fp.pos.z); clampT(all.target); all.dist = Math.max(all.dist, 60); all.yaw = 0; }
         if (m === 'walk' && prev === 'all') { blend = 0; fp.pitch = -0.06; }
-        zoom.style.display = m === 'all' ? '' : 'none';
         stickGhost.hidden = !(m === 'walk' && coarse() && !stickUsed);
         el.classList.toggle('walk', m === 'walk');
         cancelGoal();
@@ -373,8 +376,8 @@ export function openVillage(o: {
       } });
       const offTod = onTod(applyTod);
       const zoom = h('div', { class: 'v-zoom' },
-        h('button', { 'aria-label': '크게 보기', onclick: () => { sfx.tap(); all.dist = Math.max(18, all.dist * 0.72); } }, '+'),
-        h('button', { 'aria-label': '작게 보기', onclick: () => { sfx.tap(); all.dist = Math.min(fitDist() * 1.1, all.dist / 0.72); } }, '−'));
+        h('button', { 'aria-label': '크게 보기', onclick: () => { sfx.tap(); if (mode === 'all') all.dist = Math.max(18, all.dist * 0.72); else zoomWalk(1.25); } }, '+'),
+        h('button', { 'aria-label': '작게 보기', onclick: () => { sfx.tap(); if (mode === 'all') all.dist = Math.min(fitDist() * 1.1, all.dist / 0.72); else zoomWalk(1 / 1.25); } }, '−'));
       const news = ALLEY_LINKS.filter((l) => (best.get(l.a)?.stars ?? 0) >= 2 && (best.get(l.b)?.stars ?? 0) >= 2);
       const face = (id: string) => { const c = o.customer(id); const s = c ? (Array.isArray(c.chibi) ? c.chibi[0] : c.chibi) : null; return s ? KIND_EMOJI[s.kind] ?? '🏠' : '🏠'; };
       // 골목 소식: 위쪽 줄에 작은 칩으로 두고, 누르면 아래로 펼쳐져요 (좁은 화면에서는 그림과 숫자만)
@@ -433,7 +436,7 @@ export function openVillage(o: {
             row('shopsit', '가게 봐 주기', '가게 주인이 자리를 비울 때 가게를 봐 줘요. 빵집·꽃집은 손님 셋, 다른 가게는 손님 하나예요.'),
             row('sprout', '마음 텃밭', '텃밭 이웃이 부탁하면 팻말을 보고 마음에 맞는 채소를 뽑아다 줘요.'),
             row('notebook', '마음 수첩', '위쪽 마음 도장을 누르면 할 일과 미션, 마음 배지가 한눈에 보여요.'),
-            row('walk', '돌아다니기', PC ? '사장님 눈으로 걸어요. 화살표 키로 걷고, 끌어서 둘러봐요.' : '사장님 눈으로 걸어요. 왼쪽을 눌러 걷고, 오른쪽을 밀어 둘러봐요.')),
+            row('walk', '돌아다니기', PC ? '사장님 눈으로 걸어요. 화살표 키로 걷고, 끌어서 둘러봐요. 휠이나 +·− 단추로 당겨 봐요.' : '사장님 눈으로 걸어요. 왼쪽을 눌러 걷고, 오른쪽을 밀어 둘러봐요. 두 손가락이나 +·− 단추로 당겨 봐요.')),
           h('div', { class: 'vi-btns' },
             h('button', { class: 'btn ghost small', onclick: () => { sfx.tap(); hideIntro(); } }, '전체 보기로 둘러보기'),
             h('button', { class: 'btn small', onclick: () => { sfx.pop(); hideIntro(); setMode('walk'); } }, doodleImg('walk'), '걸어 다니기'))));
@@ -1300,7 +1303,7 @@ export function openVillage(o: {
       const ndc = (x: number, y: number) => new THREE.Vector2((x / innerWidth) * 2 - 1, -(y / innerHeight) * 2 + 1);
       const pts = new Map<number, { x: number; y: number; x0: number; y0: number; t0: number; stick: boolean }>();
       const stickV = { x: 0, y: 0, id: -1, cx: 0, cy: 0 };
-      let pinch0 = 0, dist0 = 0, moved = false;
+      let pinch0 = 0, dist0 = 0, zoom0 = 1, moved = false;
       const STICK_R = 52;
       const tapAt = (x: number, y: number) => {
         ray.setFromCamera(ndc(x, y), cam);
@@ -1333,9 +1336,14 @@ export function openVillage(o: {
           if (!stickUsed) { stickUsed = true; stickGhost.hidden = true; }
           cancelGoal();
         }
+        // 두 손가락으로 벌리려고 한 손가락을 왼쪽에 막 댔다면 조이스틱 대신 줌으로 써요
+        if (!isStick && stickV.id >= 0) {
+          const sp = pts.get(stickV.id);
+          if (sp && performance.now() - sp.t0 < 300 && Math.hypot(sp.x - sp.x0, sp.y - sp.y0) < 12) { sp.stick = false; stickV.id = -1; stickV.x = stickV.y = 0; stick.hidden = true; }
+        }
         const looks = [...pts.values()].filter((p) => !p.stick);
         if (looks.length === 1 && !isStick) moved = false;
-        if (looks.length === 2 && mode === 'all') { const [a, b] = looks; pinch0 = Math.hypot(a.x - b.x, a.y - b.y); dist0 = all.dist; moved = true; }
+        if (looks.length === 2) { const [a, b] = looks; pinch0 = Math.hypot(a.x - b.x, a.y - b.y); dist0 = all.dist; zoom0 = fpZoom; moved = true; }
       });
       touch.addEventListener('pointermove', (e) => {
         const p = pts.get(e.pointerId);
@@ -1353,6 +1361,7 @@ export function openVillage(o: {
         if (looks.length >= 2) {
           const [a, b] = looks, d = Math.hypot(a.x - b.x, a.y - b.y);
           if (pinch0 > 0 && mode === 'all') all.dist = Math.max(18, Math.min(fitDist() * 1.1, dist0 * (pinch0 / Math.max(20, d))));
+          else if (pinch0 > 0) { fpZoom = zoom0; zoomWalk(Math.max(20, d) / pinch0); }
           return;
         }
         if (Math.hypot(e.clientX - p.x0, e.clientY - p.y0) > 8) moved = true;
@@ -1363,7 +1372,7 @@ export function openVillage(o: {
           clampT(all.target);
         } else if (talk === null) {
           // 끌어서 둘러보기: 오른쪽으로 밀면 오른쪽을 봐요
-          fp.yaw -= dx * 0.0055; fp.pitch = Math.max(-0.75, Math.min(0.55, fp.pitch - dy * 0.0045));
+          fp.yaw -= (dx * 0.0055) / fpZoom; fp.pitch = Math.max(-0.75, Math.min(0.55, fp.pitch - (dy * 0.0045) / fpZoom)); // 당겨 볼수록 천천히 돌아요
           faceYaw = facePitch = null;
         }
       });
@@ -1386,6 +1395,7 @@ export function openVillage(o: {
       touch.addEventListener('wheel', (e) => {
         e.preventDefault();
         if (mode === 'all') all.dist = Math.max(18, Math.min(fitDist() * 1.1, all.dist * Math.exp(e.deltaY * 0.0012)));
+        else zoomWalk(Math.exp(-e.deltaY * 0.0012));
       }, { passive: false });
       // ── 화살표 키 (컴퓨터) ──
       const keys = new Set<string>();
@@ -1407,6 +1417,13 @@ export function openVillage(o: {
           if (talk !== null) { const b = talkBox.querySelector<HTMLButtonElement>('.vt-btns button:last-child'); if (b && talkBox.querySelectorAll('.vt-btns button').length === 1) { e.preventDefault(); b.click(); } return; }
           if (mode === 'walk' && promptAct && !prompt.hidden) { e.preventDefault(); promptAct(); }
         } else if (e.code === 'Escape' && talk !== null && !busy) closeTalk();
+        else if (['Equal', 'NumpadAdd', 'Minus', 'NumpadSubtract'].includes(e.code)) {
+          // +·- 키로도 크게·작게 봐요
+          e.preventDefault();
+          const inK = e.code === 'Equal' || e.code === 'NumpadAdd';
+          if (mode === 'all') all.dist = Math.max(18, Math.min(fitDist() * 1.1, all.dist * (inK ? 0.8 : 1.25)));
+          else zoomWalk(inK ? 1.15 : 1 / 1.15);
+        }
       };
       const onBlur = () => keys.clear();
       window.addEventListener('keydown', onKey);
@@ -1432,7 +1449,9 @@ export function openVillage(o: {
         cam.aspect = innerWidth / innerHeight;
         cam.near = mode === 'walk' ? 0.08 : 0.3;
         // 1인칭은 시야를 넓게: 가로로 75° 이상 보이게 (세로 폰은 위아래를 더 넓혀요)
-        const wantFov = mode === 'walk' ? Math.min(85, Math.max(58, (2 * Math.atan(Math.tan((37.5 * Math.PI) / 180) / cam.aspect) * 180) / Math.PI)) : 42;
+        const baseFov = Math.min(85, Math.max(58, (2 * Math.atan(Math.tan((37.5 * Math.PI) / 180) / cam.aspect) * 180) / Math.PI));
+        // 줌: 시야각을 줄이면 당겨 보이고, 늘리면 넓게 보여요
+        const wantFov = mode === 'walk' ? (2 * Math.atan(Math.tan((baseFov * Math.PI) / 360) / fpZoom) * 180) / Math.PI : 42;
         cam.fov += (wantFov - cam.fov) * Math.min(1, dt * 4);
         cam.updateProjectionMatrix();
         const e0 = mode === 'walk' ? eye() : cur.pos;
@@ -1480,6 +1499,9 @@ export function openVillage(o: {
         toastCool = Math.max(0, toastCool - dt);
         fp.moving += (moving - fp.moving) * Math.min(1, dt * 8);
         fp.bob += dt * 9 * fp.moving;
+        // 발자국 소리: 고개가 한 번 내려올 때마다 한 걸음 (작게)
+        const ph = Math.floor(fp.bob / Math.PI);
+        if (ph !== stepPh) { stepPh = ph; if (mode === 'walk' && fp.moving > 0.5) sfx.step(); }
         fp.y += (vil.walkY(fp.pos.x, fp.pos.z) - fp.y) * Math.min(1, dt * 12);
         guest?.chs.forEach((ch) => ch.update(dt));
         // 카메라: 돌아다니기로 바꾸면 하늘에서 사장님 눈높이로 내려앉아요

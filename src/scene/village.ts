@@ -476,15 +476,15 @@ export function buildVillage(houses: VHouse[], towns: VTown[], villagers: ChibiS
   for (let i = 0; i < 900; i++) {
     const x = X0 + flRnd() * (X1 - X0), z = Z0 + flRnd() * (Z1 - Z0);
     if (rdist(x, z) < 8) continue;
-    g.fillStyle = ['#FF9FB7', '#FFD95E', '#FFFFFF', '#B9A2F2', '#FFB27A', '#8FD3F5'][i % 6];
-    g.globalAlpha = 0.5; // 걸어 다닐 때 가까이 보면 물감 얼룩처럼 보이지 않게 작고 옅게 (진짜 꽃은 따로 심어요)
+    g.fillStyle = ['#FF9FB7', '#FFE58A', '#FFFFFF', '#D2C4F6', '#FFC6D3', '#A6DDF7'][i % 6];
+    g.globalAlpha = 0.3; // 걸어 다닐 때 가까이 보면 물감 얼룩처럼 보이지 않게 작고 옅게, 갈색으로 번지는 주황은 빼요 (진짜 꽃은 따로 심어요)
     for (let k = 0; k < 4; k++) { g.beginPath(); g.arc(px(x) + (flRnd() - 0.5) * 12, pz(z) + (flRnd() - 0.5) * 12, (2.2 + flRnd() * 2.4) * 0.6, 0, 7); g.fill(); }
   }
   for (let i = 0; i < 1100; i++) {
     const x = X0 + rnd() * (X1 - X0), z = Z0 + rnd() * (Z1 - Z0);
     if (rdist(x, z) < 8) continue;
-    g.fillStyle = ['#F7B3C2', '#FFE08A', '#FFFFFF', '#C9B6F0', '#F9C38E'][i % 5];
-    g.globalAlpha = 0.5;
+    g.fillStyle = ['#F7B3C2', '#FFE9A6', '#FFFFFF', '#D8CCF4', '#FFD0DA'][i % 5];
+    g.globalAlpha = 0.3;
     for (let k = 0; k < 5; k++) { g.beginPath(); g.arc(px(x) + (rnd() - 0.5) * 14, pz(z) + (rnd() - 0.5) * 14, (2 + rnd() * 2.2) * 0.6, 0, 7); g.fill(); }
   }
   g.globalAlpha = 1;
@@ -510,7 +510,8 @@ export function buildVillage(houses: VHouse[], towns: VTown[], villagers: ChibiS
   geo.setAttribute('uv', new THREE.Float32BufferAttribute(guv, 2));
   geo.setIndex(gix);
   geo.computeVertexNormals();
-  const ground = new THREE.Mesh(geo, Mu('#FFFFFF', { map: groundTex, rim: 0, flat: 0.25 })); // 그늘 띠가 얼룩처럼 끊기지 않게 살짝 고르게
+  // 그늘 띠가 얼룩처럼 끊기지 않게 살짝 고르게. 수채 잔무늬(noise)도 끄면 모래·길·풀밭에 갈색 얼룩이 지지 않아요
+  const ground = new THREE.Mesh(geo, Mu('#FFFFFF', { map: groundTex, rim: 0, flat: 0.25, noise: 0 }));
   ground.userData.ownGeo = true;
   root.add(ground); own.push(ground);
   // 하늘: 시간대마다 띠 색이 달라요 (아래 절반은 땅 끝 너머 빛깔)
