@@ -142,7 +142,7 @@ export const setColor = (m: THREE.Material, c: string) => (m as THREE.ShaderMate
 const POST_FRAG = /* glsl */ `
 uniform sampler2D tColor; uniform sampler2D tDepth; uniform sampler2D tPaper; uniform vec2 uRes; uniform float uNear; uniform float uFar; uniform float uEdge; uniform float uTime;
 uniform float uFocus; uniform float uFocusRange; uniform float uDof; uniform float uWarm; uniform float uPx;
-uniform float uSat; uniform float uBright; uniform float uRays; uniform vec2 uSun; uniform vec3 uSunCol; uniform float uSkyD; uniform float uPaperK; uniform float uBlot;
+uniform float uSat; uniform float uBright; uniform float uRays; uniform vec2 uSun; uniform vec3 uSunCol; uniform float uSkyD; uniform float uPaperK; uniform float uBlot; uniform float uInk;
 varying vec2 vUv;
 float lum(vec3 c){ return dot(c, vec3(0.299, 0.587, 0.114)); }
 float h2(vec2 p){ return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
@@ -184,8 +184,11 @@ void main(){
   e /= max(d, 0.2);
   float edge = smoothstep(0.035, 0.11, e);
   float broken = smoothstep(0.3, 0.62, n2(vUv * asp * 55.0));
-  c = mix(c, vec3(0.353, 0.227, 0.157), edge * broken * 0.72 * uEdge);
-  c = mix(c, c * vec3(0.72, 0.62, 0.55), smoothstep(0.1, 0.32, le) * broken * 0.35 * uEdge);
+  // 먹선: 기본은 진한 갈색, uInk=1이면 그 자리 색을 진하게 (마음 골목 능선·땅 끝이 갈색으로 칠해지지 않게)
+  vec3 dk = c * 0.62; dk = mix(vec3(lum(dk)), dk, 1.3);
+  vec3 inkCol = mix(vec3(0.353, 0.227, 0.157), dk, uInk);
+  c = mix(c, inkCol, edge * broken * 0.72 * uEdge * mix(1.0, 0.8, uInk));
+  c = mix(c, c * mix(vec3(0.72, 0.62, 0.55), vec3(0.84), uInk), smoothstep(0.1, 0.32, le) * broken * 0.35 * uEdge);
   vec3 paper = texture2D(tPaper, gl_FragCoord.xy / 512.0).rgb;
   c *= mix(vec3(1.0), paper * vec3(1.0, 0.985, 0.96), uPaperK);
   float bloom = n2(vUv * asp * 3.0 + 4.0);
@@ -214,7 +217,7 @@ void main(){
   gl_FragColor = vec4(c, 1.0);
 }`;
 
-export interface Look { sat?: number; bright?: number; lift?: number; rays?: number; sunDir?: THREE.Vector3; skyD?: number; paper?: number; blot?: number; tint?: THREE.Color; lightW?: THREE.Vector3; sunCol?: THREE.Color; haze?: THREE.Vector4 }
+export interface Look { ink?: number; sat?: number; bright?: number; lift?: number; rays?: number; sunDir?: THREE.Vector3; skyD?: number; paper?: number; blot?: number; tint?: THREE.Color; lightW?: THREE.Vector3; sunCol?: THREE.Color; haze?: THREE.Vector4 }
 const WHITE = new THREE.Color(1, 1, 1), SUN = new THREE.Color('#FFE6B0'), NOHAZE = new THREE.Vector4(1, 1, 1, 0);
 // 캐릭터 얼굴(눈·입·볼터치)은 MeshBasicMaterial이라 따로 시간대 빛깔을 맞춰요 (재질의 color가 이 색을 같이 써요)
 export const FACE_TINT = new THREE.Color(1, 1, 1);
@@ -246,7 +249,7 @@ export class WatercolorRenderer {
         tColor: { value: this.rt.texture }, tDepth: { value: this.rt.depthTexture }, tPaper: { value: paper },
         uRes: { value: new THREE.Vector2(4, 4) }, uNear: { value: 0.05 }, uFar: { value: 30 }, uEdge: { value: 1 }, uTime: { value: 0 },
         uFocus: { value: 2.2 }, uFocusRange: { value: 1.6 }, uDof: { value: 0 }, uWarm: { value: 1 }, uPx: { value: 1 },
-        uSat: { value: 1.08 }, uBright: { value: 1 }, uRays: { value: 0 }, uSun: { value: new THREE.Vector2(0.5, 1.2) }, uSunCol: { value: new THREE.Color('#FFE6B0') }, uSkyD: { value: 480 }, uPaperK: { value: 0.95 }, uBlot: { value: 1 },
+        uSat: { value: 1.08 }, uBright: { value: 1 }, uRays: { value: 0 }, uSun: { value: new THREE.Vector2(0.5, 1.2) }, uSunCol: { value: new THREE.Color('#FFE6B0') }, uSkyD: { value: 480 }, uPaperK: { value: 0.95 }, uBlot: { value: 1 }, uInk: { value: 0 },
       },
       depthTest: false, depthWrite: false,
     });
@@ -292,7 +295,7 @@ export class WatercolorRenderer {
   private applyLook(cam: THREE.PerspectiveCamera) {
     const u = this.post.uniforms, L = this.look;
     u.uSat.value = L?.sat ?? 1.08; u.uBright.value = L?.bright ?? 1; shared.uLift.value = L?.lift ?? 0;
-    u.uPaperK.value = L?.paper ?? 0.95; u.uBlot.value = L?.blot ?? 1;
+    u.uPaperK.value = L?.paper ?? 0.95; u.uBlot.value = L?.blot ?? 1; u.uInk.value = L?.ink ?? 0;
     shared.uTint.value.copy(L?.tint ?? WHITE); u.uSunCol.value.copy(L?.sunCol ?? SUN); shared.uHaze.value.copy(L?.haze ?? NOHAZE); FACE_TINT.copy(L?.tint ?? WHITE);
     let rays = 0;
     if (L?.rays && L.sunDir) {

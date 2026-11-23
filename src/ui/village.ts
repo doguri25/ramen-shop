@@ -137,7 +137,7 @@ export function openVillage(o: {
       const cur = { pos: V(0, 120, 120), look: V(0, 0, -4) };
       let blend = 1; // 돌아다니기로 바꾼 뒤 내려앉는 동안 0→1
       // 마음 골목은 가게보다 화사하게: 채도·밝기를 올리고 그늘을 밝히고, 낮은 해에서 햇살이 비쳐요
-      const look: Look & { rays: number } = { sat: 1.18, bright: 1.04, lift: 0.35, rays: 0.25, sunDir: V(0.4, 0.17, 0.5).normalize(), skyD: 400, paper: 0.8, blot: 0.6 };
+      const look: Look & { rays: number } = { ink: 1, sat: 1.18, bright: 1.04, lift: 0.35, rays: 0.25, sunDir: V(0.4, 0.17, 0.5).normalize(), skyD: 400, paper: 0.8, blot: 0.6 };
       // 시간대(낮·노을녘·밤): 하늘과 등불, 화면 빛깔을 함께 바꿔요
       let rayK = 1;
       const applyTod = (t: Tod) => {
