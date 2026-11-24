@@ -823,6 +823,11 @@ body.village-open #ui > *:not(.village):not(.modal-wrap):not(.toast):not(.villag
 .village .v-stick.ghost span { position: absolute; left: 50%; bottom: 100%; transform: translate(-50%, -6px); white-space: nowrap; padding: 2px 10px; border-radius: 999px; background: rgba(255,255,255,.92); font: 13px var(--head); color: var(--ink-2); }
 @keyframes vghost { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.06); } }
 .village.walk .v-towns { justify-content: flex-start; }
+/* 돌아다니기: 마을 이름 줄의 빈 곳은 손가락을 그대로 아래 화면(조이스틱)으로 보내요 */
+.village.walk .v-towns { pointer-events: none; }
+.village.walk .v-towns > * { pointer-events: auto; }
+/* 손가락으로 쓰는 기기: 조이스틱이 생기는 왼쪽 아래를 비워 두고 마을 이름 줄은 오른쪽 절반에서 밀어 봐요 */
+@media (pointer: coarse) { .village.walk .v-towns { left: 50%; } }
 .village .v-fade { position: absolute; inset: 0; background: #FFF4E6; opacity: 0; pointer-events: none; transition: opacity .25s; }
 .village .v-fade.on { opacity: 1; }
 /* 주민과 이야기하는 창 */

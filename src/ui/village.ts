@@ -1324,9 +1324,23 @@ export function openVillage(o: {
           cancelGoal(); goal = hg.point.clone(); sfx.tap();
         } else if (hg && mode === 'all') { all.target.copy(hg.point).setY(0); clampT(all.target); }
       };
+      // 손가락을 뗀 소식을 놓친 경우(대화창·가게 화면이 끼어들 때 등): 남은 기록을 지워야 조이스틱이 다시 생겨요
+      const dropStick = () => { stickV.id = -1; stickV.x = stickV.y = 0; stick.hidden = true; };
+      const forget = (id: number) => {
+        const p = pts.get(id);
+        pts.delete(id);
+        if ([...pts.values()].filter((q) => !q.stick).length < 2) pinch0 = 0;
+        if (p?.stick || stickV.id === id) dropStick();
+        return p;
+      };
+      const forgetAll = () => { [...pts.keys()].forEach(forget); dropStick(); pinch0 = 0; };
       touch.addEventListener('pointerdown', (e) => {
         newsBox.open = false;
-        touch.setPointerCapture(e.pointerId);
+        try { touch.setPointerCapture(e.pointerId); } catch { /* 이미 끝난 손가락 */ }
+        if (touch.hasPointerCapture(e.pointerId)) {
+          for (const id of [...pts.keys()]) if (id !== e.pointerId && !touch.hasPointerCapture(id)) forget(id);
+        }
+        if (stickV.id >= 0 && !pts.has(stickV.id)) dropStick();
         const isStick = mode === 'walk' && e.pointerType !== 'mouse' && stickV.id < 0 && e.clientX < innerWidth * 0.5 && talk === null;
         pts.set(e.pointerId, { x: e.clientX, y: e.clientY, x0: e.clientX, y0: e.clientY, t0: performance.now(), stick: isStick });
         if (isStick) {
@@ -1336,10 +1350,11 @@ export function openVillage(o: {
           if (!stickUsed) { stickUsed = true; stickGhost.hidden = true; }
           cancelGoal();
         }
-        // 두 손가락으로 벌리려고 한 손가락을 왼쪽에 막 댔다면 조이스틱 대신 줌으로 써요
+        // 두 손가락으로 벌리려고 거의 동시에, 가까이 댄 거라면 조이스틱 대신 줌으로 써요
+        // (왼손으로 걷기 시작하고 곧바로 오른손으로 둘러보는 건 줌이 아니에요: 손가락 사이가 멀거나 조금 늦게 닿아요)
         if (!isStick && stickV.id >= 0) {
           const sp = pts.get(stickV.id);
-          if (sp && performance.now() - sp.t0 < 300 && Math.hypot(sp.x - sp.x0, sp.y - sp.y0) < 12) { sp.stick = false; stickV.id = -1; stickV.x = stickV.y = 0; stick.hidden = true; }
+          if (sp && performance.now() - sp.t0 < 150 && Math.hypot(sp.x - sp.x0, sp.y - sp.y0) < 12 && Math.hypot(e.clientX - sp.x, e.clientY - sp.y) < Math.min(innerWidth * 0.42, 360)) { sp.stick = false; dropStick(); }
         }
         const looks = [...pts.values()].filter((p) => !p.stick);
         if (looks.length === 1 && !isStick) moved = false;
@@ -1377,13 +1392,10 @@ export function openVillage(o: {
         }
       });
       const up = (e: PointerEvent) => {
-        const p = pts.get(e.pointerId);
-        pts.delete(e.pointerId);
-        if ([...pts.values()].filter((q) => !q.stick).length < 2) pinch0 = 0;
+        const p = forget(e.pointerId);
         if (!p) return;
         const quick = performance.now() - p.t0 < 350 && Math.hypot(e.clientX - p.x0, e.clientY - p.y0) < 10;
         if (p.stick) {
-          stickV.id = -1; stickV.x = stickV.y = 0; stick.hidden = true;
           if (quick && !busy && talk === null) tapAt(e.clientX, e.clientY);
           return;
         }
@@ -1391,7 +1403,12 @@ export function openVillage(o: {
         tapAt(e.clientX, e.clientY);
       };
       touch.addEventListener('pointerup', up);
-      touch.addEventListener('pointercancel', (e) => { const p = pts.get(e.pointerId); pts.delete(e.pointerId); pinch0 = 0; if (p?.stick) { stickV.id = -1; stickV.x = stickV.y = 0; stick.hidden = true; } });
+      touch.addEventListener('pointercancel', (e) => { forget(e.pointerId); pinch0 = 0; });
+      // 붙잡고 있던 손가락을 놓쳤을 때(화면이 바뀌거나 가려질 때)도 똑같이 정리해요. 손가락을 정상으로 뗀 뒤에도 오지만 그때는 이미 지워져 있어요
+      touch.addEventListener('lostpointercapture', (e) => { if (pts.has(e.pointerId)) forget(e.pointerId); });
+      const onHide = () => { if (document.hidden) forgetAll(); };
+      document.addEventListener('visibilitychange', onHide);
+      window.addEventListener('blur', forgetAll);
       touch.addEventListener('wheel', (e) => {
         e.preventDefault();
         if (mode === 'all') all.dist = Math.max(18, Math.min(fitDist() * 1.1, all.dist * Math.exp(e.deltaY * 0.0012)));
@@ -1651,7 +1668,7 @@ export function openVillage(o: {
       o.setWorld(world);
       setTimeout(() => checkBadges(true), 600);
       // 점검용 (개발 중에만)
-      if (import.meta.env.DEV) (window as unknown as { __village: unknown }).__village = { vil, cam, fp, setMode, all, openTalk, closeTalk, tapNpc, takeItem, get task() { return task; }, get talk() { return talk; }, done, qDone, qs, keys, stickV, jumpTo, shops: SHOPS, showBook, hideBook, people, walkers, offerOf, finishQuest, festival: (id = 'q-festival') => festival(QUEST.get(id)!), award: (i: number) => award(FOLKS[i]), garden: vil.garden, pullPlant, tapPlant, bs, checkBadges, pickItem, tapItem, ends: vil.ends, getPlaySpot };
+      if (import.meta.env.DEV) (window as unknown as { __village: unknown }).__village = { vil, cam, fp, setMode, all, openTalk, closeTalk, tapNpc, takeItem, get task() { return task; }, get talk() { return talk; }, done, qDone, qs, keys, stickV, jumpTo, shops: SHOPS, showBook, hideBook, people, walkers, offerOf, finishQuest, festival: (id = 'q-festival') => festival(QUEST.get(id)!), award: (i: number) => award(FOLKS[i]), garden: vil.garden, pullPlant, tapPlant, bs, checkBadges, pickItem, tapItem, ends: vil.ends, getPlaySpot, get ptsN() { return pts.size; }, get fpZoom() { return fpZoom; } };
       function close() {
         if (busy) return;
         if (talk !== null) closeTalk();
@@ -1660,6 +1677,8 @@ export function openVillage(o: {
         window.removeEventListener('keydown', onKey);
         window.removeEventListener('keyup', onKey);
         window.removeEventListener('blur', onBlur);
+        window.removeEventListener('blur', forgetAll);
+        document.removeEventListener('visibilitychange', onHide);
         clearTimeout(hintTimer);
         offTod();
         el.remove();
